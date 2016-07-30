@@ -1,13 +1,12 @@
 -module(ecoap_sup).
 -behaviour(supervisor).
 
--export([start_link/0]).
+-export([start_link/1]).
 -export([init/1]).
 
--define(DEFAULT_COAP_PORT, 5683).
 
-start_link() ->
-	supervisor:start_link({local, ?MODULE}, ?MODULE, [?DEFAULT_COAP_PORT]).
+start_link(InPort) ->
+	supervisor:start_link({local, ?MODULE}, ?MODULE, [InPort]).
 
 init([InPort]) ->
 	Procs = [#{	id => ecoap_socket,

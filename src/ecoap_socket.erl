@@ -21,7 +21,7 @@
     [endpoint_sup_sup]}).
 
 -record(state, {
-	sock = undefined :: any(),
+	sock = undefined :: port(),
 	endpoints = undefined :: coap_endpoints(),
 	endpoint_pool = undefined :: undefined | pid()
 }).
@@ -35,12 +35,12 @@
 %% API.
 
 -spec start_link() -> {ok, pid()}.
--spec start_link(pid(), port()) -> {ok, pid()}.
+-spec start_link(pid(), non_neg_integer()) -> {ok, pid()}.
 %% client
 start_link() ->
 	gen_server:start_link(?MODULE, [0], []).
 %% server
-start_link(SupPid, InPort) ->
+start_link(SupPid, InPort) when is_pid(SupPid) ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [SupPid, InPort], []).
 
 %% gen_server.
@@ -69,7 +69,7 @@ handle_cast(_Msg, State) ->
 -spec handle_info
 	({start_endpoint_supervisor, pid(), {atom(), atom(), atom()}}, State) -> {noreply, State};
 	({udp, _, _, _, binary()}, State) -> {noreply, State}; 
-	({'DOWN', reference(), process, pid(), any()}, State) -> {noreply, State} when State :: state().
+	({'DOWN', reference(), process, pid(), _}, State) -> {noreply, State} when State :: state().
 handle_info({start_endpoint_supervisor, SupPid, MFA}, State = #state{sock=Socket}) ->
     {ok, Pid} = supervisor:start_child(SupPid, ?SPEC(MFA)),
     link(Pid),
@@ -117,7 +117,6 @@ terminate(_Reason, #state{sock=Socket}) ->
 
 code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
-
 
 %% Internal    
 find_endpoint(EpID, EndPoints) ->
