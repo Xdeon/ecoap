@@ -67,7 +67,7 @@ handle_cast(_Msg, State) ->
 	{noreply, State}.
 
 -spec handle_info
-	({start_endpoint_supervisor, pid(), {atom(), atom(), atom()}}, State) -> {noreply, State};
+	({start_endpoint_supervisor, pid(), {atom(), atom(), any()}}, State) -> {noreply, State};
 	({udp, _, _, _, binary()}, State) -> {noreply, State}; 
 	({'DOWN', reference(), process, pid(), _}, State) -> {noreply, State} when State :: state().
 handle_info({start_endpoint_supervisor, SupPid, MFA}, State = #state{sock=Socket}) ->
@@ -115,16 +115,19 @@ terminate(_Reason, #state{sock=Socket}) ->
 	gen_udp:close(Socket),
 	ok.
 
+-spec code_change(_, _, _) -> {ok, _}.
 code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
-%% Internal    
+%% Internal   
+-spec find_endpoint({_, _}, coap_endpoints()) -> undefined | {ok, pid()}. 
 find_endpoint(EpID, EndPoints) ->
     case maps:find(EpID, EndPoints) of
         error -> undefined;
         {ok, {EpPid, _, _}} -> {ok, EpPid}
     end.
 
+-spec store_endpoint({_, _}, pid(), pid(), state()) -> state().
 store_endpoint(EpID, EpSupPid, EpPid, State=#state{endpoints=EndPoints}) ->
 	Ref = erlang:monitor(process, EpPid),
 	State#state{endpoints=maps:put(EpID, {EpPid, EpSupPid, Ref}, EndPoints)}.

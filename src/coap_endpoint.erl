@@ -24,7 +24,7 @@
 
 -record(state, {
 	sock = undefined :: any(),
-	ep_id = undefined :: endpoint_id(),
+	ep_id = undefined :: {_, _},
 	tokens = undefined :: map(),
 	trans = undefined :: map(),
 	nextmid = undefined :: integer(),
@@ -37,10 +37,7 @@
 
 %% API.
 
--type endpoint_id() :: {term(), port()}.
--export_type([endpoint_id/0]).
-
--spec start_link(pid(), port(), endpoint_id()) -> {ok, pid()}.
+-spec start_link(pid(), port(), {_, _}) -> {ok, pid()}.
 start_link(SupPid, Socket, EpID) ->
 	gen_server:start_link(?MODULE, [SupPid, Socket, EpID], []).
 
