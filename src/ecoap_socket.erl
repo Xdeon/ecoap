@@ -21,7 +21,7 @@
     [endpoint_sup_sup]}).
 
 -record(state, {
-	sock = undefined :: port(),
+	sock = undefined :: inet:socket(),
 	endpoints = undefined :: coap_endpoints(),
 	endpoint_pool = undefined :: undefined | pid()
 }).
@@ -32,10 +32,13 @@
 -type coap_endpoints() :: map().
 -export_type([coap_endpoints/0]).
 
+-type coap_endpoint_id() :: {inet:ip_address(), inet:port_number()}.
+-export_type([coap_endpoint_id/0]).
+
 %% API.
 
 -spec start_link() -> {ok, pid()}.
--spec start_link(pid(), non_neg_integer()) -> {ok, pid()}.
+-spec start_link(pid(), inet:port_number()) -> {ok, pid()}.
 %% client
 start_link() ->
 	gen_server:start_link(?MODULE, [0], []).
@@ -68,8 +71,8 @@ handle_cast(_Msg, State) ->
 
 -spec handle_info
 	({start_endpoint_supervisor, pid(), {atom(), atom(), any()}}, State) -> {noreply, State};
-	({udp, _, _, _, binary()}, State) -> {noreply, State}; 
-	({'DOWN', reference(), process, pid(), _}, State) -> {noreply, State} when State :: state().
+	({udp, inet:socket(), inet:ip_address(), inet:port_number(), binary()}, State) -> {noreply, State}; 
+	({'DOWN', reference(), process, pid(), any()}, State) -> {noreply, State} when State :: state().
 handle_info({start_endpoint_supervisor, SupPid, MFA}, State = #state{sock=Socket}) ->
     {ok, Pid} = supervisor:start_child(SupPid, ?SPEC(MFA)),
     link(Pid),
@@ -120,14 +123,14 @@ code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
 %% Internal   
--spec find_endpoint({_, _}, coap_endpoints()) -> undefined | {ok, pid()}. 
+-spec find_endpoint(coap_endpoint_id(), coap_endpoints()) -> undefined | {ok, pid()}. 
 find_endpoint(EpID, EndPoints) ->
     case maps:find(EpID, EndPoints) of
         error -> undefined;
         {ok, {EpPid, _, _}} -> {ok, EpPid}
     end.
 
--spec store_endpoint({_, _}, pid(), pid(), state()) -> state().
+-spec store_endpoint(coap_endpoint_id(), pid(), pid(), state()) -> state().
 store_endpoint(EpID, EpSupPid, EpPid, State=#state{endpoints=EndPoints}) ->
 	Ref = erlang:monitor(process, EpPid),
 	State#state{endpoints=maps:put(EpID, {EpPid, EpSupPid, Ref}, EndPoints)}.

@@ -23,13 +23,13 @@
     [coap_handler_sup]}).
 
 -record(state, {
-	sock = undefined :: any(),
-	ep_id = undefined :: {_, _},
+	sock = undefined :: inet:socket(),
+	ep_id = undefined :: ecoap_socket:coap_endpoint_id(),
 	tokens = undefined :: map(),
 	trans = undefined :: map(),
-	nextmid = undefined :: integer(),
+	nextmid = undefined :: non_neg_integer(),
 	handler_sup = undefined :: undefined | pid(),
-	rescnt = undefined :: integer()
+	rescnt = undefined :: non_neg_integer()
 }).
 
 -opaque state() :: #state{}.
@@ -37,7 +37,7 @@
 
 %% API.
 
--spec start_link(pid(), port(), {_, _}) -> {ok, pid()}.
+-spec start_link(pid(), inet:socket(), ecoap_socket:coap_endpoint_id()) -> {ok, pid()}.
 start_link(SupPid, Socket, EpID) ->
 	gen_server:start_link(?MODULE, [SupPid, Socket, EpID], []).
 
