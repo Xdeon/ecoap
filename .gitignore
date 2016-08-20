@@ -1,2 +1,3 @@
 ebin/
-.ecoap.plt
+*.plt
+*.d
