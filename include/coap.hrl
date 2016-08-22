@@ -4,8 +4,15 @@
 
 -type from() :: {pid(), term()}.
 
--record(coap_message, {type, code, id, token = <<>>,
-                       options = [], payload = <<>>}).
+-record(coap_message, {
+	type = undefined :: coap_type(), 
+	code = undefined :: undefined | coap_method() | coap_success() | coap_error(), 
+	id = undefined :: non_neg_integer(), 
+	token = <<>> :: binary(),
+	options = [] :: list(tuple()), 
+	payload = <<>> :: binary()
+}).
+
 
 -type coap_message() :: #coap_message{}.
 
