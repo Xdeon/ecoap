@@ -1,3 +1,5 @@
+%% Decoding/encoding based on emqttd_coap https://github.com/emqtt/emqttd_coap 
+%% & gen_coap https://github.com/gotthardp/gen_coap
 -module(coap_message).
 
 -export([decode/1, encode/1, message_id/1]).
@@ -188,7 +190,10 @@ decode_option({?OPTION_CONTENT_FORMAT, OptVal}) ->
     {'Content-Format', decode_enum(content_formats(), Num, Num)};
 decode_option({?OPTION_MAX_AGE, OptVal}) -> {'Max-Age', binary:decode_unsigned(OptVal)};
 decode_option({?OPTION_URI_QUERY, OptVal}) -> {'Uri-Query', OptVal};
-decode_option({?OPTION_ACCEPT, OptVal}) -> {'Accept', binary:decode_unsigned(OptVal)};
+decode_option({?OPTION_ACCEPT, OptVal}) -> 
+    Num = binary:decode_unsigned(OptVal),
+    {'Accept', decode_enum(content_formats(), Num, Num)};
+    % {'Accept', binary:decode_unsigned(OptVal)};
 decode_option({?OPTION_LOCATION_QUERY, OptVal}) -> {'Location-Query', OptVal};
 decode_option({?OPTION_PROXY_URI, OptVal}) -> {'Proxy-Uri', OptVal};
 decode_option({?OPTION_PROXY_SCHEME, OptVal}) -> {'Proxy-Scheme', OptVal};
@@ -291,7 +296,11 @@ encode_option({'Content-Format', OptVal}) ->
     {?OPTION_CONTENT_FORMAT, binary:encode_unsigned(Num)};
 encode_option({'Max-Age', OptVal}) -> {?OPTION_MAX_AGE, binary:encode_unsigned(OptVal)};
 encode_option({'Uri-Query', OptVal}) -> {?OPTION_URI_QUERY, OptVal};
-encode_option({'Accept', OptVal}) -> {?OPTION_ACCEPT, binary:encode_unsigned(OptVal)};
+encode_option({'Accept', OptVal}) when is_integer(OptVal) -> 
+    {?OPTION_ACCEPT, binary:encode_unsigned(OptVal)};
+encode_option({'Accept', OptVal}) -> 
+    Num = encode_enum(content_formats(), OptVal),
+    {?OPTION_ACCEPT, binary:encode_unsigned(Num)};
 encode_option({'Location-Query', OptVal}) -> {?OPTION_LOCATION_QUERY, OptVal};
 encode_option({'Proxy-Uri', OptVal}) -> {?OPTION_PROXY_URI, OptVal};
 encode_option({'Proxy-Scheme', OptVal}) -> {?OPTION_PROXY_SCHEME, OptVal};

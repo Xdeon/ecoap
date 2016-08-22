@@ -75,27 +75,36 @@ handle_info({start_handler_sup, SupPid}, State=#state{}) ->
     link(Pid),
     {noreply, State#state{handler_sup = Pid}};
 % incoming CON(0) or NON(1) request
-handle_info({datagram, BinMessage= <<?VERSION:2, 0:1, _:1, _TKL:4, 0:3, _CodeDetail:5, MsgId:16, _/bytes>>}, State=#state{}) ->
+handle_info({datagram, BinMessage= <<?VERSION:2, 0:1, _:1, _TKL:4, 0:3, _CodeDetail:5, MsgId:16, _/bytes>>}, State=#state{sock=Socket, ep_id=EpID}) ->
 	TrId = {in, MsgId},
+    % debug
     io:format("incoming CON/NON request, TrId:~p~n", [TrId]),
     io:format("MsgBin: ~p~n", [BinMessage]),
     io:format("Msg: ~p~n", [coap_message:decode(BinMessage)]),
+    Data = coap_message:encode(#coap_message{type='ACK', code={ok, 'CONTENT'}, id=MsgId, options=[{'Content-Format', <<"text/plain">>}, {'Accept', 50}], payload= <<"Hello World!">>}),
+    {PeerIP, PeerPortNo} = EpID,
+    ok = gen_udp:send(Socket, PeerIP, PeerPortNo, Data),
+    % end of debug
     {noreply, State};
 % incoming CON(0) or NON(1) response
 handle_info({datagram, BinMessage= <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgId:16, _Token:TKL/bytes, _/bytes>>},
         State=#state{}) ->
 	TrId = {in, MsgId},
+    % debug
 	io:format("incoming CON/NON response, TrId:~p~n", [TrId]),
     io:format("MsgBin: ~p~n", [BinMessage]),
     io:format("Msg: ~p~n", [coap_message:decode(BinMessage)]),
+    % end of debug
     {noreply, State};
 % incoming ACK(2) or RST(3) to a request or response
 handle_info({datagram, BinMessage= <<?VERSION:2, _:2, _TKL:4, _Code:8, MsgId:16, _/bytes>>},
         State=#state{}) ->
     TrId = {out, MsgId},
+    % debug
     io:format("incoming ACK/RST to a req/res, TrId:~p~n", [TrId]),
     io:format("MsgBin: ~p~n", [BinMessage]),
     io:format("Msg: ~p~n", [coap_message:decode(BinMessage)]),
+    % end of debug
     {noreply, State};
 % silently ignore other versions
 handle_info({datagram, <<Ver:2, _/bytes>>}, State) when Ver /= ?VERSION ->

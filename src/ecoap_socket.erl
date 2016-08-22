@@ -46,9 +46,13 @@ start_link(SupPid, InPort) when is_pid(SupPid) ->
 
 -spec init(_) -> {ok, state()}.
 init([InPort]) ->
-	{ok, Socket} = gen_udp:open(InPort, [binary, {active, false}, {reuseaddr, true}]),
-	error_logger:info_msg("coap listen on *:~p~n", [InPort]),
-	{ok, #state{sock=Socket, endpoints=maps:new()}};
+	case gen_udp:open(InPort, [binary, {active, false}, {reuseaddr, true}]) of
+		{ok, Socket} ->
+			error_logger:info_msg("coap listen on *:~p~n", [InPort]),
+			{ok, #state{sock=Socket, endpoints=maps:new()}};
+		{error, Reason} ->
+			{stop, Reason}
+	end;
 init([SupPid, InPort]) ->
 	self() ! {start_endpoint_supervisor, SupPid, _MFA = {endpoint_sup, start_link, []}},
 	init([InPort]).
