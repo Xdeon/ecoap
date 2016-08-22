@@ -24,7 +24,7 @@
 
 -record(state, {
 	sock = undefined :: inet:socket(),
-	ep_id = undefined :: ecoap_socket:coap_endpoint_id(),
+	ep_id = undefined :: coap_endpoint_id(),
 	tokens = undefined :: map(),
 	trans = undefined :: map(),
 	nextmid = undefined :: non_neg_integer(),
@@ -35,9 +35,11 @@
 -opaque state() :: #state{}.
 -export_type([state/0]).
 
+-include("coap.hrl").
+
 %% API.
 
--spec start_link(pid(), inet:socket(), ecoap_socket:coap_endpoint_id()) -> {ok, pid()}.
+-spec start_link(pid(), inet:socket(), coap_endpoint_id()) -> {ok, pid()}.
 start_link(SupPid, Socket, EpID) ->
 	gen_server:start_link(?MODULE, [SupPid, Socket, EpID], []).
 
@@ -53,28 +55,59 @@ init([SupPid, Socket, EpID]) ->
 	{ok, #state{sock=Socket, ep_id=EpID, tokens=maps:new(),
         trans=maps:new(), nextmid=first_mid(), rescnt=0}}.
 
+-spec handle_call
+  	(any(), from(), State) -> {reply, ignored, State} when State :: state().
 handle_call(_Request, _From, State) ->
 	{reply, ignored, State}.
 
+-spec handle_cast
+  	(any(), State) -> {noreply, State} when State :: state().
 handle_cast(shutdown, State) ->
 	{stop, normal, State};
 handle_cast(_Msg, State) ->
 	{noreply, State}.
 
+-spec handle_info
+	({start_handler_sup, pid()}, State) -> {noreply, State};
+	({datagram, binary()}, State) -> {noreply, State} when State :: state().
 handle_info({start_handler_sup, SupPid}, State=#state{}) ->
     {ok, Pid} = supervisor:start_child(SupPid, ?HANDLER_SUP_SPEC),
     link(Pid),
     {noreply, State#state{handler_sup = Pid}};
-handle_info({datagram, _BinMessage= <<?VERSION:2, 0:1, _:1, _TKL:4, 0:3, _CodeDetail:5, MsgId:16, _/bytes>>}, State=#state{}) ->
+% incoming CON(0) or NON(1) request
+handle_info({datagram, BinMessage= <<?VERSION:2, 0:1, _:1, _TKL:4, 0:3, _CodeDetail:5, MsgId:16, _/bytes>>}, State=#state{}) ->
 	TrId = {in, MsgId},
     io:format("incoming CON/NON request, TrId:~p~n", [TrId]),
+    io:format("MsgBin: ~p~n", [BinMessage]),
+    io:format("Msg: ~p~n", [coap_message:decode(BinMessage)]),
+    {noreply, State};
+% incoming CON(0) or NON(1) response
+handle_info({datagram, BinMessage= <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgId:16, _Token:TKL/bytes, _/bytes>>},
+        State=#state{}) ->
+	TrId = {in, MsgId},
+	io:format("incoming CON/NON response, TrId:~p~n", [TrId]),
+    io:format("MsgBin: ~p~n", [BinMessage]),
+    io:format("Msg: ~p~n", [coap_message:decode(BinMessage)]),
+    {noreply, State};
+% incoming ACK(2) or RST(3) to a request or response
+handle_info({datagram, BinMessage= <<?VERSION:2, _:2, _TKL:4, _Code:8, MsgId:16, _/bytes>>},
+        State=#state{}) ->
+    TrId = {out, MsgId},
+    io:format("incoming ACK/RST to a req/res, TrId:~p~n", [TrId]),
+    io:format("MsgBin: ~p~n", [BinMessage]),
+    io:format("Msg: ~p~n", [coap_message:decode(BinMessage)]),
+    {noreply, State};
+% silently ignore other versions
+handle_info({datagram, <<Ver:2, _/bytes>>}, State) when Ver /= ?VERSION ->
     {noreply, State};
 handle_info(_Info, State) ->
 	{noreply, State}.
 
+-spec terminate(any(), state()) -> ok.
 terminate(_Reason, _State) ->
 	ok.
 
+-spec code_change(_, _, _) -> {ok, _}.
 code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 

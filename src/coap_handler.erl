@@ -15,6 +15,8 @@
 -record(state, {
 }).
 
+-include("coap.hrl").
+
 %% API.
 
 -spec start_link() -> {ok, pid()}.

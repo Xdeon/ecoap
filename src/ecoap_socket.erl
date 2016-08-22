@@ -29,11 +29,7 @@
 -opaque state() :: #state{}.
 -export_type([state/0]).
 
--type coap_endpoints() :: map().
--export_type([coap_endpoints/0]).
-
--type coap_endpoint_id() :: {inet:ip_address(), inet:port_number()}.
--export_type([coap_endpoint_id/0]).
+-include("coap.hrl").
 
 %% API.
 
@@ -56,8 +52,6 @@ init([InPort]) ->
 init([SupPid, InPort]) ->
 	self() ! {start_endpoint_supervisor, SupPid, _MFA = {endpoint_sup, start_link, []}},
 	init([InPort]).
-
--type from() :: {pid(), term()}.
 
 -spec handle_call
   	(any(), from(), State) -> {reply, ignored, State} when State :: state().
@@ -114,6 +108,7 @@ handle_info(_Info, State) ->
 	io:fwrite("ecoap_socket unexpected ~p~n", [_Info]),
 	{noreply, State}.
 
+-spec terminate(any(), state()) -> ok.
 terminate(_Reason, #state{sock=Socket}) ->
 	gen_udp:close(Socket),
 	ok.
@@ -123,14 +118,12 @@ code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
 %% Internal   
--spec find_endpoint(coap_endpoint_id(), coap_endpoints()) -> undefined | {ok, pid()}. 
 find_endpoint(EpID, EndPoints) ->
     case maps:find(EpID, EndPoints) of
         error -> undefined;
         {ok, {EpPid, _, _}} -> {ok, EpPid}
     end.
 
--spec store_endpoint(coap_endpoint_id(), pid(), pid(), state()) -> state().
 store_endpoint(EpID, EpSupPid, EpPid, State=#state{endpoints=EndPoints}) ->
 	Ref = erlang:monitor(process, EpPid),
 	State#state{endpoints=maps:put(EpID, {EpPid, EpSupPid, Ref}, EndPoints)}.
