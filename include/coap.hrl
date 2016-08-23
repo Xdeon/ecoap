@@ -1,4 +1,4 @@
--type coap_endpoints() :: map().
+-type coap_endpoints() :: #{coap_endpoint_id() => {pid(), pid(), reference()}}.
 
 -type coap_endpoint_id() :: {inet:ip_address(), inet:port_number()}.
 
@@ -7,7 +7,7 @@
 -record(coap_message, {
 	type = undefined :: coap_type(), 
 	code = undefined :: undefined | coap_method() | coap_success() | coap_error(), 
-	id = undefined :: non_neg_integer(), 
+	id = undefined :: 0..65535, 
 	token = <<>> :: binary(),
 	options = [] :: list(tuple()), 
 	payload = <<>> :: binary()
