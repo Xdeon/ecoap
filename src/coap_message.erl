@@ -76,6 +76,7 @@
 % +--------+------------------+-----------+
 
 % shortcut function for reset generation
+-spec message_id(binary() | coap_message()) -> non_neg_integer().
 message_id(<<_:16, MsgId:16, _Tail/bytes>>) -> MsgId;
 message_id(#coap_message{id=MsgId}) -> MsgId.
 
