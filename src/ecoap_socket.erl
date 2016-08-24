@@ -93,6 +93,9 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, en
 			{noreply, State};
 		undefined when is_pid(PoolPid) -> 
 			case endpoint_sup_sup:start_endpoint(PoolPid, [Socket, EpID]) of
+
+				%% How coule we make sure only forwarding msg after all necessary processes for an endpoint being started?
+
 				{ok, EpSupPid, EpPid} -> 
 					io:fwrite("start endpoint ~p~n", [EpID]),
 					EpPid ! {datagram, Bin},

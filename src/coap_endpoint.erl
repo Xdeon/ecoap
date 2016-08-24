@@ -19,7 +19,7 @@
 -record(state, {
 	sock = undefined :: inet:socket(),
 	ep_id = undefined :: coap_endpoint_id(),
-    handler_sup = undefined :: undefined | pid(),
+    handler_sup = undefined :: pid(),
 	tokens = undefined :: map(),
 	trans = undefined :: map(),
 	nextmid = undefined :: non_neg_integer(),
