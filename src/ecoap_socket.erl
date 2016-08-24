@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 %% API.
--export([start_link/0, start_link/2]).
+-export([start_link/0, start_link/2, close/1]).
 
 %% gen_server.
 -export([init/1]).
@@ -23,6 +23,7 @@
 -record(state, {
 	sock = undefined :: inet:socket(),
 	endpoints = undefined :: coap_endpoints(),
+	endpoint_refs = undefined :: coap_endpoint_refs(),
 	endpoint_pool = undefined :: undefined | pid()
 }).
 
@@ -42,19 +43,24 @@ start_link() ->
 start_link(SupPid, InPort) when is_pid(SupPid) ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [SupPid, InPort], []).
 
+%% client use
+close(Pid) ->
+	gen_server:cast(Pid, shutdown).
+
 %% gen_server.
 
 -spec init(_) -> {ok, state()}.
 init([InPort]) ->
+	% process_flag(trap_exit, true),
 	case gen_udp:open(InPort, [binary, {active, false}, {reuseaddr, true}]) of
 		{ok, Socket} ->
 			error_logger:info_msg("coap listen on *:~p~n", [InPort]),
-			{ok, #state{sock=Socket, endpoints=maps:new()}};
+			{ok, #state{sock=Socket, endpoints=maps:new(), endpoint_refs=maps:new()}};
 		{error, Reason} ->
 			{stop, Reason}
 	end;
 init([SupPid, InPort]) ->
-	self() ! {start_endpoint_supervisor, SupPid, _MFA = {endpoint_sup, start_link, []}},
+	self() ! {start_endpoint_sup_sup, SupPid, _MFA = {endpoint_sup, start_link, []}},
 	init([InPort]).
 
 -spec handle_call
@@ -63,15 +69,17 @@ handle_call(_Request, _From, State) ->
 	{reply, ignored, State}.
 
 -spec handle_cast
-  	(any(), State) -> {noreply, State} when State :: state().
+	(shutdown, State) -> {stop, normal, State} when State :: state().
+handle_cast(shutdown, State) ->
+	{stop, normal, State};
 handle_cast(_Msg, State) ->
 	{noreply, State}.
 
 -spec handle_info
-	({start_endpoint_supervisor, pid(), {atom(), atom(), any()}}, State) -> {noreply, State};
+	({start_endpoint_sup_sup, pid(), {atom(), atom(), any()}}, State) -> {noreply, State};
 	({udp, inet:socket(), inet:ip_address(), inet:port_number(), binary()}, State) -> {noreply, State}; 
 	({'DOWN', reference(), process, pid(), any()}, State) -> {noreply, State} when State :: state().
-handle_info({start_endpoint_supervisor, SupPid, MFA}, State = #state{sock=Socket}) ->
+handle_info({start_endpoint_sup_sup, SupPid, MFA}, State = #state{sock=Socket}) ->
     {ok, Pid} = supervisor:start_child(SupPid, ?SPEC(MFA)),
     link(Pid),
     ok = inet:setopts(Socket, [{active, true}]),
@@ -84,7 +92,7 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, en
 			EpPid ! {datagram, Bin},
 			{noreply, State};
 		undefined when is_pid(PoolPid) -> 
-			case supervisor:start_child(PoolPid, [Socket, EpID]) of
+			case endpoint_sup_sup:start_endpoint(PoolPid, [Socket, EpID]) of
 				{ok, EpSupPid, EpPid} -> 
 					io:fwrite("start endpoint ~p~n", [EpID]),
 					EpPid ! {datagram, Bin},
@@ -94,19 +102,37 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, en
 					{noreply, State}
 			end;
 		undefined ->
+			io:fwrite("unexpected msg to socket?~n"),
 			{noreply, State}
 	end;
-handle_info({'DOWN', Ref, process, _Pid, _}, State=#state{endpoints=EndPoints0, endpoint_pool=PoolPid}) ->
- 	Fun = fun(EpID, {_, EpSupPid, R}, _) when R == Ref ->  
- 		_ = supervisor:terminate_child(PoolPid, EpSupPid),
- 		EpID;
- 		(_, _, Acc) -> Acc
- 	end,
- 	case maps:fold(Fun, undefined, EndPoints0) of
- 		undefined -> 
+handle_info({'DOWN', Ref, process, _Pid, Reason}, State=#state{endpoints=EndPoints, endpoint_refs=EndPointsRefs, endpoint_pool=PoolPid}) ->
+ 	% Fun = fun(EpID, {_, EpSupPid, R}, _) when R == Ref ->  
+ 	% 	_ = case Reason of
+ 	% 		normal -> 
+ 	% 			endpoint_sup_sup:delete_endpoint(PoolPid, EpSupPid);
+ 	% 		_ -> 
+ 	% 			error_logger:error_msg("coap_endpoint ~p crashed~n", [EpID]), ok
+ 	% 	end,
+ 	% 	EpID;
+ 	% 	(_, _, Acc) -> Acc
+ 	% end,
+ 	% case maps:fold(Fun, undefined, EndPoints0) of
+ 	% 	undefined -> 
+ 	% 		{noreply, State};
+ 	% 	EpID ->
+ 	% 		{noreply, State#state{endpoints = maps:remove(EpID, EndPoints0)}}
+ 	% end;
+ 	case maps:get(Ref, EndPointsRefs, undefined) of
+ 		undefined ->	
  			{noreply, State};
- 		EpID ->
- 			{noreply, State#state{endpoints = maps:remove(EpID, EndPoints0)}}
+ 		{EpID, EpSupPid} when is_pid(EpSupPid) ->
+ 			_ = case Reason of
+ 				normal ->
+ 					endpoint_sup_sup:delete_endpoint(PoolPid, EpSupPid);
+ 				_ -> 
+ 					error_logger:error_msg("coap_endpoint ~p crashed~n", [EpID]), ok
+ 			end,
+ 			{noreply, State#state{endpoints=maps:remove(EpID, EndPoints), endpoint_refs=maps:remove(Ref, EndPointsRefs)}}
  	end;
 handle_info(_Info, State) ->
 	io:fwrite("ecoap_socket unexpected ~p~n", [_Info]),
@@ -125,10 +151,10 @@ code_change(_OldVsn, State, _Extra) ->
 find_endpoint(EpID, EndPoints) ->
     case maps:find(EpID, EndPoints) of
         error -> undefined;
-        {ok, {EpPid, _, _}} -> {ok, EpPid}
+        {ok, EpPid} -> {ok, EpPid}
     end.
 
-store_endpoint(EpID, EpSupPid, EpPid, State=#state{endpoints=EndPoints}) ->
+store_endpoint(EpID, EpSupPid, EpPid, State=#state{endpoints=EndPoints, endpoint_refs=EndPointsRefs}) ->
 	Ref = erlang:monitor(process, EpPid),
-	State#state{endpoints=maps:put(EpID, {EpPid, EpSupPid, Ref}, EndPoints)}.
+	State#state{endpoints=maps:put(EpID, EpPid, EndPoints), endpoint_refs=maps:put(Ref, {EpID, EpSupPid}, EndPointsRefs)}.
 

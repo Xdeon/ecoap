@@ -14,22 +14,17 @@
 
 -define(VERSION, 1).
 -define(MAX_MESSAGE_ID, 65535). % 16-bit number
--define(HANDLER_SUP_SPEC,
-    {coap_handler_sup,
-    {coap_handler_sup, start_link, []},
-    temporary,
-    infinity,
-    supervisor,
-    [coap_handler_sup]}).
+-define(SCAN_INTERVAL, 30).
 
 -record(state, {
 	sock = undefined :: inet:socket(),
 	ep_id = undefined :: coap_endpoint_id(),
+    handler_sup = undefined :: undefined | pid(),
 	tokens = undefined :: map(),
 	trans = undefined :: map(),
 	nextmid = undefined :: non_neg_integer(),
-	handler_sup = undefined :: undefined | pid(),
-	rescnt = undefined :: non_neg_integer()
+	rescnt = undefined :: non_neg_integer(),
+    timer = undefined :: timer:tref()
 }).
 
 -opaque state() :: #state{}.
@@ -50,10 +45,10 @@ close(Pid) ->
 %% gen_server.
 
 -spec init(_) -> {ok, state()}.
-init([SupPid, Socket, EpID]) ->
-	self() ! {start_handler_sup, SupPid},
-	{ok, #state{sock=Socket, ep_id=EpID, tokens=maps:new(),
-        trans=maps:new(), nextmid=first_mid(), rescnt=0}}.
+init([Socket, EpID, HdlSupPid]) ->
+    {ok, TRef} = timer:send_interval(timer:seconds(?SCAN_INTERVAL), self(), {timeout}),
+	{ok, #state{sock=Socket, ep_id=EpID, handler_sup=HdlSupPid, tokens=maps:new(),
+        trans=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef}}.
 
 -spec handle_call
   	(any(), from(), State) -> {reply, ignored, State} when State :: state().
@@ -68,12 +63,8 @@ handle_cast(_Msg, State) ->
 	{noreply, State}.
 
 -spec handle_info
-	({start_handler_sup, pid()}, State) -> {noreply, State};
-	({datagram, binary()}, State) -> {noreply, State} when State :: state().
-handle_info({start_handler_sup, SupPid}, State=#state{}) ->
-    {ok, Pid} = supervisor:start_child(SupPid, ?HANDLER_SUP_SPEC),
-    link(Pid),
-    {noreply, State#state{handler_sup = Pid}};
+	({datagram, binary()}, State) -> {noreply, State};
+    ({timeout}, State) -> {noreply, State} | {stop, normal, State} when State :: state().
 % incoming CON(0) or NON(1) request
 handle_info({datagram, BinMessage= <<?VERSION:2, 0:1, _:1, _TKL:4, 0:3, _CodeDetail:5, MsgId:16, _/bytes>>}, State=#state{sock=Socket, ep_id=EpID}) ->
 	TrId = {in, MsgId},
@@ -109,6 +100,9 @@ handle_info({datagram, BinMessage= <<?VERSION:2, _:2, _TKL:4, _Code:8, MsgId:16,
 % silently ignore other versions
 handle_info({datagram, <<Ver:2, _/bytes>>}, State) when Ver /= ?VERSION ->
     {noreply, State};
+handle_info({timeout}, State=#state{ep_id = EpID}) ->
+    io:format("coap_endpoint ~p timeout, terminate~n", [EpID]),
+    {stop, normal, State};
 handle_info(_Info, State) ->
 	{noreply, State}.
 
@@ -124,7 +118,6 @@ code_change(_OldVsn, State, _Extra) ->
 first_mid() ->
     _ = rand:seed(exsplus),
     rand:uniform(?MAX_MESSAGE_ID).
-
 
 % next_mid(MsgId) ->
 %     if
