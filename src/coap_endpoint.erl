@@ -6,6 +6,7 @@
 
 %% gen_server.
 -export([init/1]).
+-export([init/3]).
 -export([handle_call/3]).
 -export([handle_cast/2]).
 -export([handle_info/2]).
@@ -15,6 +16,14 @@
 -define(VERSION, 1).
 -define(MAX_MESSAGE_ID, 65535). % 16-bit number
 -define(SCAN_INTERVAL, 30).
+
+-define(HDLSUP_SPEC,
+    {coap_handler_sup,
+    {coap_handler_sup, start_link, []},
+    temporary,
+    infinity,
+    supervisor,
+    [coap_handler_sup]}).
 
 -record(state, {
 	sock = undefined :: inet:socket(),
@@ -36,7 +45,7 @@
 
 -spec start_link(pid(), inet:socket(), coap_endpoint_id()) -> {ok, pid()}.
 start_link(SupPid, Socket, EpID) ->
-	gen_server:start_link(?MODULE, [SupPid, Socket, EpID], []).
+	proc_lib:start_link(?MODULE, init, [SupPid, Socket, EpID]).
 
 -spec close(pid()) -> ok.
 close(Pid) ->
@@ -44,11 +53,17 @@ close(Pid) ->
 
 %% gen_server.
 
--spec init(_) -> {ok, state()}.
-init([Socket, EpID, HdlSupPid]) ->
+% Just a placeholder for gen_server behavior
+init(_Args) ->
+    {ok, _Args}.
+
+-spec init(pid(), inet:socket(), coap_endpoint_id()) -> no_return().
+init(SupPid, Socket, EpID) ->
+    ok = proc_lib:init_ack({ok, self()}),
+    {ok, Pid} = supervisor:start_child(SupPid, ?HDLSUP_SPEC),
+    link(Pid),
     {ok, TRef} = timer:send_interval(timer:seconds(?SCAN_INTERVAL), self(), {timeout}),
-	{ok, #state{sock=Socket, ep_id=EpID, handler_sup=HdlSupPid, tokens=maps:new(),
-        trans=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef}}.
+    gen_server:enter_loop(?MODULE, [], #state{sock=Socket, ep_id=EpID, handler_sup=Pid, tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef}).
 
 -spec handle_call
   	(any(), from(), State) -> {reply, ignored, State} when State :: state().
@@ -66,9 +81,10 @@ handle_cast(_Msg, State) ->
 	({datagram, binary()}, State) -> {noreply, State};
     ({timeout}, State) -> {noreply, State} | {stop, normal, State} when State :: state().
 % incoming CON(0) or NON(1) request
-handle_info({datagram, BinMessage= <<?VERSION:2, 0:1, _:1, _TKL:4, 0:3, _CodeDetail:5, MsgId:16, _/bytes>>}, State=#state{sock=Socket, ep_id=EpID}) ->
+handle_info({datagram, BinMessage= <<?VERSION:2, 0:1, _:1, _TKL:4, 0:3, _CodeDetail:5, MsgId:16, _/bytes>>}, State=#state{sock=Socket, ep_id=EpID, handler_sup=HdlSupPid}) ->
 	TrId = {in, MsgId},
     % debug
+    io:format("HdlSupPid: ~p~n", [HdlSupPid]),
     io:format("incoming CON/NON request, TrId:~p~n", [TrId]),
     io:format("MsgBin: ~p~n", [BinMessage]),
     io:format("Msg: ~p~n", [coap_message:decode(BinMessage)]),
