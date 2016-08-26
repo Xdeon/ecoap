@@ -6,6 +6,7 @@
 
 %% gen_server.
 -export([init/1]).
+-export([init/2]).
 -export([handle_call/3]).
 -export([handle_cast/2]).
 -export([handle_info/2]).
@@ -41,7 +42,7 @@ start_link() ->
 	gen_server:start_link(?MODULE, [0], []).
 %% server
 start_link(SupPid, InPort) when is_pid(SupPid) ->
-	gen_server:start_link({local, ?MODULE}, ?MODULE, [SupPid, InPort], []).
+	proc_lib:start_link(?MODULE, init, [SupPid, InPort]).
 
 %% client use
 close(Pid) ->
@@ -49,19 +50,25 @@ close(Pid) ->
 
 %% gen_server.
 
--spec init(_) -> {ok, state()}.
+-spec init([inet:port_number()]) -> {ok, state()} | {stop, any()}.
 init([InPort]) ->
 	% process_flag(trap_exit, true),
-	case gen_udp:open(InPort, [binary, {active, false}, {reuseaddr, true}]) of
+	case gen_udp:open(InPort, [binary, {active, once}, {reuseaddr, true}]) of
 		{ok, Socket} ->
 			error_logger:info_msg("coap listen on *:~p~n", [InPort]),
 			{ok, #state{sock=Socket, endpoints=maps:new(), endpoint_refs=maps:new()}};
 		{error, Reason} ->
 			{stop, Reason}
-	end;
-init([SupPid, InPort]) ->
-	self() ! {start_endpoint_sup_sup, SupPid, _MFA = {endpoint_sup, start_link, []}},
-	init([InPort]).
+	end.
+
+-spec init(pid(), inet:port_number()) -> no_return().
+init(SupPid, InPort) ->
+	register(?MODULE, self()),
+	{ok, State} = init([InPort]),
+	ok = proc_lib:init_ack({ok, self()}),
+	{ok, Pid} = supervisor:start_child(SupPid, ?SPEC({endpoint_sup, start_link, []})),
+    link(Pid),
+    gen_server:enter_loop(?MODULE, [], State#state{endpoint_pool=Pid}, {local, ?MODULE}).
 
 -spec handle_call
   	(any(), from(), State) -> {reply, ignored, State} when State :: state().
@@ -76,16 +83,11 @@ handle_cast(_Msg, State) ->
 	{noreply, State}.
 
 -spec handle_info
-	({start_endpoint_sup_sup, pid(), {atom(), atom(), any()}}, State) -> {noreply, State};
 	({udp, inet:socket(), inet:ip_address(), inet:port_number(), binary()}, State) -> {noreply, State}; 
 	({'DOWN', reference(), process, pid(), any()}, State) -> {noreply, State} when State :: state().
-handle_info({start_endpoint_sup_sup, SupPid, MFA}, State = #state{sock=Socket}) ->
-    {ok, Pid} = supervisor:start_child(SupPid, ?SPEC(MFA)),
-    link(Pid),
-    ok = inet:setopts(Socket, [{active, true}]),
-    {noreply, State#state{endpoint_pool = Pid}};
 handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, endpoints=EndPoints, endpoint_pool=PoolPid}) ->
 	EpID = {PeerIP, PeerPortNo},
+	ok = inet:setopts(Socket, [{active, once}]),
 	case find_endpoint(EpID, EndPoints) of
 		{ok, EpPid} -> 
 			io:fwrite("found endpoint ~p~n", [EpID]),
