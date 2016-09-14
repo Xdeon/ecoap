@@ -340,8 +340,8 @@ is_repeatable_option(_Else) -> false.
 parse_test() ->
 	MsgBin = <<64,1,45,91,183,115,101,110,115,111,114,115,4,116,101,109,112,193,2>>,
     Msg = decode(MsgBin),
-    Msg2 = encode(Msg),
-    ?assertEqual(MsgBin, Msg2).
+    MsgBin2 = encode(Msg),
+    ?assertEqual(MsgBin, MsgBin2).
 
 % note that the options below must be sorted by the option numbers
 codec_test()-> [

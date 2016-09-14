@@ -77,6 +77,21 @@ handle_cast(shutdown, State) ->
 handle_cast(_Msg, State) ->
 	{noreply, State}.
 
+%% CoAP Message Format
+%%
+%%  0                   1                   2                   3
+%%  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+%% +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+%% |Ver| T |  TKL  |      Code     |          Message ID           |
+%% +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+%% |   Token (if any, TKL bytes) ...                               |
+%% +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+%% |   Options (if any) ...                                        |
+%% +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+%% |1 1 1 1 1 1 1 1|    Payload (if any) ...                       |
+%% +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+%%
+%%
 -spec handle_info
 	({datagram, binary()}, State) -> {noreply, State};
     ({timeout}, State) -> {noreply, State} | {stop, normal, State} when State :: state().
@@ -116,8 +131,8 @@ handle_info({datagram, BinMessage= <<?VERSION:2, _:2, _TKL:4, _Code:8, MsgId:16,
 % silently ignore other versions
 handle_info({datagram, <<Ver:2, _/bytes>>}, State) when Ver /= ?VERSION ->
     {noreply, State};
-handle_info({timeout}, State=#state{ep_id = EpID}) ->
-    io:format("coap_endpoint ~p timeout, terminate~n", [EpID]),
+handle_info({timeout}, State=#state{ep_id = _EpID}) ->
+    % io:format("coap_endpoint ~p timeout, terminate~n", [EpID]),
     {stop, normal, State};
 handle_info(_Info, State) ->
 	{noreply, State}.

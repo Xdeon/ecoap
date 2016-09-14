@@ -1,3 +1,5 @@
+-define(DEFAULT_MAX_AGE, 60).
+
 -type coap_endpoints() :: #{coap_endpoint_id() => pid()}.
 
 -type coap_endpoint_refs() :: #{reference() => {coap_endpoint_id(), pid()}}.
@@ -15,8 +17,16 @@
 	payload = <<>> :: binary()
 }).
 
-
 -type coap_message() :: #coap_message{}.
+
+-record(coap_content, {
+	etag = undefined :: undefined | binary(),
+	max_age = ?DEFAULT_MAX_AGE :: non_neg_integer(),
+	format = undefined :: undefined | binary(),
+	payload = <<>> :: binary()
+}).
+
+-type coap_content() :: #coap_content{}.
 
 -type coap_type() :: 'CON' | 'NON' | 'ACK' | 'RST' .
 

@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 %% API.
--export([start_link/0, start_link/2, close/1]).
+-export([start_link/0, start_link/2, get_endpoint/2, close/1]).
 
 %% gen_server.
 -export([init/1]).
@@ -44,7 +44,11 @@ start_link() ->
 start_link(SupPid, InPort) when is_pid(SupPid) ->
 	proc_lib:start_link(?MODULE, init, [SupPid, InPort]).
 
-%% client use
+%% start endpoint manually
+get_endpoint(Pid, {PeerIP, PeerPortNo}) ->
+    gen_server:call(Pid, {get_endpoint, {PeerIP, PeerPortNo}}).
+
+%% client
 close(Pid) ->
 	gen_server:cast(Pid, shutdown).
 
@@ -71,7 +75,28 @@ init(SupPid, InPort) ->
     gen_server:enter_loop(?MODULE, [], State#state{endpoint_pool=Pid}, {local, ?MODULE}).
 
 -spec handle_call
-  	(any(), from(), State) -> {reply, ignored, State} when State :: state().
+	({get_endpoint, coap_endpoint_id()}, from(), State) -> {reply, {ok, pid()} | term(), State} when State :: state().
+handle_call({get_endpoint, EpID}, _From, State=#state{endpoints=EndPoints, endpoint_pool=undefined, sock=Socket}) ->
+    case find_endpoint(EpID, EndPoints) of
+        {ok, EpPid} ->
+            {reply, {ok, EpPid}, State};
+        undefined ->
+            {ok, EpSupPid, EpPid} = endpoint_sup:start_link(Socket, EpID),
+            % io:fwrite("EpSupPid: ~p EpPid: ~p~n", [EpSupPid, EpPid]),
+            {reply, {ok, EpPid}, store_endpoint(EpID, EpSupPid, EpPid, State)}
+    end;
+handle_call({get_endpoint, EpID}, _From, State=#state{endpoints=EndPoints, endpoint_pool=PoolPid, sock=Socket}) ->
+	case find_endpoint(EpID, EndPoints) of
+		{ok, EpPid} ->
+			{reply, {ok, EpPid}, State};
+		undefined ->
+		    case endpoint_sup_sup:start_endpoint(PoolPid, [Socket, EpID]) of
+		        {ok, EpSupPid, EpPid} ->
+		            {reply, {ok, EpPid}, store_endpoint(EpID, EpSupPid, EpPid, State)};
+		        Error ->
+		            {reply, Error, State}
+		    end
+    end;
 handle_call(_Request, _From, State) ->
 	{reply, ignored, State}.
 
@@ -104,7 +129,7 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, en
 					{noreply, State}
 			end;
 		undefined ->
-			io:fwrite("unexpected msg to socket?~n"),
+			io:fwrite("client recv unexpected packet~n"),
 			{noreply, State}
 	end;
 handle_info({'DOWN', Ref, process, _Pid, Reason}, State=#state{endpoints=EndPoints, endpoint_refs=EndPointsRefs, endpoint_pool=PoolPid}) ->
@@ -128,16 +153,18 @@ handle_info({'DOWN', Ref, process, _Pid, Reason}, State=#state{endpoints=EndPoin
  		undefined ->	
  			{noreply, State};
  		{EpID, EpSupPid} when is_pid(EpSupPid) ->
- 			_ = case Reason of
- 				normal ->
- 					endpoint_sup_sup:delete_endpoint(PoolPid, EpSupPid);
- 				_ -> 
- 					error_logger:error_msg("coap_endpoint ~p crashed~n", [EpID]), ok
- 			end,
+ 			case is_pid(PoolPid) of
+ 				true -> 
+					ok = endpoint_sup_sup:delete_endpoint(PoolPid, EpSupPid);
+				false -> 
+					ok
+					%% Should we stop the relevant supervisor?
+			end,
+			error_logger:error_msg("coap_endpoint ~p stopped with reason ~p~n", [EpID, Reason]),
  			{noreply, State#state{endpoints=maps:remove(EpID, EndPoints), endpoint_refs=maps:remove(Ref, EndPointsRefs)}}
  	end;
 handle_info(_Info, State) ->
-	io:fwrite("ecoap_socket unexpected ~p~n", [_Info]),
+	io:fwrite("ecoap_socket recv unexpected info ~p~n", [_Info]),
 	{noreply, State}.
 
 -spec terminate(any(), state()) -> ok.
