@@ -207,6 +207,7 @@ decode_option({?OPTION_BLOCK1, OptVal}) -> {'Block1', decode_block(OptVal)};
 % unknown option
 decode_option({OptNum, OptVal}) -> {OptNum, OptVal}.
 
+decode_block(<<>>) -> decode_block1(0, 0, 0);
 decode_block(<<Num:4, M:1, SizEx:3>>) -> decode_block1(Num, M, SizEx);
 decode_block(<<Num:12, M:1, SizEx:3>>) -> decode_block1(Num, M, SizEx);
 decode_block(<<Num:28, M:1, SizEx:3>>) -> decode_block1(Num, M, SizEx).
