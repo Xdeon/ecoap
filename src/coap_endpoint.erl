@@ -15,7 +15,7 @@
 
 -define(VERSION, 1).
 -define(MAX_MESSAGE_ID, 65535). % 16-bit number
--define(SCAN_INTERVAL, 30).
+-define(SCAN_INTERVAL, 10).
 
 -define(HDLSUP_SPEC,
     {coap_handler_sup,
@@ -33,7 +33,7 @@
 	trans = undefined :: map(),
 	nextmid = undefined :: non_neg_integer(),
 	rescnt = undefined :: non_neg_integer(),
-    timer = undefined :: timer:tref()
+    timer = undefined :: reference()
 }).
 
 -opaque state() :: #state{}.
@@ -62,7 +62,9 @@ init(SupPid, Socket, EpID) ->
     ok = proc_lib:init_ack({ok, self()}),
     {ok, Pid} = supervisor:start_child(SupPid, ?HDLSUP_SPEC),
     link(Pid),
-    {ok, TRef} = timer:send_interval(timer:seconds(?SCAN_INTERVAL), self(), {timeout}),
+    % {ok, TRef} = timer:send_interval(timer:seconds(?SCAN_INTERVAL), self(), {timeout}),
+    % timer is slow, use erlang:send_after or erlang:start_timer
+    TRef = erlang:start_timer(?SCAN_INTERVAL*1000, self(), scan),
     gen_server:enter_loop(?MODULE, [], #state{sock=Socket, ep_id=EpID, handler_sup=Pid, tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef}).
 
 -spec handle_call
@@ -94,23 +96,24 @@ handle_cast(_Msg, State) ->
 %%
 -spec handle_info
 	({datagram, binary()}, State) -> {noreply, State};
-    ({timeout}, State) -> {noreply, State} | {stop, normal, State} when State :: state().
+    ({timeout, reference(), term()}, State) -> {noreply, State} | {stop, normal, State} when State :: state().
 % incoming CON(0) or NON(1) request
-handle_info({datagram, BinMessage= <<?VERSION:2, 0:1, _:1, _TKL:4, 0:3, _CodeDetail:5, MsgId:16, _/bytes>>}, State=#state{sock=Socket, ep_id=EpID, handler_sup=HdlSupPid}) ->
+handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, _TKL:4, 0:3, _CodeDetail:5, MsgId:16, _/bytes>>}, State = #state{sock=Socket, ep_id=EpID, handler_sup=HdlSupPid, trans = Trans}) ->
 	TrId = {in, MsgId},
     % debug
     io:format("HdlSupPid: ~p~n", [HdlSupPid]),
     io:format("incoming CON/NON request, TrId:~p~n", [TrId]),
     io:format("MsgBin: ~p~n", [BinMessage]),
     io:format("Msg: ~p~n", [coap_message:decode(BinMessage)]),
-    Data = coap_message:encode(#coap_message{type='ACK', code={ok, 'CONTENT'}, id=MsgId, options=[{'Content-Format', <<"text/plain">>}, {'Accept', 50}], payload= <<"Hello World!">>}),
+    Data = coap_message:encode(#coap_message{type = 'ACK', code = {ok, 'CONTENT'}, id = MsgId, options = [{'Content-Format', <<"text/plain">>}, {'Accept', 50}], payload = <<"Hello World!">>}),
     {PeerIP, PeerPortNo} = EpID,
     ok = gen_udp:send(Socket, PeerIP, PeerPortNo, Data),
+    {noreply, State#state{trans = maps:put(TrId, {erlang:monotonic_time(), BinMessage}, Trans)}};
     % end of debug
-    {noreply, State};
+
 % incoming CON(0) or NON(1) response
-handle_info({datagram, BinMessage= <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgId:16, _Token:TKL/bytes, _/bytes>>},
-        State=#state{}) ->
+handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgId:16, _Token:TKL/bytes, _/bytes>>},
+        State = #state{}) ->
 	TrId = {in, MsgId},
     % debug
 	io:format("incoming CON/NON response, TrId:~p~n", [TrId]),
@@ -119,8 +122,8 @@ handle_info({datagram, BinMessage= <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgId
     % end of debug
     {noreply, State};
 % incoming ACK(2) or RST(3) to a request or response
-handle_info({datagram, BinMessage= <<?VERSION:2, _:2, _TKL:4, _Code:8, MsgId:16, _/bytes>>},
-        State=#state{}) ->
+handle_info({datagram, BinMessage = <<?VERSION:2, _:2, _TKL:4, _Code:8, MsgId:16, _/bytes>>},
+        State = #state{}) ->
     TrId = {out, MsgId},
     % debug
     io:format("incoming ACK/RST to a req/res, TrId:~p~n", [TrId]),
@@ -131,9 +134,18 @@ handle_info({datagram, BinMessage= <<?VERSION:2, _:2, _TKL:4, _Code:8, MsgId:16,
 % silently ignore other versions
 handle_info({datagram, <<Ver:2, _/bytes>>}, State) when Ver /= ?VERSION ->
     {noreply, State};
-handle_info({timeout}, State=#state{ep_id = _EpID}) ->
+handle_info({timeout, TRef, scan}, State=#state{ep_id = _EpID, timer = TRef, trans = Trans}) ->
     % io:format("coap_endpoint ~p timeout, terminate~n", [EpID]),
-    {stop, normal, State};
+    NewTrans = maps:filter(fun(_TrId, {Timestamp, _BinMessage}) -> erlang:convert_time_unit(erlang:monotonic_time() - Timestamp, native, millisecond) < 100*1000 end, Trans),
+    case maps:size(NewTrans) of
+        0 ->
+            io:format("All trans expired~n"),
+            {stop, normal, State#state{trans = NewTrans}};
+        _ ->
+            NewTRef = erlang:start_timer(?SCAN_INTERVAL*1000, self(), scan),
+            io:format("Ongoing trans exist, start new timer~n"),
+            {noreply, State#state{trans = NewTrans, timer = NewTRef}}
+    end;
 handle_info(_Info, State) ->
 	{noreply, State}.
 
