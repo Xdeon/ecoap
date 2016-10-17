@@ -16,7 +16,7 @@
 
 ERLANG_MK_FILENAME := $(realpath $(lastword $(MAKEFILE_LIST)))
 
-ERLANG_MK_VERSION = 2.0.0-pre.2-131-g654c74a
+ERLANG_MK_VERSION = 2.0.0-pre.2-147-gc849da3
 
 # Core configuration.
 
@@ -515,6 +515,14 @@ pkg_chronos_homepage = https://github.com/lehoff/chronos
 pkg_chronos_fetch = git
 pkg_chronos_repo = https://github.com/lehoff/chronos
 pkg_chronos_commit = master
+
+PACKAGES += chumak
+pkg_chumak_name = chumak
+pkg_chumak_description = Pure Erlang implementation of ZeroMQ Message Transport Protocol.
+pkg_chumak_homepage = http://choven.ca
+pkg_chumak_fetch = git
+pkg_chumak_repo = https://github.com/chovencorp/chumak
+pkg_chumak_commit = master
 
 PACKAGES += cl
 pkg_cl_name = cl
@@ -1291,14 +1299,6 @@ pkg_erlang_term_homepage = https://github.com/okeuday/erlang_term
 pkg_erlang_term_fetch = git
 pkg_erlang_term_repo = https://github.com/okeuday/erlang_term
 pkg_erlang_term_commit = master
-
-PACKAGES += erlangzmq
-pkg_erlangzmq_name = erlangzmq
-pkg_erlangzmq_description = Native Erlang implemention of ZeroMQ Message Transport Protocol.
-pkg_erlangzmq_homepage = http://choven.ca
-pkg_erlangzmq_fetch = git
-pkg_erlangzmq_repo = https://github.com/chovencorp/erlangzmq
-pkg_erlangzmq_commit = master
 
 PACKAGES += erlastic_search
 pkg_erlastic_search_name = erlastic_search
@@ -3492,6 +3492,14 @@ pkg_smother_fetch = git
 pkg_smother_repo = https://github.com/ramsay-t/Smother
 pkg_smother_commit = master
 
+PACKAGES += snappyer
+pkg_snappyer_name = snappyer
+pkg_snappyer_description = Snappy as nif for Erlang
+pkg_snappyer_homepage = https://github.com/zmstone/snappyer
+pkg_snappyer_fetch = git
+pkg_snappyer_repo = https://github.com/zmstone/snappyer.git
+pkg_snappyer_commit = master
+
 PACKAGES += social
 pkg_social_name = social
 pkg_social_description = Cowboy handler for social login via OAuth2 providers
@@ -4252,7 +4260,7 @@ define dep_autopatch_fetch_rebar
 	if [ ! -d $(ERLANG_MK_TMP)/rebar ]; then \
 		git clone -q -n -- https://github.com/rebar/rebar $(ERLANG_MK_TMP)/rebar; \
 		cd $(ERLANG_MK_TMP)/rebar; \
-		git checkout -q 791db716b5a3a7671e0b351f95ddf24b848ee173; \
+		git checkout -q 576e12171ab8d69b048b827b92aa65d067deea01; \
 		$(MAKE); \
 		cd -; \
 	fi
@@ -4269,6 +4277,7 @@ endef
 define dep_autopatch_rebar.erl
 	application:load(rebar),
 	application:set_env(rebar, log_level, debug),
+	rmemo:start(),
 	Conf1 = case file:consult("$(call core_native_path,$(DEPS_DIR)/$1/rebar.config)") of
 		{ok, Conf0} -> Conf0;
 		_ -> []
@@ -4422,9 +4431,9 @@ define dep_autopatch_rebar.erl
 		[] -> ok;
 		_ ->
 			Write("\npre-app::\n\t$$\(MAKE) -f c_src/Makefile.erlang.mk\n"),
-			PortSpecWrite(io_lib:format("ERL_CFLAGS = -finline-functions -Wall -fPIC -I \\"~s/erts-~s/include\\" -I \\"~s\\"\n",
+			PortSpecWrite(io_lib:format("ERL_CFLAGS ?= -finline-functions -Wall -fPIC -I \\"~s/erts-~s/include\\" -I \\"~s\\"\n",
 				[code:root_dir(), erlang:system_info(version), code:lib_dir(erl_interface, include)])),
-			PortSpecWrite(io_lib:format("ERL_LDFLAGS = -L \\"~s\\" -lerl_interface -lei\n",
+			PortSpecWrite(io_lib:format("ERL_LDFLAGS ?= -L \\"~s\\" -lerl_interface -lei\n",
 				[code:lib_dir(erl_interface, lib)])),
 			[PortSpecWrite(["\n", E, "\n"]) || E <- OsEnv],
 			FilterEnv = fun(Env) ->
@@ -5963,11 +5972,12 @@ ci_verbose = $(ci_verbose_$(V))
 
 define ci_target
 ci-$(1): $(CI_INSTALL_DIR)/$(1)
+	$(verbose) $(MAKE) --no-print-directory clean;
 	$(ci_verbose) \
 		PATH="$(CI_INSTALL_DIR)/$(1)/bin:$(PATH)" \
 		CI_OTP_RELEASE="$(1)" \
 		CT_OPTS="-label $(1)" \
-		$(MAKE) clean ci-setup tests
+		$(MAKE) ci-setup tests
 endef
 
 $(foreach otp,$(CI_OTP),$(eval $(call ci_target,$(otp))))
@@ -6107,14 +6117,17 @@ help::
 # Plugin-specific targets.
 
 define filter_opts.erl
-	Opts = binary:split(<<"$1">>, <<"-">>, [global]),
-	Filtered = lists:reverse(lists:foldl(fun
-		(O = <<"pa ", _/bits>>, Acc) -> [O|Acc];
-		(O = <<"D ", _/bits>>, Acc) -> [O|Acc];
-		(O = <<"I ", _/bits>>, Acc) -> [O|Acc];
-		(_, Acc) -> Acc
-	end, [], Opts)),
-	io:format("~s~n", [[["-", O] || O <- Filtered]]),
+	Opts = init:get_plain_arguments(),
+	{Filtered, _} = lists:foldl(fun
+		(O,                         {Os, true}) -> {[O|Os], false};
+		(O = "-D",                  {Os, _})    -> {[O|Os], true};
+		(O = [\\$$-, \\$$D, _ | _], {Os, _})    -> {[O|Os], false};
+		(O = "-I",                  {Os, _})    -> {[O|Os], true};
+		(O = [\\$$-, \\$$I, _ | _], {Os, _})    -> {[O|Os], false};
+		(O = "-pa",                 {Os, _})    -> {[O|Os], true};
+		(_,                         Acc)        -> Acc
+	end, {[], false}, Opts),
+	io:format("~s~n", [string:join(lists:reverse(Filtered), " ")]),
 	halt().
 endef
 
@@ -6131,7 +6144,7 @@ dialyze:
 else
 dialyze: $(DIALYZER_PLT)
 endif
-	$(verbose) dialyzer --no_native `$(call erlang,$(call filter_opts.erl,$(ERLC_OPTS)))` $(DIALYZER_DIRS) $(DIALYZER_OPTS)
+	$(verbose) dialyzer --no_native `$(ERL) -eval "$(subst $(newline),,$(subst ",\",$(call filter_opts.erl)))" -extra $(ERLC_OPTS)` $(DIALYZER_DIRS) $(DIALYZER_OPTS)
 
 # Copyright (c) 2013-2015, Loïc Hoguin <essen@ninenines.eu>
 # This file is part of erlang.mk and subject to the terms of the ISC License.
@@ -6406,7 +6419,7 @@ ifeq ($(filter triq,$(DEPS) $(TEST_DEPS)),triq)
 tests:: triq
 
 define triq_check.erl
-	code:add_pathsa(["$(CURDIR)/ebin", "$(DEPS_DIR)/*/ebin"]),
+	code:add_pathsa(["$(call core_native_path,$(CURDIR)/ebin)", "$(call core_native_path,$(DEPS_DIR)/*/ebin)"]),
 	try
 		case $(1) of
 			all -> [true] =:= lists:usort([triq:check(M) || M <- [$(call comma_list,$(3))]]);
@@ -6446,9 +6459,9 @@ endif
 # Configuration.
 
 ifeq ($(XREF_CONFIG),)
-	XREF_ARGS :=
+	XREFR_ARGS :=
 else
-	XREF_ARGS := -c $(XREF_CONFIG)
+	XREFR_ARGS := -c $(XREF_CONFIG)
 endif
 
 XREFR ?= $(CURDIR)/xrefr
