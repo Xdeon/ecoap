@@ -136,7 +136,7 @@ handle_info({datagram, <<Ver:2, _/bytes>>}, State) when Ver /= ?VERSION ->
     {noreply, State};
 handle_info({timeout, TRef, scan}, State=#state{ep_id = _EpID, timer = TRef, trans = Trans}) ->
     % io:format("coap_endpoint ~p timeout, terminate~n", [EpID]),
-    NewTrans = maps:filter(fun(_TrId, {Timestamp, _BinMessage}) -> erlang:convert_time_unit(erlang:monotonic_time() - Timestamp, native, millisecond) < 100*1000 end, Trans),
+    NewTrans = maps:filter(fun(_TrId, {Timestamp, _BinMessage}) -> erlang:convert_time_unit(erlang:monotonic_time() - Timestamp, native, milli_seconds) < 100*1000 end, Trans),
     case maps:size(NewTrans) of
         0 ->
             io:format("All trans expired~n"),
