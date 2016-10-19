@@ -15,7 +15,7 @@
 
 -define(VERSION, 1).
 -define(MAX_MESSAGE_ID, 65535). % 16-bit number
--define(SCAN_INTERVAL, 10).
+-define(SCAN_INTERVAL, 30).
 
 -define(HDLSUP_SPEC,
     {coap_handler_sup,
@@ -67,13 +67,11 @@ init(SupPid, Socket, EpID) ->
     TRef = erlang:start_timer(?SCAN_INTERVAL*1000, self(), scan),
     gen_server:enter_loop(?MODULE, [], #state{sock=Socket, ep_id=EpID, handler_sup=Pid, tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef}).
 
--spec handle_call
-  	(any(), from(), State) -> {reply, ignored, State} when State :: state().
+-spec handle_call(any(), from(), State) -> {reply, ignored, State} when State :: state().
 handle_call(_Request, _From, State) ->
 	{reply, ignored, State}.
 
--spec handle_cast
-  	(any(), State) -> {noreply, State} when State :: state().
+-spec handle_cast(any(), State) -> {noreply, State} when State :: state().
 handle_cast(shutdown, State) ->
 	{stop, normal, State};
 handle_cast(_Msg, State) ->
@@ -94,8 +92,7 @@ handle_cast(_Msg, State) ->
 %% +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 %%
 %%
--spec handle_info
-	({datagram, binary()}, State) -> {noreply, State};
+-spec handle_info({datagram, binary()}, State) -> {noreply, State};
     ({timeout, reference(), term()}, State) -> {noreply, State} | {stop, normal, State} when State :: state().
 % incoming CON(0) or NON(1) request
 handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, _TKL:4, 0:3, _CodeDetail:5, MsgId:16, _/bytes>>}, State = #state{sock=Socket, ep_id=EpID, handler_sup=HdlSupPid, trans = Trans}) ->
@@ -133,6 +130,7 @@ handle_info({datagram, BinMessage = <<?VERSION:2, _:2, _TKL:4, _Code:8, MsgId:16
     {noreply, State};
 % silently ignore other versions
 handle_info({datagram, <<Ver:2, _/bytes>>}, State) when Ver /= ?VERSION ->
+    % io:format("unknown CoAP version~n"),
     {noreply, State};
 handle_info({timeout, TRef, scan}, State=#state{ep_id = _EpID, timer = TRef, trans = Trans}) ->
     % io:format("coap_endpoint ~p timeout, terminate~n", [EpID]),
@@ -147,6 +145,7 @@ handle_info({timeout, TRef, scan}, State=#state{ep_id = _EpID, timer = TRef, tra
             {noreply, State#state{trans = NewTrans, timer = NewTRef}}
     end;
 handle_info(_Info, State) ->
+    % io:format("unknown info ~p~n", [_Info]),
 	{noreply, State}.
 
 -spec terminate(any(), state()) -> ok.

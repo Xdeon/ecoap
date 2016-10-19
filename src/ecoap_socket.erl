@@ -35,25 +35,27 @@
 
 %% API.
 
--spec start_link() -> {ok, pid()}.
--spec start_link(pid(), inet:port_number()) -> {ok, pid()}.
 %% client
+-spec start_link() -> {ok, pid()}.
 start_link() ->
 	gen_server:start_link(?MODULE, [0], []).
+
 %% server
+-spec start_link(pid(), inet:port_number()) -> {ok, pid()}.
 start_link(SupPid, InPort) when is_pid(SupPid) ->
 	proc_lib:start_link(?MODULE, init, [SupPid, InPort]).
 
 %% start endpoint manually
+-spec get_endpoint(pid(), coap_endpoint_id()) -> {ok, pid()}.
 get_endpoint(Pid, {PeerIP, PeerPortNo}) ->
     gen_server:call(Pid, {get_endpoint, {PeerIP, PeerPortNo}}).
 
 %% client
+-spec close(pid()) -> ok.
 close(Pid) ->
 	gen_server:cast(Pid, shutdown).
 
 %% gen_server.
-
 -spec init([inet:port_number()]) -> {ok, state()} | {stop, any()}.
 init([InPort]) ->
 	% process_flag(trap_exit, true),
@@ -74,8 +76,7 @@ init(SupPid, InPort) ->
     link(Pid),
     gen_server:enter_loop(?MODULE, [], State#state{endpoint_pool=Pid}, {local, ?MODULE}).
 
--spec handle_call
-	({get_endpoint, coap_endpoint_id()}, from(), State) -> {reply, {ok, pid()} | term(), State} when State :: state().
+-spec handle_call({get_endpoint, coap_endpoint_id()}, from(), State) -> {reply, {ok, pid()} | term(), State} when State :: state().
 handle_call({get_endpoint, EpID}, _From, State=#state{endpoints=EndPoints, endpoint_pool=undefined, sock=Socket}) ->
     case find_endpoint(EpID, EndPoints) of
         {ok, EpPid} ->
@@ -100,15 +101,13 @@ handle_call({get_endpoint, EpID}, _From, State=#state{endpoints=EndPoints, endpo
 handle_call(_Request, _From, State) ->
 	{reply, ignored, State}.
 
--spec handle_cast
-	(shutdown, State) -> {stop, normal, State} when State :: state().
+-spec handle_cast(shutdown, State) -> {stop, normal, State} when State :: state().
 handle_cast(shutdown, State) ->
 	{stop, normal, State};
 handle_cast(_Msg, State) ->
 	{noreply, State}.
 
--spec handle_info
-	({udp, inet:socket(), inet:ip_address(), inet:port_number(), binary()}, State) -> {noreply, State}; 
+-spec handle_info({udp, inet:socket(), inet:ip_address(), inet:port_number(), binary()}, State) -> {noreply, State}; 
 	({'DOWN', reference(), process, pid(), any()}, State) -> {noreply, State} when State :: state().
 handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, endpoints=EndPoints, endpoint_pool=PoolPid}) ->
 	EpID = {PeerIP, PeerPortNo},
