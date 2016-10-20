@@ -10,7 +10,7 @@
 
 -record(coap_message, {
 	type = undefined :: coap_type(), 
-	code = undefined :: undefined | coap_method() | coap_success() | coap_error(), 
+	code = undefined :: undefined | coap_code(), 
 	id = undefined :: 0..65535, 
 	token = <<>> :: binary(),
 	options = [] :: list(tuple()), 
@@ -51,6 +51,8 @@
 							| 'SERVICE_UNAVAILABLE' 
 							| 'GATEWAY_TIMEOUT' 
 							| 'PROXYING_NOT_SUPPORTED'}.
+
+-type coap_code() :: coap_method() | coap_success() | coap_error().
 
 -type coap_option() :: 'If-Match'
 					| 'Uri-Host'
