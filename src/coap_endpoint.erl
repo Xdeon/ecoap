@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 %% API.
--export([start_link/3, close/1, ping/1, send/2, send_message/3, send_request/3, send_response/3]).
+-export([start_link/3, start_link/2, close/1, ping/1, send/2, send_message/3, send_request/3, send_response/3]).
 
 %% gen_server.
 -export([init/1]).
@@ -28,12 +28,13 @@
 -record(state, {
 	sock = undefined :: inet:socket(),
 	ep_id = undefined :: coap_endpoint_id(),
-    handler_sup = undefined :: pid(),
+    handler_sup = undefined :: undefined | pid(),
 	tokens = undefined :: map(),
 	trans = undefined :: map(),
 	nextmid = undefined :: non_neg_integer(),
 	rescnt = undefined :: non_neg_integer(),
-    timer = undefined :: reference()
+    timer = undefined :: reference(),
+    client = false :: boolean()
 }).
 
 -opaque state() :: #state{}.
@@ -48,13 +49,18 @@
 start_link(SupPid, Socket, EpID) ->
 	proc_lib:start_link(?MODULE, init, [SupPid, Socket, EpID]).
 
+start_link(Socket, EpID) ->
+    gen_server:start_link(?MODULE, [Socket, EpID], []).
+
 -spec close(pid()) -> ok.
 close(Pid) ->
 	gen_server:cast(Pid, shutdown).
 
+-spec ping(pid()) -> {ok, term()}.
 ping(EndpointPid) ->
     send_message(EndpointPid, make_ref(), #coap_message{type='CON'}).
 
+-spec send(pid(), coap_message()) -> {ok, term()}.
 send(EndpointPid, Message=#coap_message{type=Type, code=Method})
         when is_tuple(Method); Type=='ACK'; Type=='RST' ->
     send_response(EndpointPid, make_ref(), Message);
@@ -62,24 +68,27 @@ send(EndpointPid, Message=#coap_message{type=Type, code=Method})
 send(EndpointPid, Message=#coap_message{}) ->
     send_request(EndpointPid, make_ref(), Message).
 
+-spec send_request(pid(), term(), coap_message()) -> {ok, term()}.
 send_request(EndpointPid, Ref, Message) ->
     gen_server:cast(EndpointPid, {send_request, Message, {self(), Ref}}),
     {ok, Ref}.
 
+-spec send_message(pid(), term(), coap_message()) -> {ok, term()}.
 send_message(EndpointPid, Ref, Message) ->
     gen_server:cast(EndpointPid, {send_message, Message, {self(), Ref}}),
     {ok, Ref}.
 
+-spec send_response(pid(), term(), coap_message()) -> {ok, term()}.
 send_response(EndpointPid, Ref, Message) ->
     gen_server:cast(EndpointPid, {send_response, Message, {self(), Ref}}),
     {ok, Ref}.
 
 %% gen_server.
 
-% Just a placeholder for gen_server behavior
--spec init(_) -> {ok, _}.
-init(_Args) ->
-    {ok, _Args}.
+-spec init(_) -> {ok, #state{}}.
+init([Socket, EpID]) ->
+    TRef = erlang:start_timer(?SCAN_INTERVAL*1000, self(), scan),
+    {ok, #state{sock=Socket, ep_id=EpID, tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, client=true}}.
 
 -spec init(pid(), inet:socket(), coap_endpoint_id()) -> no_return().
 init(SupPid, Socket, EpID) ->
@@ -105,6 +114,7 @@ handle_cast({send_message, Message, Receiver}, State) ->
 % outgoing response, either CON(0) or NON(1), piggybacked ACK(2) or RST(3)
 handle_cast({send_response, Message, Receiver}, State) ->
     make_new_response(Message, Receiver, State);
+% When used as client, only stop running after received shutdown msg
 handle_cast(shutdown, State) ->
 	{stop, normal, State};
 handle_cast(_Msg, State) ->
@@ -174,21 +184,22 @@ handle_info({datagram, BinMessage = <<?VERSION:2, _:2, _TKL:4, _Code:8, MsgId:16
                 io:format("No matching state for TrId: ~p~n", [TrId]),
                 %% end
                 undefined; % ignore unexpected responses
-            {ok, TrState} -> coap_transport:received(BinMessage, TrState)
+            {ok, TrState} -> coap_exchange:received(BinMessage, TrState)
+
         end);
 % silently ignore other versions
 handle_info({datagram, <<Ver:2, _/bytes>>}, State) when Ver /= ?VERSION ->
     % io:format("unknown CoAP version~n"),
     {noreply, State};
-handle_info({timeout, TRef, scan}, State=#state{ep_id = _EpID, timer = TRef, trans = _Trans}) ->
-    % io:format("coap_endpoint ~p timeout, terminate~n", [EpID]),
-    % NewTrans = maps:filter(fun(_TrId, #exchange{timestamp = Timestamp, expire_time = ExpireTime} = _TrState) -> 
-    %                             erlang:convert_time_unit(erlang:monotonic_time() - Timestamp, native, milli_seconds) < ExpireTime
-    %                         end,
-    %                         Trans),
+handle_info({timeout, TRef, scan}, State=#state{ep_id = _EpID, timer = TRef, trans = Trans}) ->
+    NewTrans = maps:filter(fun(_TrId, #exchange{timestamp = Timestamp, expire_time = ExpireTime} = _TrState) -> 
+                                erlang:convert_time_unit(erlang:monotonic_time() - Timestamp, native, milli_seconds) < ExpireTime
+                            end,
+                            Trans),
     % Because timer will be automatically cancelled if the destination pid exits or is not alive, we can safely start new timer here.
+    % io:format("scanning~n"),
     NewTRef = erlang:start_timer(?SCAN_INTERVAL*1000, self(), scan),
-    purge_state(State#state{timer = NewTRef});
+    purge_state(State#state{timer = NewTRef, trans = NewTrans});
 handle_info({timeout, TrId, Event}, State=#state{trans=Trans}) ->
     %% code added by wilbur
     % io:format("timeout, TrId:~p Event:~p~n", [TrId, Event]),
@@ -198,6 +209,9 @@ handle_info({timeout, TrId, Event}, State=#state{trans=Trans}) ->
             error -> undefined; % ignore unexpected responses
             {ok, TrState} -> coap_exchange:timeout(Event, TrState)
         end);
+handle_info({request_complete, Token}, State=#state{tokens=Tokens}) ->
+    Tokens2 = maps:remove(Token, Tokens),
+    purge_state(State#state{tokens=Tokens2});
 handle_info(_Info, State) ->
     % io:format("unknown info ~p~n", [_Info]),
 	{noreply, State}.
@@ -279,7 +293,7 @@ update_state(State=#state{trans=Trans}, TrId, TrState) ->
     Trans2 = maps:put(TrId, TrState, Trans),
     {noreply, State#state{trans=Trans2}}.
 
-purge_state(State=#state{tokens=Tokens, trans=Trans, rescnt=Count}) ->
+purge_state(State=#state{tokens=Tokens, trans=Trans, rescnt=Count, client=false}) ->
     case maps:size(Tokens) + maps:size(Trans) + Count of
         0 -> 
             % io:format("All trans expired~n"),
@@ -287,4 +301,6 @@ purge_state(State=#state{tokens=Tokens, trans=Trans, rescnt=Count}) ->
         _Else -> 
             % io:format("Ongoing trans exist~n"),
             {noreply, State}
-    end.
+    end;
+purge_state(State) ->
+    {noreply, State}.

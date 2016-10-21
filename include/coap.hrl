@@ -11,7 +11,7 @@
 -record(coap_message, {
 	type = undefined :: coap_type(), 
 	code = undefined :: undefined | coap_code(), 
-	id = undefined :: 0..65535, 
+	id = undefined :: undefined | 0..65535, 
 	token = <<>> :: binary(),
 	options = [] :: list(tuple()), 
 	payload = <<>> :: binary()

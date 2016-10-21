@@ -82,9 +82,10 @@ handle_call({get_endpoint, EpID}, _From, State=#state{endpoints=EndPoints, endpo
         {ok, EpPid} ->
             {reply, {ok, EpPid}, State};
         undefined ->
-            {ok, EpSupPid, EpPid} = endpoint_sup:start_link(Socket, EpID),
+            % {ok, EpSupPid, EpPid} = endpoint_sup:start_link(Socket, EpID),
+            {ok, EpPid} = coap_endpoint:start_link(Socket, EpID),
             % io:fwrite("EpSupPid: ~p EpPid: ~p~n", [EpSupPid, EpPid]),
-            {reply, {ok, EpPid}, store_endpoint(EpID, EpSupPid, EpPid, State)}
+            {reply, {ok, EpPid}, store_endpoint(EpID, undefined, EpPid, State)}
     end;
 handle_call({get_endpoint, EpID}, _From, State=#state{endpoints=EndPoints, endpoint_pool=PoolPid, sock=Socket}) ->
 	case find_endpoint(EpID, EndPoints) of
@@ -151,10 +152,10 @@ handle_info({'DOWN', Ref, process, _Pid, Reason}, State=#state{endpoints=EndPoin
  	case maps:get(Ref, EndPointsRefs, undefined) of
  		undefined ->	
  			{noreply, State};
- 		{EpID, EpSupPid} when is_pid(EpSupPid) ->
+ 		{EpID, Pid} ->
  			case is_pid(PoolPid) of
  				true -> 
-					ok = endpoint_sup_sup:delete_endpoint(PoolPid, EpSupPid);
+					ok = endpoint_sup_sup:delete_endpoint(PoolPid, Pid);
 				false -> 
 					ok
 					%% Should we stop the relevant supervisor?
@@ -185,4 +186,5 @@ find_endpoint(EpID, EndPoints) ->
 store_endpoint(EpID, EpSupPid, EpPid, State=#state{endpoints=EndPoints, endpoint_refs=EndPointsRefs}) ->
 	Ref = erlang:monitor(process, EpPid),
 	State#state{endpoints=maps:put(EpID, EpPid, EndPoints), endpoint_refs=maps:put(Ref, {EpID, EpSupPid}, EndPointsRefs)}.
+
 
