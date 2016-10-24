@@ -124,8 +124,8 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, en
 					io:fwrite("start endpoint ~p~n", [EpID]),
 					EpPid ! {datagram, Bin},
 					{noreply, store_endpoint(EpID, EpSupPid, EpPid, State)};
-				{error, Reason} -> 
-					io:fwrite("start_endpoint failed: ~p~n", [Reason]),
+				{error, _Reason} -> 
+					io:fwrite("start_endpoint failed: ~p~n", [_Reason]),
 					{noreply, State}
 			end;
 		undefined ->

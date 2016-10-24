@@ -291,8 +291,8 @@ handle_error(Message, Error, #exchange{ep_id = EpID, endpoint_pid = EndpointPid,
 	Sender ! {coap_error, EpID, EndpointPid, Ref, Error},
 	request_complete(EndpointPid, Message).
 
-handle_ack(Message, #exchange{ep_id = EpID, endpoint_pid = EndpointPid, receiver = {Sender, Ref}}) ->
-	io:fwrite("handle_ack called from ~p with ~p~n", [self(), Message]),
+handle_ack(_Message, #exchange{ep_id = EpID, endpoint_pid = EndpointPid, receiver = {Sender, Ref}}) ->
+	io:fwrite("handle_ack called from ~p with ~p~n", [self(), _Message]),
 	Sender ! {coap_ack, EpID, EndpointPid, Ref},
 	ok.
 
