@@ -1,3 +1,6 @@
 ebin/
 *.plt
 *.d
+*.dat
+*.trace
+*.analysis
