@@ -125,7 +125,7 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, en
 					EpPid ! {datagram, Bin},
 					{noreply, store_endpoint(EpID, EpSupPid, EpPid, State)};
 				{error, Reason} -> 
-					io:fwrite("start_channel failed: ~p~n", [Reason]),
+					io:fwrite("start_endpoint failed: ~p~n", [Reason]),
 					{noreply, State}
 			end;
 		undefined ->

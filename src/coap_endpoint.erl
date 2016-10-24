@@ -165,7 +165,7 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgI
                 error ->
                     % token was not recognized
                     BinReset = coap_message:encode(#coap_message{type='RST', id=MsgId}),
-                    io:fwrite("<- reset~n"),
+                    io:format("<- reset~n"),
                     ok = gen_udp:send(Socket, PeerIP, PeerPortNo, BinReset)
             end
     end;
@@ -213,7 +213,7 @@ handle_info({request_complete, Token}, State=#state{tokens=Tokens}) ->
     Tokens2 = maps:remove(Token, Tokens),
     purge_state(State#state{tokens=Tokens2});
 handle_info(_Info, State) ->
-    % io:format("unknown info ~p~n", [_Info]),
+    io:format("unknown info ~p~n", [_Info]),
 	{noreply, State}.
 
 -spec terminate(any(), state()) -> ok.

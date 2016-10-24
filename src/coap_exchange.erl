@@ -112,7 +112,9 @@ out_non({out, Message}, State=#exchange{sock=Socket, ep_id={PeerIP, PeerPortNo}}
 sent_non({in, BinMessage}, State)->
     case catch coap_message:decode(BinMessage) of
         #coap_message{type='RST'} = Message ->
-            handle_error(Message, 'RST', State)
+            handle_error(Message, 'RST', State);
+        % in case we get wrong reply, ignore it 
+        #coap_message{} -> undefined
     end,
     next_state(got_rst, State).
 
@@ -241,6 +243,7 @@ await_pack({timeout, await_pack}, State=#exchange{sock=Socket, ep_id={PeerIP, Pe
     % BinMessage = coap_message:encode(Message),
     % Sock ! {datagram, ChId, BinMessage},
     io:fwrite("resend msg for ~p time~n", [Count]),
+    % erlang:display("I am sending on remote node~n"),
     ok = gen_udp:send(Socket, PeerIP, PeerPortNo, BinMessage),
     Timeout2 = Timeout*2,
     next_state(await_pack, State#exchange{retry_time=Timeout2, retry_count=Count+1}, Timeout2);
