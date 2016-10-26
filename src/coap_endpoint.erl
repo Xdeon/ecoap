@@ -33,6 +33,7 @@
 	trans = undefined :: map(),
 	nextmid = undefined :: non_neg_integer(),
 	rescnt = undefined :: non_neg_integer(),
+    handler_refs = undefined :: undefined | map(),
     timer = undefined :: reference(),
     client = false :: boolean()
 }).
@@ -98,7 +99,7 @@ init(SupPid, Socket, EpID) ->
     % {ok, TRef} = timer:send_interval(timer:seconds(?SCAN_INTERVAL), self(), {timeout}),
     % timer is slow, use erlang:send_after or erlang:start_timer
     TRef = erlang:start_timer(?SCAN_INTERVAL*1000, self(), scan),
-    gen_server:enter_loop(?MODULE, [], #state{sock=Socket, ep_id=EpID, handler_sup=Pid, tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef}).
+    gen_server:enter_loop(?MODULE, [], #state{sock=Socket, ep_id=EpID, handler_sup=Pid, tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, handler_refs=maps:new(), timer=TRef}).
 
 -spec handle_call(any(), from(), State) -> {reply, ignored, State} when State :: state().
 handle_call(_Request, _From, State) ->
@@ -212,6 +213,19 @@ handle_info({timeout, TrId, Event}, State=#state{trans=Trans}) ->
 handle_info({request_complete, Token}, State=#state{tokens=Tokens}) ->
     Tokens2 = maps:remove(Token, Tokens),
     purge_state(State#state{tokens=Tokens2});
+handle_info({handler_started, HandlerPid}, State=#state{rescnt=Count, handler_refs=Refs}) ->
+    Ref = erlang:monitor(process, HandlerPid),
+    {noreply, State#state{rescnt=Count+1, handler_refs=maps:put(Ref, HandlerPid, Refs)}};
+handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{rescnt=Count, handler_refs=Refs}) ->
+    case maps:is_key(Ref, Refs) of
+        true -> 
+            %% Code added by wilbur
+            io:format("handler completed~n"),
+            %% end
+            {noreply, State#state{rescnt=Count-1, handler_refs=maps:remove(Ref, Refs)}};
+        false -> 
+            {noreply, State}
+    end;
 handle_info(_Info, State) ->
     io:format("unknown info ~p~n", [_Info]),
 	{noreply, State}.

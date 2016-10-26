@@ -264,18 +264,25 @@ aack_sent({timeout, await_pack}, State) ->
 
 % utility functions
 
-handle_request(Message, #exchange{sock=_Socket, ep_id=_EpID, endpoint_pid=EndpointPid, receiver=undefined}) ->
+handle_request(Message, #exchange{ep_id=EpID, endpoint_pid=EndpointPid, handler_sup=HdlSupPid, receiver=undefined}) ->
     io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
-	#coap_message{id=MsgId, token=Token, type=Type} = Message,
-	{ok, _} = case Type of
-		'CON' ->
-			Msg = #coap_message{type = 'CON', code = {ok, 'CONTENT'}, id = MsgId, token = Token, options = [{'Content-Format', <<"text/plain">>}, {'Accept', 50}], payload = <<"Hello World!">>},
-			coap_endpoint:send(EndpointPid, Msg);
-		'NON' ->
-			Msg = #coap_message{type = 'NON', code = {ok, 'CONTENT'}, id = MsgId, token = Token, options = [{'Content-Format', <<"text/plain">>}, {'Accept', 50}], payload = <<"Hello World!">>},
-			coap_endpoint:send(EndpointPid, Msg)
-	end,
-    ok;
+    case coap_handler_sup:get_handler(HdlSupPid, Message) of
+        {ok, Pid} ->
+            Pid ! {coap_request, EpID, EndpointPid, undefined, Message},
+            ok;
+        {error, {not_found, _}} ->
+        	io:format("handler not_found~n"),
+        	#coap_message{id=MsgId, token=Token, type=Type} = Message,
+        	Msg = case Type of
+				'CON' ->
+					#coap_message{type = 'CON', code = {error, 'NOT_FOUND'}, id = MsgId, token = Token};
+				'NON' ->
+					#coap_message{type = 'NON', code = {error, 'NOT_FOUND'}, id = MsgId, token = Token}
+			end,
+            {ok, _} = coap_endpoint:send(EndpointPid, Msg),
+            ok
+    end;
+
 handle_request(Message, #exchange{ep_id=EpID, endpoint_pid=EndpointPid, receiver={Sender, Ref}}) ->
     io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
     Sender ! {coap_request, EpID, EndpointPid, Ref, Message},
@@ -333,7 +340,7 @@ handle_ack(_Message, #exchange{ep_id = EpID, endpoint_pid = EndpointPid, receive
 %     ok.
 
 request_complete(EndpointPid, #coap_message{token=Token, options=Options}) ->
-    case proplists:get_value('OBSERVE', Options, []) of
+    case proplists:get_value('Observe', Options, []) of
         [] ->
             EndpointPid ! {request_complete, Token},
             ok;

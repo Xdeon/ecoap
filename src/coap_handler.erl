@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 %% API.
--export([start_link/0]).
+-export([start_link/2]).
 
 %% gen_server.
 -export([init/1]).
@@ -13,26 +13,55 @@
 -export([code_change/3]).
 
 -record(state, {
-}).
+	endpoint_pid,
+	prefix, 
+	module, 
+	args, 
+	insegs, 
+	last_response, 
+	observer, 
+	obseq, 
+	obstate, 
+	timer}).
 
 -include("coap.hrl").
 
 %% API.
 
--spec start_link() -> {ok, pid()}.
-start_link() ->
-	gen_server:start_link(?MODULE, [], []).
+-spec start_link(pid(), list(binary())) -> {ok, pid()}.
+start_link(EndpointPid, Uri) ->
+	gen_server:start_link(?MODULE, [EndpointPid, Uri], []).
 
 %% gen_server.
 
-init([]) ->
-	{ok, #state{}}.
+init([EndpointPid, Uri]) ->
+    % the receiver will be determined based on the URI
+    case ecoap_registry:match_handler(Uri) of
+        {Prefix, Module, Args} ->
+            EndpointPid ! {handler_started, self()},
+            {ok, #state{endpoint_pid=EndpointPid, prefix=Prefix, module=Module, args=Args,
+                insegs=orddict:new(), obseq=0}};
+        undefined ->
+            {stop, not_found}
+    end.
 
 handle_call(_Request, _From, State) ->
 	{reply, ignored, State}.
 
 handle_cast(_Msg, State) ->
 	{noreply, State}.
+
+handle_info({coap_request, _EpID, EndpointPid, undefined, Request}, State=#state{prefix=Prefix}) ->
+	#coap_message{id=MsgId, token=Token, type=Type} = Request,
+	{ok, _} = case Type of
+		'CON' ->
+			Msg = #coap_message{type = 'CON', code = {ok, 'CONTENT'}, id = MsgId, token = Token, options = [{'Content-Format', <<"text/plain">>}], payload = list_to_binary(Prefix)},
+			coap_endpoint:send(EndpointPid, Msg);
+		'NON' ->
+			Msg = #coap_message{type = 'NON', code = {ok, 'CONTENT'}, id = MsgId, token = Token, options = [{'Content-Format', <<"text/plain">>}], payload = list_to_binary(Prefix)},
+			coap_endpoint:send(EndpointPid, Msg)
+	end,
+	{noreply, State};
 
 handle_info(_Info, State) ->
 	{noreply, State}.
