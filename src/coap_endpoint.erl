@@ -213,14 +213,17 @@ handle_info({timeout, TrId, Event}, State=#state{trans=Trans}) ->
 handle_info({request_complete, Token}, State=#state{tokens=Tokens}) ->
     Tokens2 = maps:remove(Token, Tokens),
     purge_state(State#state{tokens=Tokens2});
-handle_info({handler_started, HandlerPid}, State=#state{rescnt=Count, handler_refs=Refs}) ->
+% Only monitor possible observe handlers instead of every new spawned handler
+% so that we can save some extra message traffic
+handle_info({obs_handler_started, HandlerPid}, State=#state{rescnt=Count, handler_refs=Refs}) ->
+    io:format("obs_handler_started~n"),
     Ref = erlang:monitor(process, HandlerPid),
     {noreply, State#state{rescnt=Count+1, handler_refs=maps:put(Ref, HandlerPid, Refs)}};
 handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{rescnt=Count, handler_refs=Refs}) ->
     case maps:is_key(Ref, Refs) of
         true -> 
             %% Code added by wilbur
-            io:format("handler completed~n"),
+            io:format("obs_handler_completed~n"),
             %% end
             {noreply, State#state{rescnt=Count-1, handler_refs=maps:remove(Ref, Refs)}};
         false -> 

@@ -266,7 +266,7 @@ aack_sent({timeout, await_pack}, State) ->
 
 handle_request(Message, #exchange{ep_id=EpID, endpoint_pid=EndpointPid, handler_sup=HdlSupPid, receiver=undefined}) ->
     io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
-    case coap_handler_sup:get_handler(HdlSupPid, Message) of
+    case coap_handler_sup:get_handler(HdlSupPid, EndpointPid, Message) of
         {ok, Pid} ->
             Pid ! {coap_request, EpID, EndpointPid, undefined, Message},
             ok;
