@@ -16,7 +16,7 @@
 }).
 
 -include("coap.hrl").
--define(HANDLER_TAB, coap_handler_reg).
+-define(HANDLER_TAB, ?MODULE).
 
 %% API.
 
@@ -55,7 +55,7 @@ match_prefix(_Prefix, _Uri) ->
 %% gen_server.
 -spec init(_) -> {ok, #state{}}.
 init([]) ->
-	_ = ets:new(?HANDLER_TAB, [set, named_table, protected]),
+	% _ = ets:new(?HANDLER_TAB, [set, named_table, protected]),
 	{ok, #state{}}.
 
 -spec handle_call({register, list(binary()), module(), _}, from(), State) -> {reply, ok, State} | {reply, {error, duplicated}, State};

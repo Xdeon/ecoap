@@ -1,7 +1,7 @@
 -module(coap_handler_sup).
 -behaviour(supervisor).
 
--export([start_link/0, get_handler/3]).
+-export([start_link/0, get_handler/2]).
 -export([init/1]).
 
 -include("coap.hrl").
@@ -13,13 +13,9 @@ init([]) ->
 	Procs = [],
 	{ok, {{one_for_one, 1, 5}, Procs}}.
 
-get_handler(SupPid, EndpointPid, Request=#coap_message{options=Options}) ->
+get_handler(SupPid, Request) ->
     case start_handler(SupPid, Request) of
         {ok, Pid} -> 
-        	case proplists:get_value('Observe', Options, []) of
-        		[] -> ok;
-        		_Else -> EndpointPid ! {obs_handler_started, Pid}
-        	end,
         	{ok, Pid};
         {error, {already_started, Pid}} -> 
             %% Code added by wilbur

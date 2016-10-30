@@ -25,7 +25,7 @@ start_link(Socket, EpID) ->
     {ok, EpPid} = supervisor:start_child(SupPid,
         {coap_endpoint,
           {coap_endpoint, start_link, [SupPid, Socket, EpID]},
-          transient, 5000, worker, 
+          permanent, 5000, worker, 
           [coap_endpoint]}),
     {ok, SupPid, EpPid}.
 

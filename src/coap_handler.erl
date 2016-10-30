@@ -65,7 +65,11 @@ code_change(_OldVsn, State, _Extra) ->
 
 %% Internal
 handle(_EpID, Request, State=#state{endpoint_pid=EndpointPid, prefix=Prefix}) ->
-	#coap_message{id=MsgId, token=Token, type=Type} = Request,
+	#coap_message{id=MsgId, token=Token, type=Type, options=Options} = Request,
+    case proplists:get_value('Observe', Options, []) of
+		[] -> ok;
+		_Else -> EndpointPid ! {obs_handler_started, self()}
+	end,
 	{ok, _} = case Type of
 		'CON' ->
 			Msg = #coap_message{type = 'CON', code = {ok, 'CONTENT'}, id = MsgId, token = Token, options = [{'Content-Format', <<"text/plain">>}], payload = list_to_binary(Prefix)},
@@ -75,3 +79,5 @@ handle(_EpID, Request, State=#state{endpoint_pid=EndpointPid, prefix=Prefix}) ->
 			coap_endpoint:send(EndpointPid, Msg)
 	end,
 	{noreply, State}.
+
+
