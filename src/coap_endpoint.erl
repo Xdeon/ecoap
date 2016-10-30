@@ -305,7 +305,8 @@ init_transport(TrId, Receiver, #state{sock=Socket, ep_id=EpID}) ->
 
 update_state(State=#state{trans=Trans}, TrId, undefined) ->
     Trans2 = maps:remove(TrId, Trans),
-    {noreply, State#state{trans=Trans2}};
+    % {noreply, State#state{trans=Trans2}};
+    purge_state(State#state{trans=Trans2});
 update_state(State=#state{trans=Trans}, TrId, TrState) ->
     Trans2 = maps:put(TrId, TrState, Trans),
     {noreply, State#state{trans=Trans2}}.

@@ -61,6 +61,10 @@ init([InPort]) ->
 	% process_flag(trap_exit, true),
 	case gen_udp:open(InPort, [binary, {active, once}, {reuseaddr, true}]) of
 		{ok, Socket} ->
+			{ok, [{sndbuf, SndBufSize}]} = inet:getopts(Socket, [sndbuf]),
+			{ok, [{recbuf, RecBufSize}]} = inet:getopts(Socket, [recbuf]),
+			ok = inet:setopts(Socket, [{buffer, max(SndBufSize, RecBufSize)}]),
+			io:fwrite("~p~n", [inet:getopts(Socket, [buffer])]),
 			error_logger:info_msg("coap listen on *:~p~n", [InPort]),
 			{ok, #state{sock=Socket, endpoints=maps:new(), endpoint_refs=maps:new()}};
 		{error, Reason} ->
