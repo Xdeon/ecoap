@@ -7,7 +7,7 @@
 -export([start_endpoint/2, delete_endpoint/2]).
 
 start_link(MFA = {_,_,_}) ->
-	supervisor:start_link({local, ?MODULE}, ?MODULE, MFA).
+	supervisor:start_link(?MODULE, MFA).
 
 init({M, F, A}) ->
 	MaxRestart = 0,

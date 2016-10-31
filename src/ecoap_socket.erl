@@ -26,6 +26,7 @@
 	endpoints = undefined :: coap_endpoints(),
 	endpoint_refs = undefined :: coap_endpoint_refs(),
 	endpoint_pool = undefined :: undefined | pid()
+	% deduplication = undefined :: boolean()
 }).
 
 -opaque state() :: #state{}.
@@ -36,17 +37,17 @@
 %% API.
 
 %% client
--spec start_link() -> {ok, pid()}.
+-spec start_link() -> {ok, pid()} | {error, term()}.
 start_link() ->
 	gen_server:start_link(?MODULE, [0], []).
 
 %% server
--spec start_link(pid(), inet:port_number()) -> {ok, pid()}.
+-spec start_link(pid(), inet:port_number()) -> {ok, pid()} | {error, term()}.
 start_link(SupPid, InPort) when is_pid(SupPid) ->
 	proc_lib:start_link(?MODULE, init, [SupPid, InPort]).
 
 %% start endpoint manually
--spec get_endpoint(pid(), coap_endpoint_id()) -> {ok, pid()}.
+-spec get_endpoint(pid(), coap_endpoint_id()) -> {ok, pid()} | term().
 get_endpoint(Pid, {PeerIP, PeerPortNo}) ->
     gen_server:call(Pid, {get_endpoint, {PeerIP, PeerPortNo}}).
 
@@ -56,9 +57,10 @@ close(Pid) ->
 	gen_server:cast(Pid, shutdown).
 
 %% gen_server.
--spec init([inet:port_number()]) -> {ok, state()} | {stop, any()}.
+-spec init([inet:port_number()]) -> {ok, state()} | {stop, term()}.
 init([InPort]) ->
 	% process_flag(trap_exit, true),
+	% {ok, Deduplication} = application:get_env(deduplication),
 	case gen_udp:open(InPort, [binary, {active, once}, {reuseaddr, true}]) of
 		{ok, Socket} ->
 			% We set software buffer to maximum of sndbuf & recbuf of the socket 
@@ -72,14 +74,19 @@ init([InPort]) ->
 			{stop, Reason}
 	end.
 
--spec init(pid(), inet:port_number()) -> no_return().
+-spec init(pid(), inet:port_number()) -> no_return() | {error, term()}.
 init(SupPid, InPort) ->
-	register(?MODULE, self()),
-	{ok, State} = init([InPort]),
-	ok = proc_lib:init_ack({ok, self()}),
-	{ok, Pid} = supervisor:start_child(SupPid, ?SPEC({endpoint_sup, start_link, []})),
-    link(Pid),
-    gen_server:enter_loop(?MODULE, [], State#state{endpoint_pool=Pid}, {local, ?MODULE}).
+	case init([InPort]) of
+		{ok, State} ->
+			register(?MODULE, self()),
+			ok = proc_lib:init_ack({ok, self()}),
+			{ok, Pid} = supervisor:start_child(SupPid, ?SPEC({endpoint_sup, start_link, []})),
+		    link(Pid),
+		    gen_server:enter_loop(?MODULE, [], State#state{endpoint_pool=Pid}, {local, ?MODULE});
+		{stop, Reason} ->
+			ok = proc_lib:init_ack({error, Reason}),
+			{error, Reason}
+	end.
 
 -spec handle_call({get_endpoint, coap_endpoint_id()}, from(), State) -> {reply, {ok, pid()} | term(), State} when State :: state().
 handle_call({get_endpoint, EpID}, _From, State=#state{endpoints=EndPoints, endpoint_pool=undefined, sock=Socket}) ->

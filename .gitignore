@@ -1,4 +1,5 @@
 ebin/
+.erlang.mk
 *.plt
 *.d
 *.dat

@@ -5,7 +5,7 @@
 -export([init/1]).
 
 start_link() ->
-	supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+	supervisor:start_link(?MODULE, []).
 
 init([]) ->
 	_ = ets:new(ecoap_registry, [set, named_table, public, {read_concurrency, true}]),

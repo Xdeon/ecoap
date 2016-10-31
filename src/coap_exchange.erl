@@ -9,8 +9,8 @@
 -define(PROCESSING_DELAY, 1000). % standard allows 2000
 -define(EXCHANGE_LIFETIME, 247000).
 % -define(EXCHANGE_LIFETIME, 16000).
-% -define(NON_LIFETIME, 145000).
--define(NON_LIFETIME, 100000).
+-define(NON_LIFETIME, 145000).
+% -define(NON_LIFETIME, 100000).
 
 % -record(exchange, {
 % 	timestamp = undefined :: non_neg_integer(),

@@ -6,7 +6,7 @@
 
 
 start_link(InPort) ->
-	supervisor:start_link({local, ?MODULE}, ?MODULE, [InPort]).
+	supervisor:start_link(?MODULE, [InPort]).
 
 init([InPort]) ->
 	Procs = [#{id => ecoap_socket,
