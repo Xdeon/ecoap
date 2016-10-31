@@ -66,7 +66,7 @@ code_change(_OldVsn, State, _Extra) ->
 %% Internal
 handle(_EpID, Request, State=#state{endpoint_pid=EndpointPid, prefix=Prefix}) ->
 	#coap_message{id=MsgId, token=Token, type=Type, options=Options} = Request,
-    case proplists:get_value('Observe', Options, []) of
+    _ = case proplists:get_value('Observe', Options, []) of
 		[] -> ok;
 		_Else -> EndpointPid ! {obs_handler_started, self()}
 	end,

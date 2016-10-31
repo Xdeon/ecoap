@@ -8,7 +8,7 @@ start_link() ->
 	supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 init([]) ->
-	_ = ets:new(ecoap_registry, [set, named_table, public]),
+	_ = ets:new(ecoap_registry, [set, named_table, public, {read_concurrency, true}]),
 	Procs = [#{id => ecoap_registry,
 			   start => {ecoap_registry, start_link, []},
 			   restart => permanent,

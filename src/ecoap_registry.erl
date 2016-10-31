@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 %% API.
--export([start_link/0, register_handler/3, unregister_handler/1, match_handler/1]).
+-export([start_link/0, register_handler/3, unregister_handler/1, match_handler/1, clear_registry/0]).
 
 %% gen_server.
 -export([init/1]).
@@ -24,16 +24,19 @@
 start_link() ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
--spec(register_handler(list(binary()), module(), _) -> ok | {error, duplicated}).
+-spec register_handler(list(binary()), module(), _) -> ok | {error, duplicated}.
 register_handler(Prefix, Module, Args) ->
     gen_server:call(?MODULE, {register, Prefix, Module, Args}).
 
--spec(unregister_handler(list(binary())) -> ok).
+-spec unregister_handler(list(binary())) -> ok .
 unregister_handler(Prefix) ->
     gen_server:call(?MODULE, {unregister, Prefix}).
 
--spec(match_handler(list(binary())) -> {list(binary()), module(), _} | undefined).
+-spec match_handler(list(binary())) -> {list(binary()), module(), _} | undefined.
 match_handler(Uri) -> match_handler(Uri, ets:tab2list(?HANDLER_TAB)).
+
+-spec clear_registry() -> true.
+clear_registry() -> ets:delete_all_objects(?HANDLER_TAB).
 
 match_handler(_Uri, []) ->
     undefined;
