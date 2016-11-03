@@ -1,15 +1,17 @@
 -module(coap_iana).
 
 -export([decode_type/1, encode_type/1, 
-	coap_code/0, content_formats/0, 
+	code/0, content_formats/0, 
 	decode_enum/2, decode_enum/3, encode_enum/2, encode_enum/3]).
 
--include("coap.hrl").
-
--type coap_enum() :: [tuple(), ...].
--type enum_decode_key() :: non_neg_integer() | {non_neg_integer(), non_neg_integer()}.
--type enum_encode_key() :: coap_method() | coap_success() | coap_error().
+-type coap_code_raw() :: {non_neg_integer(), non_neg_integer()}.
+-type content_formats_code() :: non_neg_integer().
+-type coap_enum() :: [{coap_code_raw() | content_formats_code(), coap_code() | binary()}, ...].
+-type enum_decode_key() :: coap_code_raw() | content_formats_code().
+-type enum_encode_key() :: coap_code() | binary().
 -type enum_default_val() :: integer() | undefined.
+
+-include("coap_def.hrl").
 
 -spec(decode_type(non_neg_integer()) -> coap_type()).
 decode_type(0) -> 'CON';
@@ -62,8 +64,8 @@ encode_type('RST') -> 3.
 % | 5.05 | Proxying Not Supported       | [RFC7252] |
 % +------+------------------------------+-----------+
 
--spec coap_code() -> [{{non_neg_integer(), non_neg_integer()}, coap_method() | coap_success() | coap_error()}, ...].
-coap_code() ->
+-spec code() -> [{coap_code_raw(), coap_code()}, ...].
+code() ->
 	[
 		{{0, 01}, 'GET'},
 	    {{0, 02}, 'POST'},
@@ -110,7 +112,7 @@ coap_code() ->
 %% | application/json         | -        | 50 | [RFC7159]              |
 %% +--------------------------+----------+----+------------------------+
 
--spec content_formats() -> [{non_neg_integer(), binary()}, ...].
+-spec content_formats() -> [{content_formats_code(), binary()}, ...].
 content_formats() ->
     [
 	    {0, <<"text/plain">>},

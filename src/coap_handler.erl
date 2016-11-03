@@ -24,7 +24,7 @@
 	obstate, 
 	timer}).
 
--include("coap.hrl").
+-include("coap_def.hrl").
 
 %% API.
 

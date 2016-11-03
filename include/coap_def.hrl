@@ -1,12 +1,5 @@
 -define(DEFAULT_MAX_AGE, 60).
-
--type coap_endpoints() :: #{coap_endpoint_id() => pid()}.
-
--type coap_endpoint_refs() :: #{reference() => {coap_endpoint_id(), pid()}}.
-
--type coap_endpoint_id() :: {inet:ip_address(), inet:port_number()}.
-
--type from() :: {pid(), term()}.
+-define(MAX_BLOCK_SIZE, 1024).
 
 -record(coap_message, {
 	type = undefined :: coap_type(), 
@@ -29,11 +22,8 @@
 -type coap_content() :: #coap_content{}.
 
 -type coap_type() :: 'CON' | 'NON' | 'ACK' | 'RST' .
-
 -type coap_method() :: 'GET' | 'POST' | 'PUT' | 'DELETE'.
-
 -type coap_success() :: {ok, 'CREATED' | 'DELETED' | 'VALID' | 'CHANGED' | 'CONTENT' | 'CONTINUE'}. 
-
 -type coap_error() :: {error, 'BAD_REQUEST' 
 							| 'UAUTHORIZED' 
 							| 'BAD_OPTION' 
@@ -51,21 +41,23 @@
 							| 'SERVICE_UNAVAILABLE' 
 							| 'GATEWAY_TIMEOUT' 
 							| 'PROXYING_NOT_SUPPORTED'}.
-
 -type coap_code() :: coap_method() | coap_success() | coap_error().
 
--type coap_option() :: 'If-Match'
-					| 'Uri-Host'
-					| 'ETag'
-					| 'If-None-Match'
-					| 'Uri-Port'
-					| 'Location-Path'
-					| 'Uri-Path'
-					| 'Content-Format'
-					| 'Max-Age'
-					| 'Uri-Query'
-					| 'Accept'
-					| 'Location-Query'
-					| 'Proxy-Uri'
-					| 'Proxy-Scheme'
-					| 'Size1'.
+% -type coap_option() :: 'If-Match'
+% 					| 'Uri-Host'
+% 					| 'ETag'
+% 					| 'If-None-Match'
+% 					| 'Uri-Port'
+% 					| 'Location-Path'
+% 					| 'Uri-Path'
+% 					| 'Content-Format'
+% 					| 'Max-Age'
+% 					| 'Uri-Query'
+% 					| 'Accept'
+% 					| 'Location-Query'
+% 					| 'Proxy-Uri'
+% 					| 'Proxy-Scheme'
+% 					| 'Size1'.
+
+
+

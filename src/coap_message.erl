@@ -2,15 +2,11 @@
 %% & gen_coap https://github.com/gotthardp/gen_coap
 -module(coap_message).
 
--export([decode/1, encode/1, message_id/1]).
+-export([decode/1, encode/1]).
 
--import(coap_iana, [content_formats/0, coap_code/0]).
+-import(coap_iana, [content_formats/0, code/0]).
 -import(coap_iana, [decode_type/1, encode_type/1]).
 -import(coap_iana, [decode_enum/2, decode_enum/3, encode_enum/2, encode_enum/3]).
-
--compile([export_all]).
-
--include("coap.hrl").
 
 -define(VERSION, 1).
 -define(OPTION_IF_MATCH, 1).
@@ -31,6 +27,8 @@
 -define(OPTION_PROXY_URI, 35).
 -define(OPTION_PROXY_SCHEME, 39).
 -define(OPTION_SIZE1, 60).
+
+-include("coap_def.hrl").
 
 %% CoAP Message Format
 %%
@@ -75,11 +73,6 @@
 % |    140 | (Reserved)       | [RFC7252] |
 % +--------+------------------+-----------+
 
-% shortcut function for reset generation
--spec message_id(binary() | coap_message()) -> non_neg_integer().
-message_id(<<_:16, MsgId:16, _Tail/bytes>>) -> MsgId;
-message_id(#coap_message{id=MsgId}) -> MsgId.
-
 %%--------------------------------------------------------------------
 %% Decode CoAP Message
 %%--------------------------------------------------------------------
@@ -93,7 +86,7 @@ decode(<<?VERSION:2, Type:2, TKL:4, Class:3, DetailedCode:5, MsgId:16, Token:TKL
     {Options, Payload} = decode_option_list(Tail),
     #coap_message{
         type=decode_type(Type),
-        code=decode_enum(coap_code(), {Class, DetailedCode}),
+        code=decode_enum(code(), {Class, DetailedCode}),
         id=MsgId,
         token=Token,
         options=Options,
@@ -225,7 +218,7 @@ encode(#coap_message{type=Type, code=undefined, id=MsgId}) ->
     <<?VERSION:2, (encode_type(Type)):2, 0:4, 0:3, 0:5, MsgId:16>>;
 encode(#coap_message{type=Type, code=Code, id=MsgId, token=Token, options=Options, payload=Payload}) ->
     TKL = byte_size(Token),
-    {Class, DetailedCode} = encode_enum(coap_code(), Code),
+    {Class, DetailedCode} = encode_enum(code(), Code),
     Tail = encode_option_list(Options, Payload),
     <<?VERSION:2, (encode_type(Type)):2, TKL:4, Class:3, DetailedCode:5, MsgId:16, Token:TKL/bytes, Tail/bytes>>.
 

@@ -15,8 +15,8 @@
 -record(state, {
 }).
 
--include("coap.hrl").
 -define(HANDLER_TAB, ?MODULE).
+-include("coap_def.hrl").
 
 %% API.
 
@@ -56,13 +56,10 @@ match_prefix(_Prefix, _Uri) ->
     false.
 
 %% gen_server.
--spec init(_) -> {ok, #state{}}.
 init([]) ->
 	% _ = ets:new(?HANDLER_TAB, [set, named_table, protected]),
 	{ok, #state{}}.
 
--spec handle_call({register, list(binary()), module(), _}, from(), State) -> {reply, ok, State} | {reply, {error, duplicated}, State};
-	({unregister, list(binary())}, from(), State) -> {reply, ok, State} when State :: #state{}.
 handle_call({register, Prefix, Module, Args}, _From, State) ->
     case ets:member(?HANDLER_TAB, Prefix) of
         true  -> {reply, {error, duplicated}, State};
@@ -75,18 +72,14 @@ handle_call({unregister, Prefix}, _From, State) ->
 handle_call(_Request, _From, State) ->
 	{reply, ignored, State}.
 
--spec handle_cast(any(), State) -> {noreply, State} when State :: #state{}.
 handle_cast(_Msg, State) ->
 	{noreply, State}.
 
--spec handle_info(any(), State) -> {noreply, State} when State :: #state{}.
 handle_info(_Info, State) ->
 	{noreply, State}.
 
--spec terminate(any(), #state{}) -> ok.
 terminate(_Reason, _State) ->
 	ok.
 
--spec code_change(_, _, _) -> {ok, _}.
 code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.

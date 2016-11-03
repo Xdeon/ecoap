@@ -29,20 +29,25 @@
 	sock = undefined :: inet:socket(),
 	ep_id = undefined :: coap_endpoint_id(),
     handler_sup = undefined :: undefined | pid(),
-	tokens = undefined :: map(),
-	trans = undefined :: map(),
+	tokens = undefined :: #{binary() => receiver()},
+	trans = undefined :: #{trid() => coap_exchange:exchange()},
 	nextmid = undefined :: non_neg_integer(),
 	rescnt = undefined :: non_neg_integer(),
-    handler_refs = undefined :: undefined | map(),
+    handler_refs = undefined :: undefined | #{reference() => pid()},
     timer = undefined :: reference(),
     client = false :: boolean()
 }).
 
 -opaque state() :: #state{}.
--export_type([state/0]).
+-type coap_endpoint_id() :: ecoap_socket:coap_endpoint_id().
+-type trid() :: {in | out, non_neg_integer()}.
+-type receiver() :: undefined | {pid(), reference()}.
 
--include("coap.hrl").
--include("coap_exchange.hrl").
+-export_type([state/0]).
+-export_type([trid/0]).
+-export_type([receiver/0]).
+
+-include("coap_def.hrl").
 
 %% API.
 
@@ -86,12 +91,10 @@ send_response(EndpointPid, Ref, Message) ->
 
 %% gen_server.
 
--spec init(_) -> {ok, #state{}}.
 init([Socket, EpID]) ->
     TRef = erlang:start_timer(?SCAN_INTERVAL*1000, self(), scan),
     {ok, #state{sock=Socket, ep_id=EpID, tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, client=true}}.
 
--spec init(pid(), inet:socket(), coap_endpoint_id()) -> no_return().
 init(SupPid, Socket, EpID) ->
     ok = proc_lib:init_ack({ok, self()}),
     {ok, Pid} = supervisor:start_child(SupPid, ?HDLSUP_SPEC),
@@ -101,11 +104,9 @@ init(SupPid, Socket, EpID) ->
     TRef = erlang:start_timer(?SCAN_INTERVAL*1000, self(), scan),
     gen_server:enter_loop(?MODULE, [], #state{sock=Socket, ep_id=EpID, handler_sup=Pid, tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, handler_refs=maps:new(), timer=TRef}).
 
--spec handle_call(any(), from(), State) -> {reply, ignored, State} when State :: state().
 handle_call(_Request, _From, State) ->
 	{reply, ignored, State}.
 
--spec handle_cast(any(), State) -> {noreply, State} when State :: state().
 % outgoing CON(0) or NON(1) request
 handle_cast({send_request, Message, Receiver}, State) ->
     make_new_request(Message, Receiver, State);
@@ -136,8 +137,6 @@ handle_cast(_Msg, State) ->
 %% +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 %%
 %%
--spec handle_info({datagram, binary()}, State) -> {noreply, State};
-    ({timeout, reference(), term()}, State) -> {noreply, State} | {stop, normal, State} when State :: state().
 % incoming CON(0) or NON(1) request
 handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, _TKL:4, 0:3, _CodeDetail:5, MsgId:16, _/bytes>>}, State = #state{}) ->
 	TrId = {in, MsgId},
@@ -193,7 +192,8 @@ handle_info({datagram, <<Ver:2, _/bytes>>}, State) when Ver /= ?VERSION ->
     % io:format("unknown CoAP version~n"),
     {noreply, State};
 handle_info({timeout, TRef, scan}, State=#state{ep_id = _EpID, timer = TRef, trans = Trans}) ->
-    NewTrans = maps:filter(fun(_TrId, #exchange{timestamp = Timestamp, expire_time = ExpireTime} = _TrState) -> 
+    NewTrans = maps:filter(fun(_TrId, TrState) -> 
+                                {Timestamp, ExpireTime} = coap_exchange:time_info(TrState),
                                 erlang:convert_time_unit(erlang:monotonic_time() - Timestamp, native, milli_seconds) < ExpireTime
                             end,
                             Trans),
@@ -226,6 +226,7 @@ handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{rescnt=Count, ha
             io:format("obs_handler_completed~n"),
             %% end
             {noreply, State#state{rescnt=Count-1, handler_refs=maps:remove(Ref, Refs)}};
+            % purge_state(State#state{rescnt=Count-1, handler_refs=maps:remove(Ref, Refs)})
         false -> 
             {noreply, State}
     end;
@@ -233,11 +234,9 @@ handle_info(_Info, State) ->
     io:format("unknown info ~p~n", [_Info]),
 	{noreply, State}.
 
--spec terminate(any(), state()) -> ok.
 terminate(_Reason, _State) ->
 	ok.
 
--spec code_change(_, _, _) -> {ok, _}.
 code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 

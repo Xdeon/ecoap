@@ -30,9 +30,12 @@
 }).
 
 -opaque state() :: #state{}.
--export_type([state/0]).
+-type coap_endpoint_id() :: {inet:ip_address(), inet:port_number()}.
+-type coap_endpoints() :: #{coap_endpoint_id() => pid()}.
+-type coap_endpoint_refs() :: #{reference() => {coap_endpoint_id(), pid()}}.
 
--include("coap.hrl").
+-export_type([state/0]).
+-export_type([coap_endpoint_id/0]).
 
 %% API.
 
@@ -57,7 +60,7 @@ close(Pid) ->
 	gen_server:cast(Pid, shutdown).
 
 %% gen_server.
--spec init([inet:port_number()]) -> {ok, state()} | {stop, term()}.
+
 init([InPort]) ->
 	% process_flag(trap_exit, true),
 	% {ok, Deduplication} = application:get_env(deduplication),
@@ -74,7 +77,6 @@ init([InPort]) ->
 			{stop, Reason}
 	end.
 
--spec init(pid(), inet:port_number()) -> no_return() | {error, term()}.
 init(SupPid, InPort) ->
 	case init([InPort]) of
 		{ok, State} ->
@@ -88,7 +90,6 @@ init(SupPid, InPort) ->
 			{error, Reason}
 	end.
 
--spec handle_call({get_endpoint, coap_endpoint_id()}, from(), State) -> {reply, {ok, pid()} | term(), State} when State :: state().
 handle_call({get_endpoint, EpID}, _From, State=#state{endpoints=EndPoints, endpoint_pool=undefined, sock=Socket}) ->
     case find_endpoint(EpID, EndPoints) of
         {ok, EpPid} ->
@@ -115,14 +116,11 @@ handle_call({get_endpoint, EpID}, _From, State=#state{endpoints=EndPoints, endpo
 handle_call(_Request, _From, State) ->
 	{reply, ignored, State}.
 
--spec handle_cast(shutdown, State) -> {stop, normal, State} when State :: state().
 handle_cast(shutdown, State) ->
 	{stop, normal, State};
 handle_cast(_Msg, State) ->
 	{noreply, State}.
 
--spec handle_info({udp, inet:socket(), inet:ip_address(), inet:port_number(), binary()}, State) -> {noreply, State}; 
-	({'DOWN', reference(), process, pid(), any()}, State) -> {noreply, State} when State :: state().
 handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, endpoints=EndPoints, endpoint_pool=PoolPid}) ->
 	EpID = {PeerIP, PeerPortNo},
 	ok = inet:setopts(Socket, [{active, once}]),
@@ -158,12 +156,10 @@ handle_info(_Info, State) ->
 	io:fwrite("ecoap_socket recv unexpected info ~p~n", [_Info]),
 	{noreply, State}.
 
--spec terminate(any(), state()) -> ok.
 terminate(_Reason, #state{sock=Socket}) ->
 	gen_udp:close(Socket),
 	ok.
 
--spec code_change(_, _, _) -> {ok, _}.
 code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
