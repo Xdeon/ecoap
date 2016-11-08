@@ -312,6 +312,7 @@ encode_option({OptNum, OptVal}) when is_integer(OptNum) ->
 encode_block({Num, More, Size}) ->
     encode_block1(Num, if More -> 1; true -> 0 end, trunc(math:log2(Size))-4).
 
+encode_block1(0, 0, 0) -> <<>>;
 encode_block1(Num, M, SizEx) when Num < 16 ->
     <<Num:4, M:1, SizEx:3>>;
 encode_block1(Num, M, SizEx) when Num < 4096 ->
@@ -320,7 +321,7 @@ encode_block1(Num, M, SizEx) ->
     <<Num:28, M:1, SizEx:3>>.
 
 is_repeatable_option('If-Match') -> true;
-is_repeatable_option('Etag') -> true;
+is_repeatable_option('ETag') -> true;
 is_repeatable_option('Location-Path') -> true;
 is_repeatable_option('Uri-Path') -> true;
 is_repeatable_option('Uri-Query') -> true;

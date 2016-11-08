@@ -1,7 +1,7 @@
 -module(coap_handler_sup).
 -behaviour(supervisor).
 
--export([start_link/0, get_handler/2]).
+-export([start_link/0, get_handler/4]).
 -export([init/1]).
 
 start_link() ->
@@ -11,9 +11,13 @@ init([]) ->
 	Procs = [],
 	{ok, {{one_for_one, 1, 5}, Procs}}.
 
-get_handler(SupPid, HandlerID) ->
+get_handler(EndpointPid, SupPid, HandlerID, Observable) ->
     case start_handler(SupPid, HandlerID) of
         {ok, Pid} -> 
+            case Observable of
+                [] -> ok;
+                _Else ->  EndpointPid ! {obs_handler_started, Pid}
+            end,
         	{ok, Pid};
         {error, {already_started, Pid}} -> 
             %% Code added by wilbur
@@ -29,5 +33,5 @@ start_handler(SupPid, HandlerID = {Method, Uri, Query}) ->
     %% end
     supervisor:start_child(SupPid,
         {{Method, Uri, Query},
-            {coap_handler, start_link, [self(), Uri]},
+            {coap_handler, start_link, [self(), Uri, Query]},
             temporary, 5000, worker, []}).

@@ -2,7 +2,8 @@
 -behaviour(gen_server).
 
 %% API.
--export([start_link/0, register_handler/3, unregister_handler/1, match_handler/1, clear_registry/0]).
+-export([start_link/0, get_links/0, register_handler/3, unregister_handler/1, match_handler/1, clear_registry/0]).
+-compile([export_all]).
 
 %% gen_server.
 -export([init/1]).
@@ -32,6 +33,10 @@ register_handler(Prefix, Module, Args) ->
 unregister_handler(Prefix) ->
     gen_server:call(?MODULE, {unregister, Prefix}).
 
+-spec get_links() -> {ok, list()}.
+get_links() ->
+    lists:usort(get_links(ets:tab2list(?HANDLER_TAB))).
+
 -spec match_handler(list(binary())) -> {list(binary()), module(), _} | undefined.
 match_handler(Uri) -> match_handler(Uri, ets:tab2list(?HANDLER_TAB)).
 
@@ -49,15 +54,29 @@ match_handler(Uri, [{Prefix, Module, Args} | T]) ->
 match_prefix([], []) ->
     true;
 match_prefix([], _) ->
-    false;
+    true;
 match_prefix([H|T1], [H|T2]) ->
     match_prefix(T1, T2);
 match_prefix(_Prefix, _Uri) ->
     false.
 
+% ask each handler to provide a link list
+get_links(Reg) ->
+    lists:foldl(
+        fun({Prefix, Module, Args}, Acc) -> lists:append(Acc, get_links(Prefix, Module, Args)) end,
+        [], Reg).
+
+get_links(Prefix, Module, Args) ->
+    case catch apply(Module, coap_discover, [Prefix, Args]) of
+        % for each pattern ask the handler to provide a list of resources
+        {'EXIT', _} -> [];
+        Response -> Response
+    end.
+
 %% gen_server.
 init([]) ->
 	% _ = ets:new(?HANDLER_TAB, [set, named_table, protected]),
+    ets:insert(?HANDLER_TAB, {[<<".well-known">>, <<"core">>], resource_directory, undefined}),
 	{ok, #state{}}.
 
 handle_call({register, Prefix, Module, Args}, _From, State) ->
@@ -83,3 +102,4 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
+

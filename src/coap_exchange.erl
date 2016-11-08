@@ -293,20 +293,15 @@ handle_request(Message=#coap_message{code=Method, options=Options}, #exchange{ep
     io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
     Uri = proplists:get_value('Uri-Path', Options, []),
     Query = proplists:get_value('Uri-Query', Options, []),
-    case coap_handler_sup:get_handler(HdlSupPid, {Method, Uri, Query}) of
+    Observable = proplists:get_value('Observe', Options, []),
+    case coap_handler_sup:get_handler(EndpointPid, HdlSupPid, {Method, Uri, Query}, Observable) of
         {ok, Pid} ->
             Pid ! {coap_request, EpID, EndpointPid, undefined, Message},
             ok;
         {error, {not_found, _}} ->
         	io:format("handler not_found~n"),
-        	#coap_message{id=MsgId, token=Token, type=Type} = Message,
-        	Msg = case Type of
-				'CON' ->
-					#coap_message{type = 'CON', code = {error, 'NOT_FOUND'}, id = MsgId, token = Token};
-				'NON' ->
-					#coap_message{type = 'NON', code = {error, 'NOT_FOUND'}, id = MsgId, token = Token}
-			end,
-            {ok, _} = coap_endpoint:send(EndpointPid, Msg),
+        	{ok, _} = coap_endpoint:send(EndpointPid,
+                coap_message_utils:response({error, 'NOT_FOUND'}, Message)),
             ok
     end;
 
@@ -329,42 +324,6 @@ handle_ack(_Message, #exchange{ep_id = EpID, endpoint_pid = EndpointPid, receive
 	io:fwrite("handle_ack called from ~p with ~p~n", [self(), _Message]),
 	Sender ! {coap_ack, EpID, EndpointPid, Ref},
 	ok.
-
-% handle_request(Message, #state{cid=ChId, channel=Channel, resp=ReSup, receiver=undefined}) ->
-%     io:fwrite("~p => ~p~n", [self(), Message]),
-%     case coap_responder_sup:get_responder(ReSup, Message) of
-%         {ok, Pid} ->
-%             Pid ! {coap_request, ChId, Channel, undefined, Message},
-%             ok;
-%         {error, {not_found, _}} ->
-%             {ok, _} = coap_channel:send(Channel,
-%                 coap_message:response({error, not_found}, Message)),
-%             ok
-%     end;
-% handle_request(Message, #state{cid=ChId, channel=Channel, receiver={Sender, Ref}}) ->
-%     io:fwrite("~p => ~p~n", [self(), Message]),
-%     Sender ! {coap_request, ChId, Channel, Ref, Message},
-%     ok.
-
-% handle_response(Message, #state{cid=ChId, channel=Channel, receiver={Sender, Ref}}) ->
-%     io:fwrite("~p -> ~p~n", [self(), Message]),
-%     Sender ! {coap_response, ChId, Channel, Ref, Message},
-%     request_complete(Channel, Message).
-
-% handle_error(Message, Error, #state{cid=ChId, channel=Channel, receiver={Sender, Ref}}) ->
-%     io:fwrite("~p -> ~p~n", [self(), Message]),
-%     Sender ! {coap_error, ChId, Channel, Ref, Error},
-%     request_complete(Channel, Message).
-
-% handle_ack(Message, #state{cid=ChId, channel=Channel, receiver={Sender, Ref}}) ->
-%     io:fwrite("~p -> ~p~n", [self(), Message]),
-
-%     %% Code added by wilbur
-%     io:format("handle_ack called with receiver ~p~n", [{Sender, Ref}]),
-%     %% end
-
-%     Sender ! {coap_ack, ChId, Channel, Ref},
-%     ok.
 
 request_complete(EndpointPid, #coap_message{token=Token, options=Options}) ->
     case proplists:get_value('Observe', Options, []) of
