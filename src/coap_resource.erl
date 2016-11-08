@@ -17,20 +17,20 @@
 
 % GET handler
 -callback coap_get(coap_endpoint_id(), [binary()], [binary()], [binary()]) ->
-    coap_content() | {'error', atom()}.
+    coap_content() | coap_error().
 % POST handler
 -callback coap_post(coap_endpoint_id(), [binary()], [binary()], coap_content()) ->
-    {'ok', atom(), coap_content()} | {'error', atom()}.
+    {'ok', any(), coap_content()} | coap_error().
 % PUT handler
 -callback coap_put(coap_endpoint_id(), [binary()], [binary()], coap_content()) ->
-    'ok' | {'error', atom()}.
+    'ok' | coap_error().
 % DELETE handler
 -callback coap_delete(coap_endpoint_id(), [binary()], [binary()]) ->
-    'ok' | {'error', atom()}.
+    'ok' | coap_error().
 
 % observe request handler
 -callback coap_observe(coap_endpoint_id(), [binary()], [binary()], boolean()) ->
-    {'ok', any()} | {'error', atom()}.
+    {'ok', any(), coap_type()} | coap_error().
 % cancellation request handler
 -callback coap_unobserve(any()) ->
     'ok'.
@@ -43,7 +43,7 @@
     {'ok', any()}.
 
 -type coap_endpoint_id() :: ecoap_socket:coap_endpoint_id().
--type coap_uri() :: {'absolute', [binary()], coap_uri_param()}.
+-type coap_uri() :: {'absolute', [binary()], [coap_uri_param()]}.
 -type coap_uri_param() :: {atom(), binary()}.
 
 % end of file

@@ -294,15 +294,15 @@ return_resource(Request, Content, State) ->
     return_resource([], Request, {ok, 'CONTENT'}, Content, State).
 
 return_resource(Ref, Request=#coap_message{options=Options}, {ok, Code}, Content=#coap_content{etag=ETag}, State) ->
-    send_observable(Ref, Request,
-        case lists:member(ETag, proplists:get_value('ETag', Options, [])) of
+    Response = case lists:member(ETag, proplists:get_value('ETag', Options, [])) of
             true ->
                 coap_message_utils:set_content(#coap_content{etag=ETag},
-                    coap_message_utils:response({ok, 'Valid'}, Request));
+                    coap_message_utils:response({ok, 'VALID'}, Request));
             false ->
                 coap_message_utils:set_content(Content, proplists:get_value('Block2', Options),
                     coap_message_utils:response({ok, Code}, Request))
-        end, State#state{last_response={ok, Code, Content}}).
+    end,
+    send_observable(Ref, Request, Response, State#state{last_response={ok, Code, Content}}).
 
 send_observable(Ref, #coap_message{token=Token, options=Options}, Response,
         State=#state{observer=Observer, obseq=Seq}) ->

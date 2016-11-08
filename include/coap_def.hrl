@@ -43,21 +43,21 @@
 							| 'PROXYING_NOT_SUPPORTED'}.
 -type coap_code() :: coap_method() | coap_success() | coap_error().
 
-% -type coap_option() :: 'If-Match'
-% 					| 'Uri-Host'
-% 					| 'ETag'
-% 					| 'If-None-Match'
-% 					| 'Uri-Port'
-% 					| 'Location-Path'
-% 					| 'Uri-Path'
-% 					| 'Content-Format'
-% 					| 'Max-Age'
-% 					| 'Uri-Query'
-% 					| 'Accept'
-% 					| 'Location-Query'
-% 					| 'Proxy-Uri'
-% 					| 'Proxy-Scheme'
-% 					| 'Size1'.
+-type coap_option() :: 'If-Match'
+					| 'Uri-Host'
+					| 'ETag'
+					| 'If-None-Match'
+					| 'Uri-Port'
+					| 'Location-Path'
+					| 'Uri-Path'
+					| 'Content-Format'
+					| 'Max-Age'
+					| 'Uri-Query'
+					| 'Accept'
+					| 'Location-Query'
+					| 'Proxy-Uri'
+					| 'Proxy-Scheme'
+					| 'Size1'.
 
 
 

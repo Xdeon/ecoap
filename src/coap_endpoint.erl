@@ -67,8 +67,8 @@ ping(EndpointPid) ->
     send_message(EndpointPid, make_ref(), #coap_message{type='CON'}).
 
 -spec send(pid(), coap_message()) -> {ok, term()}.
-send(EndpointPid, Message=#coap_message{type=Type, code=Method})
-        when is_tuple(Method); Type=='ACK'; Type=='RST' ->
+send(EndpointPid, Message=#coap_message{type=Type, code=Code})
+        when is_tuple(Code); Type=='ACK'; Type=='RST' ->
     send_response(EndpointPid, make_ref(), Message);
 
 send(EndpointPid, Message=#coap_message{}) ->

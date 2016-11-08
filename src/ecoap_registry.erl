@@ -33,7 +33,7 @@ register_handler(Prefix, Module, Args) ->
 unregister_handler(Prefix) ->
     gen_server:call(?MODULE, {unregister, Prefix}).
 
--spec get_links() -> {ok, list()}.
+-spec get_links() -> list().
 get_links() ->
     lists:usort(get_links(ets:tab2list(?HANDLER_TAB))).
 
@@ -43,22 +43,38 @@ match_handler(Uri) -> match_handler(Uri, ets:tab2list(?HANDLER_TAB)).
 -spec clear_registry() -> true.
 clear_registry() -> ets:delete_all_objects(?HANDLER_TAB).
 
-match_handler(_Uri, []) ->
-    undefined;
-match_handler(Uri, [{Prefix, Module, Args} | T]) ->
-    case match_prefix(Prefix, Uri) of
-        true  -> {Prefix, Module, Args};
-        false -> match_handler(Uri, T)
-    end.
+% match_handler(_Uri, []) ->
+%     undefined;
+% match_handler(Uri, [{Prefix, Module, Args} | T]) ->
+%     case match_prefix(Prefix, Uri) of
+%         true  -> {Prefix, Module, Args};
+%         false -> match_handler(Uri, T)
+%     end.
 
-match_prefix([], []) ->
-    true;
-match_prefix([], _) ->
-    true;
-match_prefix([H|T1], [H|T2]) ->
-    match_prefix(T1, T2);
-match_prefix(_Prefix, _Uri) ->
-    false.
+% match_prefix([], []) ->
+%     true;
+% match_prefix([], _) ->
+%     true;
+% match_prefix([H|T1], [H|T2]) ->
+%     match_prefix(T1, T2);
+% match_prefix(_Prefix, _Uri) ->
+%     false.
+
+match_handler(Uri, Reg) ->
+    lists:foldl(
+        fun(Elem={Prefix, _, _}, Found) ->
+            case lists:prefix(Prefix, Uri) of
+                true -> one_with_longer_uri(Elem, Found);
+                false -> Found
+            end
+        end,
+        undefined, Reg).
+
+% select an entry with a longest prefix
+% this allows user to have one handler for "foo" and another for "foo/bar"
+one_with_longer_uri(Elem1, undefined) -> Elem1;
+one_with_longer_uri(Elem1={Prefix, _, _}, {Match, _, _}) when length(Prefix) > length(Match) -> Elem1;
+one_with_longer_uri(_Elem1, Elem2) -> Elem2.
 
 % ask each handler to provide a link list
 get_links(Reg) ->

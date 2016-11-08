@@ -14,10 +14,7 @@ init([]) ->
 get_handler(EndpointPid, SupPid, HandlerID, Observable) ->
     case start_handler(SupPid, HandlerID) of
         {ok, Pid} -> 
-            case Observable of
-                [] -> ok;
-                _Else ->  EndpointPid ! {obs_handler_started, Pid}
-            end,
+            ok = obs_handler_notify(EndpointPid, Observable, Pid),
         	{ok, Pid};
         {error, {already_started, Pid}} -> 
             %% Code added by wilbur
@@ -35,3 +32,9 @@ start_handler(SupPid, HandlerID = {Method, Uri, Query}) ->
         {{Method, Uri, Query},
             {coap_handler, start_link, [self(), Uri, Query]},
             temporary, 5000, worker, []}).
+
+obs_handler_notify(EndpointPid, Observable, Pid) ->
+    case Observable of
+        [] -> ok;
+        _Else ->  EndpointPid ! {obs_handler_started, Pid}, ok
+    end.
