@@ -2,8 +2,7 @@
 -behaviour(gen_server).
 
 %% API.
--export([start_link/3]).
--compile([export_all]).
+-export([start_link/3, notify/2]).
 
 %% gen_server.
 -export([init/1]).
@@ -24,8 +23,8 @@
 	module = undefined :: module(), 
 	args = undefined :: any(), 
 	insegs = undefined :: orddict:orddict(), 
-	last_response = undefined :: undefined | {ok, _, _} | {error, _}, 
-	observer = undefined :: any(), 
+	last_response = undefined :: any(), 
+	observer = undefined :: undefined | coap_message(), 
 	obseq = undefined :: non_neg_integer(), 
 	obstate = undefined :: any(), 
 	timer = undefined :: undefined | reference()}).

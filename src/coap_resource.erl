@@ -30,7 +30,7 @@
 
 % observe request handler
 -callback coap_observe(coap_endpoint_id(), [binary()], [binary()], boolean()) ->
-    {'ok', any(), coap_type()} | coap_error().
+    {'ok', any()} | coap_error().
 % cancellation request handler
 -callback coap_unobserve(any()) ->
     'ok'.
