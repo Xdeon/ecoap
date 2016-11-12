@@ -1,5 +1,6 @@
 .eunit
 deps
+*.d
 *.o
 *.beam
 *.plt
