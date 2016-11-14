@@ -2,16 +2,31 @@
 
 -export([msg_id/1]).
 -export([request/2, request/3, request/4, ack/1, response/1, response/2, response/3]).
--export([set/3, set_type/2, set_code/2, set_payload/2, get_content/1, set_content/2, set_content/3]).
+-export([set/3, set_type/2, set_code/2, set_payload/2, set_content/2, set_content/3, get_content/1, get_option/2, get_option/3, has_option/2]).
 
 -include("coap_def.hrl").
+
+-type payload() :: binary() | coap_content() | list().
 
 % shortcut function for reset generation
 -spec msg_id(binary() | coap_message()) -> non_neg_integer().
 msg_id(<<_:16, MsgId:16, _Tail/bytes>>) -> MsgId;
 msg_id(#coap_message{id=MsgId}) -> MsgId.
 
--type payload() :: binary() | coap_content() | list().
+-spec get_option(coap_option(), [tuple()]) -> term().
+get_option(Option, OptionList) ->
+    get_option(Option, OptionList, undefined).
+
+-spec get_option(coap_option(), [tuple()], term()) -> term().
+get_option(Option, OptionList, Default) ->
+    case lists:keyfind(Option, 1, OptionList) of
+        {_, Value} -> Value;
+        _ -> Default
+    end.
+
+-spec has_option(coap_option(), [tuple()]) -> boolean().
+has_option(Option, OptionList) ->
+    lists:keymember(Option, 1, OptionList).
 
 -spec request(coap_type(), coap_method()) -> coap_message().
 request(Type, Code) ->
@@ -59,12 +74,12 @@ response(Code, Payload, Request) ->
 -spec get_content(coap_message()) -> coap_content().
 get_content(#coap_message{options=Options, payload=Payload}) ->
     #coap_content{
-        etag = case proplists:get_value('ETag', Options) of
+        etag = case get_option('ETag', Options) of
                    [ETag] -> ETag;
                    _Other -> undefined
                end,
-        max_age = proplists:get_value('Max-Age', Options),
-        format = proplists:get_value('Content-Format', Options),
+        max_age = get_option('Max-Age', Options),
+        format = get_option('Content-Format', Options),
         payload = Payload}.
 
 -spec set(coap_option(), any(), coap_message()) -> coap_message().

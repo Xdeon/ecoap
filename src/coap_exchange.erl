@@ -291,9 +291,9 @@ aack_sent({timeout, await_pack}, State) ->
 
 handle_request(Message=#coap_message{code=Method, options=Options}, #exchange{ep_id=EpID, endpoint_pid=EndpointPid, handler_sup=HdlSupPid, receiver=undefined}) ->
     io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
-    Uri = proplists:get_value('Uri-Path', Options, []),
-    Query = proplists:get_value('Uri-Query', Options, []),
-    Observable = proplists:get_value('Observe', Options, []),
+    Uri = coap_message_utils:get_option('Uri-Path', Options, []),
+    Query = coap_message_utils:get_option('Uri-Query', Options, []),
+    Observable = coap_message_utils:get_option('Observe', Options),
     case coap_handler_sup:get_handler(EndpointPid, HdlSupPid, {Method, Uri, Query}, Observable) of
         {ok, Pid} ->
             Pid ! {coap_request, EpID, EndpointPid, undefined, Message},
@@ -326,8 +326,8 @@ handle_ack(_Message, #exchange{ep_id = EpID, endpoint_pid = EndpointPid, receive
 	ok.
 
 request_complete(EndpointPid, #coap_message{token=Token, options=Options}) ->
-    case proplists:get_value('Observe', Options, []) of
-        [] ->
+    case coap_message_utils:get_option('Observe', Options) of
+        undefined ->
             EndpointPid ! {request_complete, Token},
             ok;
         _Else ->
