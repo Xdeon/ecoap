@@ -35,6 +35,6 @@ start_handler(SupPid, HandlerID = {Method, Uri, Query}) ->
 
 obs_handler_notify(EndpointPid, Observable, Pid) ->
     case Observable of
-        [] -> ok;
+        undefined -> ok;
         _Else ->  EndpointPid ! {obs_handler_started, Pid}, ok
     end.
