@@ -237,6 +237,8 @@ handle_observe(_EpID, Request, Content, State) ->
 requires_ack(#coap_message{type='CON'}) -> true;
 requires_ack(#coap_message{type='NON'}) -> false.
 
+handle_unobserve(_EpID, Request, Resource, State=#state{observer=undefined}) ->
+    return_resource(Request, Resource, State);
 handle_unobserve(_EpID, Request, Resource, State) ->
     {ok, State2} = cancel_observer(Request, State),
     return_resource(Request, Resource, State2).
