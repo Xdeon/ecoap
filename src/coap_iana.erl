@@ -135,7 +135,7 @@ decode_enum(TupleList, Key, Default) ->
 		false -> Default
 	end.
 
--spec encode_enum(coap_enum(), enum_encode_key()) -> enum_decode_key().
+-spec encode_enum(coap_enum(), enum_encode_key()) -> enum_decode_key() | enum_default_val().
 encode_enum(TupleList, Key) ->
 	encode_enum(TupleList, Key, undefined).
 

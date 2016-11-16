@@ -34,8 +34,7 @@
 	nextmid = undefined :: non_neg_integer(),
 	rescnt = undefined :: non_neg_integer(),
     handler_refs = undefined :: undefined | #{reference() => pid()},
-    timer = undefined :: reference(),
-    client = false :: boolean()
+    timer = undefined :: reference()
 }).
 
 -opaque state() :: #state{}.
@@ -92,7 +91,7 @@ send_response(EndpointPid, Ref, Message) ->
 
 init([Socket, EpID]) ->
     TRef = erlang:start_timer(?SCAN_INTERVAL*1000, self(), scan),
-    {ok, #state{sock=Socket, ep_id=EpID, tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, client=true}}.
+    {ok, #state{sock=Socket, ep_id=EpID, tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef}}.
 
 init(SupPid, Socket, EpID) ->
     ok = proc_lib:init_ack({ok, self()}),
@@ -310,7 +309,7 @@ update_state(State=#state{trans=Trans}, TrId, TrState) ->
     Trans2 = maps:put(TrId, TrState, Trans),
     {noreply, State#state{trans=Trans2}}.
 
-purge_state(State=#state{tokens=Tokens, trans=Trans, rescnt=Count, client=false}) ->
+purge_state(State=#state{tokens=Tokens, trans=Trans, rescnt=Count}) ->
     case maps:size(Tokens) + maps:size(Trans) + Count of
         0 -> 
             % io:format("All trans expired~n"),
@@ -318,6 +317,4 @@ purge_state(State=#state{tokens=Tokens, trans=Trans, rescnt=Count, client=false}
         _Else -> 
             % io:format("Ongoing trans exist~n"),
             {noreply, State}
-    end;
-purge_state(State) ->
-    {noreply, State}.
+    end.

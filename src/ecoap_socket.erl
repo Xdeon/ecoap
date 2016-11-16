@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 %% API.
--export([start_link/0, start_link/2, get_endpoint/2, close/1]).
+-export([start_link/0, start_link/2, get_endpoint/2, get_all_endpoints/1, close/1]).
 
 %% gen_server.
 -export([init/1]).
@@ -44,6 +44,11 @@
 start_link() ->
 	gen_server:start_link(?MODULE, [0], []).
 
+%% client
+-spec close(pid()) -> ok.
+close(Pid) ->
+	gen_server:cast(Pid, shutdown).
+
 %% server
 -spec start_link(pid(), inet:port_number()) -> {ok, pid()} | {error, term()}.
 start_link(SupPid, InPort) when is_pid(SupPid) ->
@@ -54,10 +59,9 @@ start_link(SupPid, InPort) when is_pid(SupPid) ->
 get_endpoint(Pid, {PeerIP, PeerPortNo}) ->
     gen_server:call(Pid, {get_endpoint, {PeerIP, PeerPortNo}}).
 
-%% client
--spec close(pid()) -> ok.
-close(Pid) ->
-	gen_server:cast(Pid, shutdown).
+%% utility function
+get_all_endpoints(Pid) ->
+	gen_server:call(Pid, get_all_endpoints).
 
 %% gen_server.
 
@@ -113,6 +117,8 @@ handle_call({get_endpoint, EpID}, _From, State=#state{endpoints=EndPoints, endpo
 		            {reply, Error, State}
 		    end
     end;
+handle_call(get_all_endpoints, _From, State=#state{endpoints=EndPoints}) ->
+	{reply, maps:values(EndPoints), State};
 handle_call(_Request, _From, State) ->
 	{reply, ignored, State}.
 
