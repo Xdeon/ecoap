@@ -117,7 +117,7 @@ handle(EpID, Request=#coap_message{options=Options}, State=#state{endpoint_pid=E
             return_response(Request, {error, Code}, State);
         {continue, State2} ->
             {ok, _} = coap_endpoint:send_response(EndpointPid, [],
-                coap_message_utils:set('Block1', Block1,
+                coap_message_utils:set_opt('Block1', Block1,
                     coap_message_utils:response({ok, 'CONTINUE'}, Request))),
             set_timeout(?EXCHANGE_LIFETIME, State2);
         {ok, Payload, State2} ->
@@ -310,7 +310,7 @@ send_observable(Ref, #coap_message{token=Token, options=Options}, Response,
     case {coap_message_utils:get_option('Observe', Options), Observer} of
         % when requested observe and is observing, return the sequence number
         {0, #coap_message{token=Token}} ->
-            send_response(Ref, coap_message_utils:set('Observe', Seq, Response), State#state{obseq=next_seq(Seq)});
+            send_response(Ref, coap_message_utils:set_opt('Observe', Seq, Response), State#state{obseq=next_seq(Seq)});
         _Else ->
             send_response(Ref, Response, State)
     end.    
