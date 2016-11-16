@@ -34,6 +34,7 @@
 
 -type from() :: {pid(), term()}.
 -type response() :: {ok, atom(), coap_content()} | {error, atom()} | {error, atom(), coap_content()}.
+-type payload() :: coap_message_utils:payload().
 -opaque state() :: #state{}.
 -export_type([state/0]).
 
@@ -51,34 +52,37 @@ ping(Pid, Uri) ->
 		_Else -> error
 	end.
 
+%% Note that options defined in Content will overwrite the same ones defined in Options
+%% But if options in Content are with their default value 'undefined' then they will not be used
+
 -spec request(pid(), coap_method(), list()) -> response().
 request(Pid, Method, Uri) ->
 	request(Pid, Method, Uri, #coap_content{}, []).
 
--spec request(pid(), coap_method(), list(), coap_content()) -> response().
+-spec request(pid(), coap_method(), list(), payload()) -> response().
 request(Pid, Method, Uri, Content) -> 
 	request(Pid, Method, Uri, Content, []).
 
--spec request(pid(), coap_method(), list(), coap_content(), list(tuple())) -> response().
+-spec request(pid(), coap_method(), list(), payload(), list(tuple())) -> response().
 request(Pid, Method, Uri, Content, Options) ->
 	{EpID, Path, Query} = resolve_uri(Uri),
 	OptionList = [{'Uri-Path', Path}, {'Uri-Query', Query} | Options],
-	start_endpoint(Pid, EpID, {Method, OptionList, Content}).
+	start_endpoint(Pid, EpID, {Method, OptionList, convert_content(Content)}).
 
 -spec request_async(pid(), coap_method(), list()) -> {ok, reference()}.
 request_async(Pid, Method, Uri) ->
 	request_async(Pid, Method, Uri, #coap_content{}, []).
 
--spec request_async(pid(), coap_method(), list(), coap_content()) -> {ok, reference()}.
+-spec request_async(pid(), coap_method(), list(), payload()) -> {ok, reference()}.
 request_async(Pid, Method, Uri, Content) -> 
 	request_async(Pid, Method, Uri, Content, []).
 
--spec request_async(pid(), coap_method(), list(), coap_content(), list(tuple())) -> {ok, reference()}.
+-spec request_async(pid(), coap_method(), list(), payload(), list(tuple())) -> {ok, reference()}.
 request_async(Pid, Method, Uri, Content, Options) ->
 	{EpID, Path, Query} = resolve_uri(Uri),
 	OptionList = [{'Uri-Path', Path}, {'Uri-Query', Query} | Options],
 	ClientRef = make_ref(),
-	start_endpoint_async(Pid, EpID, {Method, OptionList, Content}, ClientRef), 
+	start_endpoint_async(Pid, EpID, {Method, OptionList, convert_content(Content)}, ClientRef), 
 	{ok, ClientRef}.
 
 -spec close(pid()) -> ok.
@@ -212,6 +216,10 @@ return_response({error, Code}, #coap_message{payload= <<>>}) ->
     {error, Code};
 return_response({error, Code}, Message) ->
     {error, Code, coap_message_utils:get_content(Message)}.
+
+convert_content(Content = #coap_content{}) -> Content;
+convert_content(Content) when is_binary(Content) -> #coap_content{payload=Content};
+convert_content(Content) when is_list(Content) -> #coap_content{payload=list_to_binary(Content)}.
 
 resolve_uri(Uri) ->
     {ok, {_Scheme, _UserInfo, Host, PortNo, Path, Query}} =

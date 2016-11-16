@@ -7,6 +7,7 @@
 -include("coap_def.hrl").
 
 -type payload() :: binary() | coap_content() | list().
+-export_type([payload/0]).
 
 % shortcut function for reset generation
 -spec msg_id(binary() | coap_message()) -> non_neg_integer().
@@ -84,11 +85,14 @@ get_content(#coap_message{options=Options, payload=Payload}) ->
 
 -spec set(coap_option(), any(), coap_message()) -> coap_message().
 % omit option for its default value
+set(_, undefined, Msg) -> Msg;
 set('Max-Age', ?DEFAULT_MAX_AGE, Msg) -> Msg;
-% set non-default value
-set(Option, Value, Msg=#coap_message{options=Options}) ->
+set('ETag', ETag, Msg) -> set_option('ETag', [ETag], Msg);
+set(Option, Value, Msg) -> set_option(Option, Value, Msg).
+
+set_option(Option, Value, Msg=#coap_message{options=Options}) ->
     Msg#coap_message{
-        options=[{Option, Value}|Options]
+        options=lists:keystore(Option, 1, Options, {Option, Value})
     }.
 
 -spec set_type(coap_type(), coap_message()) -> coap_message().
@@ -123,7 +127,7 @@ set_content(Content, Msg) ->
 % segmentation not requested and not required
 set_content(#coap_content{etag=ETag, max_age=MaxAge, format=Format, payload=Payload}, undefined, Msg)
         when byte_size(Payload) =< ?MAX_BLOCK_SIZE ->
-    set('ETag', [ETag],
+    set('ETag', ETag,
         set('Max-Age', MaxAge,
             set('Content-Format', Format,
                 set_payload(Payload, Msg))));
@@ -132,7 +136,7 @@ set_content(Content, undefined, Msg) ->
     set_content(Content, {0, true, ?MAX_BLOCK_SIZE}, Msg);
 % segmentation requested (early negotiation)
 set_content(#coap_content{etag=ETag, max_age=MaxAge, format=Format, payload=Payload}, Block, Msg) ->
-    set('ETag', [ETag],
+    set('ETag', ETag,
         set('Max-Age', MaxAge,
             set('Content-Format', Format,
                 set_payload_block(Payload, Block, Msg)))).

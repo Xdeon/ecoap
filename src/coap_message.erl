@@ -328,6 +328,9 @@ is_repeatable_option('Uri-Query') -> true;
 is_repeatable_option('Location-Query') -> true;
 is_repeatable_option(_Else) -> false.
 
+% option_encode_unsigned({Opt, undefined}) -> [];
+% option_encode_unsigned({Opt, Num}) -> {Opt, binary:encode_unsigned(Num)}.
+
 -ifdef(TEST).
 
 -include_lib("eunit/include/eunit.hrl").
