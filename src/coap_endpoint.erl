@@ -210,6 +210,7 @@ handle_info({timeout, TrId, Event}, State=#state{trans=Trans}) ->
             {ok, TrState} -> coap_exchange:timeout(Event, TrState)
         end);
 handle_info({request_complete, Token}, State=#state{tokens=Tokens}) ->
+    io:format("request_complete~n"),
     Tokens2 = maps:remove(Token, Tokens),
     purge_state(State#state{tokens=Tokens2});
 % Only monitor possible observe handlers instead of every new spawned handler
