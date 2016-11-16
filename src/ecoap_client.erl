@@ -3,7 +3,7 @@
 
 %% API.
 -export([start_link/0]).
--export([request/3, request/4, request/5, request_async/3, request_async/4, request_async/5, close/1]).
+-export([ping/2, request/3, request/4, request/5, request_async/3, request_async/4, request_async/5, close/1]).
 
 %% gen_server.
 -export([init/1]).
@@ -20,16 +20,36 @@
 	client_pid = undefined :: pid()
 }).
 
+-record(req, {
+	method = undefined :: undefined | coap_method(),
+	option_list = undefined :: undefined | list(tuple()),
+	content = undefined :: undefined | coap_content(),
+	fragment = <<>> :: binary(),
+	client_ref = undefined :: undefined | reference()
+}).
+
+-define(EXCHANGE_LIFETIME, 247000).
+
 -include("coap_def.hrl").
 
 -type from() :: {pid(), term()}.
 -type response() :: {ok, atom(), coap_content()} | {error, atom()} | {error, atom(), coap_content()}.
+-opaque state() :: #state{}.
+-export_type([state/0]).
 
 %% API.
 
 -spec start_link() -> {ok, pid()}.
 start_link() ->
 	gen_server:start_link(?MODULE, [self()], []).
+
+-spec ping(pid(), list()) -> ok | error.
+ping(Pid, Uri) ->
+	{EpID, _Path, _Query} = resolve_uri(Uri),
+	case call_endpoint(Pid, {ping, EpID}) of
+		{error, 'RST'} -> ok;
+		_Else -> error
+	end.
 
 -spec request(pid(), coap_method(), list()) -> response().
 request(Pid, Method, Uri) ->
@@ -66,7 +86,7 @@ close(Pid) ->
 	gen_server:cast(Pid, shutdown).
 
 start_endpoint(Pid, EpID, Req) ->
-	gen_server:call(Pid, {start_endpoint, EpID, Req}, infinity).
+	call_endpoint(Pid, {start_endpoint, EpID, Req}).
 
 start_endpoint_async(Pid, EpID, Req, ClientRef) -> 
 	gen_server:cast(Pid, {start_endpoint, EpID, Req, ClientRef}).
@@ -77,17 +97,21 @@ init([ClientPid]) ->
 	{ok, SockPid} = ecoap_socket:start_link(),
 	{ok, #state{sock_pid = SockPid, request_refs = maps:new(), client_pid = ClientPid}}.
 
+handle_call({ping, EpID}, From, State = #state{sock_pid = SockPid, request_refs = Refs}) ->
+	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
+	{ok, Ref} = coap_endpoint:ping(EndpointPid),
+	{noreply, State#state{from = From, request_refs = store_ref(Ref, #req{}, Refs)}};
 handle_call({start_endpoint, EpID, {Method, OptionList, Content}}, From, State = #state{sock_pid = SockPid, request_refs = Refs}) ->
 	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
 	{ok, Ref} = request_block(EndpointPid, Method, OptionList, Content),
-	{noreply, State#state{from = From, request_refs = store_ref(Ref, {Method, OptionList, Content, <<>>, []}, Refs)}};
+	{noreply, State#state{from = From, request_refs = store_ref(Ref, #req{method=Method, option_list=OptionList, content=Content}, Refs)}};
 handle_call(_Request, _From, State) ->
 	{reply, ignored, State}.
 
 handle_cast({start_endpoint, EpID, {Method, OptionList, Content}, ClientRef}, State = #state{sock_pid = SockPid, request_refs = Refs}) ->
 	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
 	{ok, Ref} = request_block(EndpointPid, Method, OptionList, Content),
-	{noreply, State#state{request_refs = store_ref(Ref, {Method, OptionList, Content, <<>>, ClientRef}, Refs)}};
+	{noreply, State#state{request_refs = store_ref(Ref, #req{method=Method, option_list=OptionList, content=Content, client_ref=ClientRef}, Refs)}};
 handle_cast(shutdown, State) ->
 	{stop, normal, State};
 handle_cast(_Msg, State) ->
@@ -97,7 +121,7 @@ handle_info({coap_response, _EpID, EndpointPid, Ref, #coap_message{code={ok, 'CO
 	State = #state{request_refs = Refs}) ->
 	case find_ref(Ref, Refs) of
 		undefined -> {noreply, State};
-		Req = {Method, OptionList, Content, _, _} ->
+		Req = #req{method=Method, option_list=OptionList, content=Content} ->
 			{Num, true, Size} = coap_message_utils:get_option('Block1', Options),
     		{ok, Ref2} = request_block(EndpointPid, Method, OptionList, {Num+1, false, Size}, Content),
     		{noreply, State#state{request_refs = store_ref(Ref2, Req, delete_ref(Ref, Refs))}}
@@ -106,14 +130,14 @@ handle_info({coap_response, _EpID, EndpointPid, Ref, Message=#coap_message{code=
 	State = #state{request_refs = Refs, client_pid = ClientPid, from = From}) ->
 	case find_ref(Ref, Refs) of
 		undefined -> {noreply, State};
-		{Method, OptionList, Content, Fragment, ClientRef} ->
+		Req = #req{method=Method, option_list=OptionList, fragment=Fragment, client_ref=ClientRef} ->
 			case coap_message_utils:get_option('Block2', Options) of
 		            {Num, true, Size} ->
 		                % more blocks follow, ask for more
 		                % no payload for requests with Block2 with NUM != 0
 		                {ok, Ref2} = coap_endpoint:send(EndpointPid,
 		                    coap_message_utils:request('CON', Method, <<>>, [{'Block2', {Num+1, false, Size}}|OptionList])),
-		                {noreply, State#state{request_refs = store_ref(Ref2, {Method, OptionList, Content, <<Fragment/binary, Data/binary>>, ClientRef}, delete_ref(Ref, Refs))}};
+		                {noreply, State#state{request_refs = store_ref(Ref2, Req#req{fragment = <<Fragment/binary, Data/binary>>}, delete_ref(Ref, Refs))}};
 		            _Else ->
 		                % not segmented
 		                Res = return_response({ok, Code}, Message#coap_message{payload= <<Fragment/binary, Data/binary>>}),
@@ -125,7 +149,7 @@ handle_info({coap_response, _EpID, _EndpointPid, Ref, Message=#coap_message{code
 	State = #state{request_refs = Refs, client_pid = ClientPid, from = From}) ->
 	case find_ref(Ref, Refs) of
 		undefined -> {noreply, State};
-		{_, _, _, _, ClientRef}-> 
+		#req{client_ref=ClientRef} -> 
 			Res = return_response(Code, Message),
 		    ok = send_response(From, ClientPid, ClientRef, Res),
 			{noreply, State#state{request_refs = delete_ref(Ref, Refs), from = undefined}}
@@ -134,7 +158,7 @@ handle_info({coap_error, _EpID, _EndpointPid, Ref, Error},
 	State = #state{request_refs = Refs, client_pid = ClientPid, from = From}) ->
 	case find_ref(Ref, Refs) of
 		undefined -> {noreply, State};
-		{_, _, _, _, ClientRef} ->
+		#req{client_ref=ClientRef} ->
 		    ok = send_response(From, ClientPid, ClientRef, {error, Error}),
 			{noreply, State#state{request_refs = delete_ref(Ref, Refs), from = undefined}}
 	end;
@@ -150,6 +174,9 @@ code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
 %% Internal
+
+call_endpoint(Pid, Msg) ->
+	gen_server:call(Pid, Msg, ?EXCHANGE_LIFETIME).
 
 find_ref(Ref, Refs) ->
 	case maps:find(Ref, Refs) of
