@@ -89,12 +89,14 @@ idle(Msg={out, #coap_message{type='CON'}}, State=#exchange{endpoint_pid=_Endpoin
 
 %% For Non-confirmable message %%
 % As a server:
-% NON(RESPONSE)-> => end
-% NON(RESPONSE)-> => ->RST
+% -> NON(REQUEST) => NON(RESPONSE)-> => end
+% -> NON(REQUEST) => NON(RESPONSE)-> => ->RST
 % As a client:
 % NON(REQUEST)-> => ->NON(RESPONSE), token is cleaned up by calling handle_response & request_complete
 % NON(REQUEST)-> => ->RST, token is cleaned up by calling handle_error & request_complete
 % NON(REQUEST)-> => ->CON(RESPONSE) => ACK(EMPTY)->, token is cleaned up by calling handle_response & request_complete, who sends the ACK?
+
+% New Note: shoule we remove exchange state after receiving empty ACK/RST?
 
 % --- incoming NON
 -spec in_non({in, binary()}, exchange()) -> exchange().
@@ -139,7 +141,6 @@ sent_non({in, BinMessage}, State)->
 -spec got_rst({in, binary()}, exchange()) -> exchange().
 got_rst({in, _BinMessage}, State)->
     next_state(got_rst, State).
-
 
 % --- incoming CON->ACK|RST
 -spec in_con({in, binary()}, exchange()) -> exchange().
@@ -284,9 +285,6 @@ aack_sent({timeout, await_pack}, State) ->
 	% ignore the msg
 	next_state(aack_sent, State).
 
-
-
-
 % utility functions
 
 handle_request(Message=#coap_message{code=Method, options=Options}, #exchange{ep_id=EpID, endpoint_pid=EndpointPid, handler_sup=HdlSupPid, receiver=undefined}) ->
@@ -351,6 +349,11 @@ next_state(Stage, State=#exchange{endpoint_pid=EndpointPid, trid=TrId, timer=Tim
     Timer2 = timeout_after(Timeout, EndpointPid, TrId, Stage),
     State#exchange{stage=Stage, timer=Timer2}.
 
+next_state(undefined, _State=#exchange{timer=undefined}) ->
+    undefined;
+next_state(undefined, _State=#exchange{timer=Timer}) ->
+    _ = erlang:cancel_timer(Timer),
+    undefined;
 next_state(Stage, State=#exchange{timer=undefined}) ->
     State#exchange{stage=Stage};
 next_state(Stage, State=#exchange{stage=Stage1, timer=Timer}) ->
@@ -364,4 +367,3 @@ next_state(Stage, State=#exchange{stage=Stage1, timer=Timer}) ->
             ok
     end,
     State#exchange{stage=Stage, timer=undefined}.
-

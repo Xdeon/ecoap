@@ -153,8 +153,10 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgI
     io:format("MsgBin: ~p~n", [BinMessage]),
     % end of debug
     case maps:find(TrId, Trans) of
+        % this is a duplicate msg, i.e. a retransmitted CON response
         {ok, TrState} ->
             update_state(State, TrId, coap_exchange:received(BinMessage, TrState));
+        % this is a new msg
         error ->
              case maps:find(Token, Tokens) of
                 {ok, Receiver} ->
@@ -293,8 +295,6 @@ create_transport(TrId, Receiver, State=#state{trans=Trans}) ->
         {ok, TrState} -> TrState;
         error -> init_transport(TrId, Receiver, State)
     end.
-
-% init(Socket, EpID, EndpointPid, TrId, HdlSupPid, Receiver) ->
 
 init_transport(TrId, undefined, #state{sock=Socket, ep_id=EpID, handler_sup=HdlSupPid}) ->
     coap_exchange:init(Socket, EpID, self(), TrId, HdlSupPid, undefined);
