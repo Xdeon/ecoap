@@ -155,7 +155,7 @@ in_con({in, BinMessage}, State) ->
             handle_response(Message, State),
             go_await_aack(Message, State);
         {error, Error} ->
-            go_pack_sent(#coap_message{type='ACK', code={error, 'BAD_REQUEST'},
+            go_pack_sent(#coap_message{type='ACK', code={error, 'BadRequest'},
                                        id=coap_message_utils:msg_id(BinMessage),
                                        payload=list_to_binary(Error)}, State)
     end.
@@ -298,10 +298,10 @@ handle_request(Message=#coap_message{code=Method, options=Options}, #exchange{ep
         {ok, Pid} ->
             Pid ! {coap_request, EpID, EndpointPid, undefined, Message},
             ok;
-        {error, {not_found, _}} ->
+        {error, {'NotFound', _}} ->
         	io:format("handler not_found~n"),
         	{ok, _} = coap_endpoint:send(EndpointPid,
-                coap_message_utils:response({error, 'NOT_FOUND'}, Message)),
+                coap_message_utils:response({error, 'NotFound'}, Message)),
             ok
     end;
 

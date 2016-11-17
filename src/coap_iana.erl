@@ -72,30 +72,30 @@ code() ->
 	    {{0, 03}, 'PUT'},
 	    {{0, 04}, 'DELETE'},
 	    % success is a tuple {ok, ...}
-	    {{2, 01}, {ok, 'CREATED'}},
-	    {{2, 02}, {ok, 'DELETED'}},
-	    {{2, 03}, {ok, 'VALID'}},
-	    {{2, 04}, {ok, 'CHANGED'}},
-	    {{2, 05}, {ok, 'CONTENT'}},
-	    {{2, 31}, {ok, 'CONTINUE'}}, % block
+	    {{2, 01}, {ok, 'Created'}},
+	    {{2, 02}, {ok, 'Deleted'}},
+	    {{2, 03}, {ok, 'Valid'}},
+	    {{2, 04}, {ok, 'Changed'}},
+	    {{2, 05}, {ok, 'Content'}},
+	    {{2, 31}, {ok, 'Continue'}}, % block
 	    % error is a tuple {error, ...}
-	    {{4, 00}, {error, 'BAD_REQUEST'}},
-	    {{4, 01}, {error, 'UAUTHORIZED'}},
-	    {{4, 02}, {error, 'BAD_OPTION'}},
-	    {{4, 03}, {error, 'FORBIDDEN'}},
-	    {{4, 04}, {error, 'NOT_FOUND'}},
-	    {{4, 05}, {error, 'METHOD_NOT_ALLOWED'}},
-	    {{4, 06}, {error, 'NOT_ACCEPTABLE'}},
-	    {{4, 08}, {error, 'REQUEST_ENTITY_INCOMPLETE'}}, % block
-	    {{4, 12}, {error, 'PRECONDITION_FAILED'}},
-	    {{4, 13}, {error, 'REQUEST_ENTITY_TOO_LARGE'}},
-	    {{4, 15}, {error, 'UNSUPPORTED_CONTENT_FORMAT'}},
-	    {{5, 00}, {error, 'INTERNAL_SERVER_ERROR'}},
-	    {{5, 01}, {error, 'NOT_IMPLEMENTED'}},
-	    {{5, 02}, {error, 'BAD_GATEWAY'}},
-	    {{5, 03}, {error, 'SERVICE_UNAVAILABLE'}},
-	    {{5, 04}, {error, 'GATEWAY_TIMEOUT'}},
-	    {{5, 05}, {error, 'PROXYING_NOT_SUPPORTED'}}
+	    {{4, 00}, {error, 'BadRequest'}},
+	    {{4, 01}, {error, 'Unauthorized'}},
+	    {{4, 02}, {error, 'BadOption'}},
+	    {{4, 03}, {error, 'Forbidden'}},
+	    {{4, 04}, {error, 'NotFound'}},
+	    {{4, 05}, {error, 'MethodNotAllowed'}},
+	    {{4, 06}, {error, 'NotAcceptable'}},
+	    {{4, 08}, {error, 'RequestEntityIncomplete'}}, % block
+	    {{4, 12}, {error, 'PreconditionFailed'}},
+	    {{4, 13}, {error, 'RequestEntityTooLarge'}},
+	    {{4, 15}, {error, 'UnsupportedContentFormat'}},
+	    {{5, 00}, {error, 'InternalServerError'}},
+	    {{5, 01}, {error, 'NotImplemented'}},
+	    {{5, 02}, {error, 'BadGateway'}},
+	    {{5, 03}, {error, 'ServiceUnavailable'}},
+	    {{5, 04}, {error, 'GatewayTimeout'}},
+	    {{5, 05}, {error, 'ProxyingNotSupported'}}
 	].
 
 %% CoAP Content-Formats Registry

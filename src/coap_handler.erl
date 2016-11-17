@@ -54,7 +54,7 @@ init([EndpointPid, Uri, Query]) ->
             {ok, #state{endpoint_pid=EndpointPid, uri=Uri, prefix=Prefix, suffix=uri_suffix(Prefix, Uri), query=Query, module=Module, args=Args,
                 insegs=orddict:new(), obseq=0}};
         undefined ->
-            {stop, not_found}
+            {stop, 'NotFound'}
     end.
 
 handle_call(_Request, _From, State) ->
@@ -92,14 +92,14 @@ handle_info(_Info, State=#state{observer=undefined}) ->
 handle_info(Info, State=#state{module=Module, observer=Observer, obstate=ObState}) ->
     case invoke_callback(Module, handle_info, [Info, ObState]) of
         {notify, Ref, Resource=#coap_content{}, ObState2} ->
-            return_resource(Ref, Observer, {ok, 'CONTENT'}, Resource, State#state{obstate=ObState2});
+            return_resource(Ref, Observer, {ok, 'Content'}, Resource, State#state{obstate=ObState2});
         {notify, Ref, {error, Code}, ObState2} ->
             return_response(Ref, Observer, {error, Code}, <<>>, State#state{obstate=ObState2});
         {noreply, ObState2} ->
             {noreply, State#state{obstate=ObState2}};
         {stop, ObState2} ->
             {ok, State2} = cancel_observer(Observer, State#state{obstate=ObState2}),
-            return_response(Observer, {error, 'SERVICE_UNAVAILABLE'}, State2)
+            return_response(Observer, {error, 'ServiceUnavailable'}, State2)
     end.
 
 terminate(_Reason, _State) ->
@@ -115,10 +115,10 @@ handle(EpID, Request=#coap_message{options=Options}, State=#state{endpoint_pid=E
     case catch assemble_payload(Request, Block1, State) of
         {error, Code} ->
             return_response(Request, {error, Code}, State);
-        {continue, State2} ->
+        {'Continue', State2} ->
             {ok, _} = coap_endpoint:send_response(EndpointPid, [],
                 coap_message_utils:set_opt('Block1', Block1,
-                    coap_message_utils:response({ok, 'CONTINUE'}, Request))),
+                    coap_message_utils:response({ok, 'Continue'}, Request))),
             set_timeout(?EXCHANGE_LIFETIME, State2);
         {ok, Payload, State2} ->
             process_request(EpID, Request#coap_message{payload=Payload}, State2)
@@ -128,15 +128,15 @@ assemble_payload(#coap_message{payload=Payload}, undefined, State) ->
     {ok, Payload, State};
 assemble_payload(#coap_message{payload=Segment}, {Num, true, Size}, State=#state{insegs=Segs}) ->
     case byte_size(Segment) of
-        Size -> {continue, State#state{insegs=orddict:store(Num, Segment, Segs)}};
-        _Else -> {error, 'BAD_REQUEST'}
+        Size -> {'Continue', State#state{insegs=orddict:store(Num, Segment, Segs)}};
+        _Else -> {error, 'BadRequest'}
     end;
 assemble_payload(#coap_message{payload=Segment}, {_Num, false, _Size}, State=#state{insegs=Segs}) ->
     Payload = lists:foldl(
         fun ({Num1, Segment1}, Acc) when Num1*byte_size(Segment1) == byte_size(Acc) ->
                 <<Acc/binary, Segment1/binary>>;
             (_Else, _Acc) ->
-                throw({error, 'REQUEST_ENTITY_INCOMPLETE'})
+                throw({error, 'RequestEntityIncomplete'})
         end, <<>>, orddict:to_list(Segs)),
     {ok, <<Payload/binary, Segment/binary>>, State#state{insegs=orddict:new()}}.
 
@@ -156,7 +156,7 @@ check_resource(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, query=Q
             [EpID, Prefix, Suffix, Query]) of
         R1=#coap_content{} ->
             check_preconditions(EpID, Request, R1, State);
-        R2={error, 'NOT_FOUND'} ->
+        R2={error, 'NotFound'} ->
             check_preconditions(EpID, Request, R2, State);
         {error, Code} ->
             return_response(Request, {error, Code}, State);
@@ -169,7 +169,7 @@ check_preconditions(EpID, Request, Resource, State) ->
         true ->
             handle_method(EpID, Request, Resource, State);
         false ->
-            return_response(Request, {error, 'PRECONDITION_FAILED'}, State)
+            return_response(Request, {error, 'PreconditionFailed'}, State)
     end.
 
 if_match(#coap_message{options=Options}, #coap_content{etag=ETag}) ->
@@ -179,7 +179,7 @@ if_match(#coap_message{options=Options}, #coap_content{etag=ETag}) ->
         % match exact resources
         List -> lists:member(ETag, List)
     end;
-if_match(#coap_message{options=Options}, {error, 'NOT_FOUND'}) ->
+if_match(#coap_message{options=Options}, {error, 'NotFound'}) ->
     not coap_message_utils:has_option('If-Match', Options).
 
 if_none_match(#coap_message{options=Options}, #coap_content{}) ->
@@ -196,7 +196,7 @@ handle_method(EpID, Request=#coap_message{code='GET', options=Options}, Resource
         undefined ->
             return_resource(Request, Resource, State);
         _Else ->
-            return_response(Request, {error, 'BAD_OPTION'}, State)
+            return_response(Request, {error, 'BadOption'}, State)
     end;
 
 handle_method(_EpID, Request=#coap_message{code='GET'}, {error, Code}, State) ->
@@ -212,7 +212,7 @@ handle_method(EpID, Request=#coap_message{code='DELETE'}, _Resource, State) ->
     handle_delete(EpID, Request, State);
 
 handle_method(_EpID, Request, _Resource, State) ->
-    return_response(Request, {error, 'METHOD_NOT_ALLOWED'}, State).
+    return_response(Request, {error, 'MethodNotAllowed'}, State).
 
 handle_observe(EpID, Request, Content=#coap_content{},
         State=#state{prefix=Prefix, suffix=Suffix, uri=Uri, module=Module, observer=undefined}) ->
@@ -222,7 +222,7 @@ handle_observe(EpID, Request, Content=#coap_content{},
             pg2:create({coap_observer, Uri}),
             ok = pg2:join({coap_observer, Uri}, self()),
             return_resource(Request, Content, State#state{observer=Request, obstate=ObState});
-        {error, 'METHOD_NOT_ALLOWED'} ->
+        {error, 'MethodNotAllowed'} ->
             % observe is not supported, fallback to standard get
             return_resource(Request, Content, State#state{observer=undefined});
         {error, Error} ->
@@ -277,14 +277,14 @@ handle_put(EpID, Request, Resource, State=#state{prefix=Prefix, suffix=Suffix, m
     end.
 
 created_or_changed(#coap_content{}) ->
-    {ok, 'CHANGED'};
-created_or_changed({error, 'NOT_FOUND'}) ->
-    {ok, 'CREATED'}.
+    {ok, 'Changed'};
+created_or_changed({error, 'NotFound'}) ->
+    {ok, 'Created'}.
 
 handle_delete(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
     case invoke_callback(Module, coap_delete, [EpID, Prefix, Suffix]) of
         ok ->
-            return_response(Request, {ok, 'DELETED'}, State);
+            return_response(Request, {ok, 'Deleted'}, State);
         {error, Error} ->
             return_response(Request, {error, Error}, State);
         {error, Error, Reason} ->
@@ -292,13 +292,13 @@ handle_delete(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=M
     end.
 
 return_resource(Request, Content, State) ->
-    return_resource([], Request, {ok, 'CONTENT'}, Content, State).
+    return_resource([], Request, {ok, 'Content'}, Content, State).
 
 return_resource(Ref, Request=#coap_message{options=Options}, {ok, Code}, Content=#coap_content{etag=ETag}, State) ->
     Response = case lists:member(ETag, coap_message_utils:get_option('ETag', Options, [])) of
             true ->
                 coap_message_utils:set_content(#coap_content{etag=ETag},
-                    coap_message_utils:response({ok, 'VALID'}, Request));
+                    coap_message_utils:response({ok, 'Valid'}, Request));
             false ->
                 coap_message_utils:set_content(Content, coap_message_utils:get_option('Block2', Options),
                     coap_message_utils:response({ok, Code}, Request))
@@ -371,7 +371,7 @@ invoke_callback(Module, Fun, Args) ->
     case catch apply(Module, Fun, Args) of
         {'EXIT', Error} ->
             error_logger:error_msg("~p", [Error]),
-            {error, 'INTERNAL_SERVER_ERROR'};
+            {error, 'InternalServerError'};
         Response ->
             Response
     end.

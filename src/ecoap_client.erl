@@ -121,7 +121,7 @@ handle_cast(shutdown, State) ->
 handle_cast(_Msg, State) ->
 	{noreply, State}.
 
-handle_info({coap_response, _EpID, EndpointPid, Ref, #coap_message{code={ok, 'CONTINUE'}, options=Options}}, 
+handle_info({coap_response, _EpID, EndpointPid, Ref, #coap_message{code={ok, 'Continue'}, options=Options}}, 
 	State = #state{request_refs = Refs}) ->
 	case find_ref(Ref, Refs) of
 		undefined -> {noreply, State};

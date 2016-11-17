@@ -16,13 +16,13 @@ coap_get(_EpID, _Prefix, [], Query) ->
                   format = <<"application/link-format">>,
                   payload = list_to_binary(Links)};
 coap_get(_EpID, _Prefix, _Else, _Query) ->
-    {error, 'NOT_FOUND'}.
+    {error, 'NotFound'}.
 
-coap_post(_EpID, _Prefix, _Suffix, _Content) -> {error, 'METHOD_NOT_ALLOWED'}.
-coap_put(_EpID, _Prefix, _Suffix, _Content) -> {error, 'METHOD_NOT_ALLOWED'}.
-coap_delete(_EpID, _Prefix, _Suffix) -> {error, 'METHOD_NOT_ALLOWED'}.
+coap_post(_EpID, _Prefix, _Suffix, _Content) -> {error, 'MethodNotAllowed'}.
+coap_put(_EpID, _Prefix, _Suffix, _Content) -> {error, 'MethodNotAllowed'}.
+coap_delete(_EpID, _Prefix, _Suffix) -> {error, 'MethodNotAllowed'}.
 
-coap_observe(_EpID, _Prefix, _Suffix, _Ack) -> {error, 'METHOD_NOT_ALLOWED'}.
+coap_observe(_EpID, _Prefix, _Suffix, _Ack) -> {error, 'MethodNotAllowed'}.
 coap_unobserve(_State) -> ok.
 handle_info(_Message, State) -> {noreply, State}.
 coap_ack(_Ref, State) -> {ok, State}.

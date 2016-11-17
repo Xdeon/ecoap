@@ -172,6 +172,7 @@ append_option({OptId2, OptVal2}, OptionList) ->
     end.
 
 % RFC 7252
+-spec decode_option({non_neg_integer(), _}) -> {coap_option(), _}.
 decode_option({?OPTION_IF_MATCH, OptVal}) -> {'If-Match', OptVal};
 decode_option({?OPTION_URI_HOST, OptVal}) -> {'Uri-Host', OptVal};
 decode_option({?OPTION_ETAG, OptVal}) -> {'ETag', OptVal};
@@ -277,6 +278,7 @@ encode_option_list([], _LastNum, Acc) ->
     Acc.
 
 % RFC 7252
+-spec encode_option({coap_option(), _}) -> {non_neg_integer(), _}.
 encode_option({'If-Match', OptVal}) -> {?OPTION_IF_MATCH, OptVal};
 encode_option({'Uri-Host', OptVal}) -> {?OPTION_URI_HOST, OptVal};
 encode_option({'ETag', OptVal}) -> {?OPTION_ETAG, OptVal};
@@ -348,7 +350,7 @@ codec_test()-> [
         options=[{'Block1', {0,true,128}}, {'Observe', 1}]}),
     test_codec(#coap_message{type='NON', code='PUT', id=200, token= <<"token">>,
         options=[{'Uri-Path',[<<".well-known">>, <<"core">>]}]}),
-    test_codec(#coap_message{type='NON', code={ok, 'CONTENT'}, id=300, token= <<"token">>,
+    test_codec(#coap_message{type='NON', code={ok, 'Content'}, id=300, token= <<"token">>,
         payload= <<"<url>">>, options=[{'Content-Format', <<"application/link-format">>}, {'Uri-Path',[<<".well-known">>, <<"core">>]}]})
     ].
 
