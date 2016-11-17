@@ -101,15 +101,15 @@ idle(Msg={out, #coap_message{type='CON'}}, State=#exchange{endpoint_pid=_Endpoin
 % --- incoming NON
 -spec in_non({in, binary()}, exchange()) -> exchange().
 in_non({in, BinMessage}, State) ->
-    case catch coap_message:decode(BinMessage) of
+    try coap_message:decode(BinMessage) of
         #coap_message{code = Method} = Message when is_atom(Method) ->
             handle_request(Message, State);
         #coap_message{} = Message ->
-            handle_response(Message, State);
-        {error, _Error} ->
-            % shall we sent reset back?
-            ok
-    end,
+            handle_response(Message, State)
+    catch throw:{error, _Error} -> 
+        % shall we sent reset back?
+        ok 
+    end,  
     next_state(got_non, State).
     % undefined.
 
@@ -130,11 +130,13 @@ out_non({out, Message}, State=#exchange{sock=Socket, ep_id={PeerIP, PeerPortNo}}
 % we may get reset
 -spec sent_non({in, binary()}, exchange()) -> exchange().
 sent_non({in, BinMessage}, State)->
-    case catch coap_message:decode(BinMessage) of
+    try coap_message:decode(BinMessage) of
         #coap_message{type='RST'} = Message ->
             handle_error(Message, 'RST', State);
         % in case we get wrong reply, ignore it 
-        #coap_message{} -> undefined
+        #coap_message{} -> ok
+    catch throw:{error, _Error} -> 
+        ok 
     end,
     next_state(got_rst, State).
 
@@ -145,7 +147,7 @@ got_rst({in, _BinMessage}, State)->
 % --- incoming CON->ACK|RST
 -spec in_con({in, binary()}, exchange()) -> exchange().
 in_con({in, BinMessage}, State) ->
-    case catch coap_message:decode(BinMessage) of
+    try coap_message:decode(BinMessage) of
         #coap_message{code=undefined, id=MsgId} ->
             % provoked reset
             go_pack_sent(#coap_message{type='RST', id=MsgId}, State);
@@ -154,9 +156,9 @@ in_con({in, BinMessage}, State) ->
             go_await_aack(Message, State);
         #coap_message{} = Message ->
             handle_response(Message, State),
-            go_await_aack(Message, State);
-        {error, Error} ->
-            go_pack_sent(#coap_message{type='ACK', code={error, 'BadRequest'},
+            go_await_aack(Message, State)
+    catch throw:{error, Error} ->
+        go_pack_sent(#coap_message{type='ACK', code={error, 'BadRequest'},
                                        id=coap_message_utils:msg_id(BinMessage),
                                        payload=list_to_binary(Error)}, State)
     end.
@@ -251,18 +253,18 @@ out_con({out, Message}, State=#exchange{sock=Socket, ep_id={PeerIP, PeerPortNo}}
 % peer ack
 -spec await_pack({in, binary()} | {timeout, await_pack}, exchange()) -> exchange().
 await_pack({in, BinAck}, State) ->
-    case catch coap_message:decode(BinAck) of
+    try coap_message:decode(BinAck) of
     	% this is an empty ack for separate response
         #coap_message{type='ACK', code=undefined} = Ack ->
             handle_ack(Ack, State);
         #coap_message{type='RST'} = Ack ->
             handle_error(Ack, 'RST', State);
         #coap_message{} = Ack ->
-        	handle_response(Ack, State);
-        {error, _Error} ->
-            % shall we inform the receiver?
-            ok
-    end,
+        	handle_response(Ack, State)
+    catch throw:{error, _Error} -> 
+        % shall we inform the receiver?
+        ok 
+    end,  
     next_state(aack_sent, State);
 await_pack({timeout, await_pack}, State=#exchange{sock=Socket, ep_id={PeerIP, PeerPortNo}, msgbin=BinMessage, retry_time=Timeout, retry_count=Count}) when Count < ?MAX_RETRANSMIT ->
     % BinMessage = coap_message:encode(Message),

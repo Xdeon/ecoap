@@ -368,10 +368,10 @@ uri_suffix(Prefix, Uri) ->
 	lists:nthtail(length(Prefix), Uri).
 
 invoke_callback(Module, Fun, Args) ->
-    case catch apply(Module, Fun, Args) of
+    case catch {ok, apply(Module, Fun, Args)} of
+        {ok, Response} ->
+            Response;
         {'EXIT', Error} ->
             error_logger:error_msg("~p", [Error]),
-            {error, 'InternalServerError'};
-        Response ->
-            Response
+            {error, 'InternalServerError'}
     end.
