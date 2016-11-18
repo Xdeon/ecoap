@@ -350,11 +350,11 @@ next_state(Stage, State=#exchange{endpoint_pid=EndpointPid, trid=TrId, timer=Tim
     Timer2 = timeout_after(Timeout, EndpointPid, TrId, Stage),
     State#exchange{stage=Stage, timer=Timer2}.
 
-next_state(undefined, _State=#exchange{timer=undefined}) ->
-    undefined;
-next_state(undefined, _State=#exchange{timer=Timer}) ->
-    _ = erlang:cancel_timer(Timer),
-    undefined;
+% next_state(undefined, _State=#exchange{timer=undefined}) ->
+%     undefined;
+% next_state(undefined, _State=#exchange{timer=Timer}) ->
+%     _ = erlang:cancel_timer(Timer),
+%     undefined;
 next_state(Stage, State=#exchange{timer=undefined}) ->
     State#exchange{stage=Stage};
 next_state(Stage, State=#exchange{stage=Stage1, timer=Timer}) ->

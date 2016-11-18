@@ -59,7 +59,7 @@ start_link(Socket, EpID) ->
 
 -spec close(pid()) -> ok.
 close(Pid) ->
-	gen_server:call(Pid, shutdown).
+	gen_server:cast(Pid, shutdown).
 
 -spec ping(pid()) -> {ok, term()}.
 ping(EndpointPid) ->
@@ -102,8 +102,6 @@ init(SupPid, Socket, EpID) ->
     TRef = erlang:start_timer(?SCAN_INTERVAL*1000, self(), scan),
     gen_server:enter_loop(?MODULE, [], #state{sock=Socket, ep_id=EpID, handler_sup=Pid, tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, handler_refs=maps:new(), timer=TRef}).
 
-handle_call(shutdown, _From, State) ->
-    {stop, normal, ok, State};
 handle_call(_Request, _From, State) ->
 	{reply, ignored, State}.
 
@@ -116,6 +114,8 @@ handle_cast({send_message, Message, Receiver}, State) ->
 % outgoing response, either CON(0) or NON(1), piggybacked ACK(2) or RST(3)
 handle_cast({send_response, Message, Receiver}, State) ->
     make_new_response(Message, Receiver, State);
+handle_cast(shutdown, State) ->
+    {stop, normal, State};
 handle_cast(_Msg, State) ->
 	{noreply, State}.
 
