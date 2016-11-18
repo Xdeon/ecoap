@@ -121,53 +121,19 @@ handle_cast(shutdown, State) ->
 handle_cast(_Msg, State) ->
 	{noreply, State}.
 
-handle_info({coap_response, _EpID, EndpointPid, Ref, #coap_message{code={ok, 'Continue'}, options=Options}}, 
-	State = #state{request_refs = Refs}) ->
-	case find_ref(Ref, Refs) of
-		undefined -> {noreply, State};
-		Req = #req{method=Method, option_list=OptionList, content=Content} ->
-			{Num, true, Size} = coap_message_utils:get_option('Block1', Options),
-    		{ok, Ref2} = request_block(EndpointPid, Method, OptionList, {Num+1, false, Size}, Content),
-    		{noreply, State#state{request_refs = store_ref(Ref2, Req, delete_ref(Ref, Refs))}}
-    end;
-% handle {ok, Code} response
-handle_info({coap_response, _EpID, EndpointPid, Ref, Message=#coap_message{code={ok, Code}, options=Options, payload=Data}}, 
-	State = #state{request_refs = Refs, client_pid = ClientPid}) ->
-	case find_ref(Ref, Refs) of
-		undefined -> {noreply, State};
-		Req = #req{method=Method, option_list=OptionList, fragment=Fragment, client_ref=ClientRef, from=From} ->
-			case coap_message_utils:get_option('Block2', Options) of
-		            {Num, true, Size} ->
-		                % more blocks follow, ask for more
-		                % no payload for requests with Block2 with NUM != 0
-		                {ok, Ref2} = coap_endpoint:send(EndpointPid,
-		                    coap_message_utils:request('CON', Method, <<>>, [{'Block2', {Num+1, false, Size}}|OptionList])),
-		                {noreply, State#state{request_refs = store_ref(Ref2, Req#req{fragment = <<Fragment/binary, Data/binary>>}, delete_ref(Ref, Refs))}};
-		            _Else ->
-		                % not segmented
-		                Res = return_response({ok, Code}, Message#coap_message{payload= <<Fragment/binary, Data/binary>>}),
-		                ok = send_response(From, ClientPid, ClientRef, Res),
-		                {noreply, State#state{request_refs = delete_ref(Ref, Refs)}}
-		    end
-	end;
-% handle {error, Code} response
-handle_info({coap_response, _EpID, _EndpointPid, Ref, Message=#coap_message{code=Code}}, 
-	State = #state{request_refs = Refs, client_pid = ClientPid}) ->
-	case find_ref(Ref, Refs) of
-		undefined -> {noreply, State};
-		#req{client_ref=ClientRef, from=From} -> 
-			Res = return_response(Code, Message),
-		    ok = send_response(From, ClientPid, ClientRef, Res),
-			{noreply, State#state{request_refs = delete_ref(Ref, Refs)}}
-	end;
-% handle separate response
+% response arrived as a separate CON msg
+handle_info({coap_response, _EpID, EndpointPid, Ref, Message=#coap_message{type='CON'}}, State) ->
+	coap_endpoint:send(EndpointPid, coap_message_utils:ack(Message)),
+	handle_response(Ref, EndpointPid, Message, State);
+handle_info({coap_response, _EpID, EndpointPid, Ref, Message}, State) ->
+	handle_response(Ref, EndpointPid, Message, State);
+% handle separate response acknowledgement
 handle_info({coap_ack, _EpID, _EndpointPid, Ref}, 
 	State = #state{request_refs = Refs, client_pid = ClientPid}) ->
 	case find_ref(Ref, Refs) of
 		undefined -> {noreply, State};
 		Req = #req{client_ref=ClientRef, from=From} ->
-			Res = {separate, Ref},
-			ok = send_response(From, ClientPid, ClientRef, Res),
+			ok = send_response(From, ClientPid, ClientRef, {separate, Ref}),
 			{noreply, State#state{request_refs = store_ref(Ref, Req#req{from = undefined, client_ref=Ref}, Refs)}}
 	end;
 % handle RST and timeout
@@ -192,6 +158,44 @@ code_change(_OldVsn, State, _Extra) ->
 
 %% Internal
 
+handle_response(Ref, EndpointPid, _Message=#coap_message{code={ok, 'Continue'}, options=Options}, 
+	State=#state{request_refs=Refs}) ->
+	case find_ref(Ref, Refs) of
+		undefined -> {noreply, State};
+		Req = #req{method=Method, option_list=OptionList, content=Content} ->
+			{Num, true, Size} = coap_message_utils:get_option('Block1', Options),
+    		{ok, Ref2} = request_block(EndpointPid, Method, OptionList, {Num+1, false, Size}, Content),
+    		{noreply, State#state{request_refs = store_ref(Ref2, Req, delete_ref(Ref, Refs))}}
+    end;
+handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options=Options, payload=Data}, 
+	State = #state{request_refs = Refs, client_pid = ClientPid}) ->
+	case find_ref(Ref, Refs) of
+		undefined -> {noreply, State};
+		Req = #req{method=Method, option_list=OptionList, fragment=Fragment, client_ref=ClientRef, from=From} ->
+			case coap_message_utils:get_option('Block2', Options) of
+		            {Num, true, Size} ->
+		                % more blocks follow, ask for more
+		                % no payload for requests with Block2 with NUM != 0
+		                {ok, Ref2} = coap_endpoint:send(EndpointPid,
+		                    coap_message_utils:request('CON', Method, <<>>, [{'Block2', {Num+1, false, Size}}|OptionList])),
+		                {noreply, State#state{request_refs = store_ref(Ref2, Req#req{fragment = <<Fragment/binary, Data/binary>>}, delete_ref(Ref, Refs))}};
+		            _Else ->
+		                % not segmented
+		                Res = return_response({ok, Code}, Message#coap_message{payload= <<Fragment/binary, Data/binary>>}),
+		                ok = send_response(From, ClientPid, ClientRef, Res),
+		                {noreply, State#state{request_refs = delete_ref(Ref, Refs)}}
+		    end
+	end;
+handle_response(Ref, _EndpointPid, Message=#coap_message{code={error, Code}}, 
+	State = #state{request_refs = Refs, client_pid = ClientPid}) ->
+	case find_ref(Ref, Refs) of
+		undefined -> {noreply, State};
+		#req{client_ref=ClientRef, from=From} -> 
+			Res = return_response({error, Code}, Message),
+		    ok = send_response(From, ClientPid, ClientRef, Res),
+			{noreply, State#state{request_refs = delete_ref(Ref, Refs)}}
+	end.
+	
 call_endpoint(Pid, Msg) ->
 	gen_server:call(Pid, Msg, ?EXCHANGE_LIFETIME).
 
