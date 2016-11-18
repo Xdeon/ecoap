@@ -16,7 +16,6 @@
 -record(state, {
 	sock_pid = undefined :: pid(),
 	request_refs = undefined :: map(),
-	from = undefined :: undefined | from(),
 	client_pid = undefined :: pid()
 }).
 
@@ -25,6 +24,7 @@
 	option_list = undefined :: undefined | list(tuple()),
 	content = undefined :: undefined | coap_content(),
 	fragment = <<>> :: binary(),
+	from = undefined :: undefined | from(),
 	client_ref = undefined :: undefined | reference()
 }).
 
@@ -33,7 +33,7 @@
 -include("coap_def.hrl").
 
 -type from() :: {pid(), term()}.
--type response() :: {ok, atom(), coap_content()} | {error, atom()} | {error, atom(), coap_content()}.
+-type response() :: {ok, atom(), coap_content()} | {error, atom()} | {error, atom(), coap_content()} | {separate, reference()}.
 -type payload() :: coap_message_utils:payload().
 -opaque state() :: #state{}.
 -export_type([state/0]).
@@ -104,11 +104,11 @@ init([ClientPid]) ->
 handle_call({ping, EpID}, From, State = #state{sock_pid = SockPid, request_refs = Refs}) ->
 	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
 	{ok, Ref} = coap_endpoint:ping(EndpointPid),
-	{noreply, State#state{from = From, request_refs = store_ref(Ref, #req{}, Refs)}};
+	{noreply, State#state{request_refs = store_ref(Ref, #req{from=From}, Refs)}};
 handle_call({start_endpoint, EpID, {Method, OptionList, Content}}, From, State = #state{sock_pid = SockPid, request_refs = Refs}) ->
 	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
 	{ok, Ref} = request_block(EndpointPid, Method, OptionList, Content),
-	{noreply, State#state{from = From, request_refs = store_ref(Ref, #req{method=Method, option_list=OptionList, content=Content}, Refs)}};
+	{noreply, State#state{request_refs = store_ref(Ref, #req{method=Method, option_list=OptionList, content=Content, from=From}, Refs)}};
 handle_call(_Request, _From, State) ->
 	{reply, ignored, State}.
 
@@ -130,11 +130,12 @@ handle_info({coap_response, _EpID, EndpointPid, Ref, #coap_message{code={ok, 'Co
     		{ok, Ref2} = request_block(EndpointPid, Method, OptionList, {Num+1, false, Size}, Content),
     		{noreply, State#state{request_refs = store_ref(Ref2, Req, delete_ref(Ref, Refs))}}
     end;
+% handle {ok, Code} response
 handle_info({coap_response, _EpID, EndpointPid, Ref, Message=#coap_message{code={ok, Code}, options=Options, payload=Data}}, 
-	State = #state{request_refs = Refs, client_pid = ClientPid, from = From}) ->
+	State = #state{request_refs = Refs, client_pid = ClientPid}) ->
 	case find_ref(Ref, Refs) of
 		undefined -> {noreply, State};
-		Req = #req{method=Method, option_list=OptionList, fragment=Fragment, client_ref=ClientRef} ->
+		Req = #req{method=Method, option_list=OptionList, fragment=Fragment, client_ref=ClientRef, from=From} ->
 			case coap_message_utils:get_option('Block2', Options) of
 		            {Num, true, Size} ->
 		                % more blocks follow, ask for more
@@ -146,25 +147,37 @@ handle_info({coap_response, _EpID, EndpointPid, Ref, Message=#coap_message{code=
 		                % not segmented
 		                Res = return_response({ok, Code}, Message#coap_message{payload= <<Fragment/binary, Data/binary>>}),
 		                ok = send_response(From, ClientPid, ClientRef, Res),
-		                {noreply, State#state{request_refs = delete_ref(Ref, Refs), from = undefined}}
+		                {noreply, State#state{request_refs = delete_ref(Ref, Refs)}}
 		    end
 	end;
+% handle {error, Code} response
 handle_info({coap_response, _EpID, _EndpointPid, Ref, Message=#coap_message{code=Code}}, 
-	State = #state{request_refs = Refs, client_pid = ClientPid, from = From}) ->
+	State = #state{request_refs = Refs, client_pid = ClientPid}) ->
 	case find_ref(Ref, Refs) of
 		undefined -> {noreply, State};
-		#req{client_ref=ClientRef} -> 
+		#req{client_ref=ClientRef, from=From} -> 
 			Res = return_response(Code, Message),
 		    ok = send_response(From, ClientPid, ClientRef, Res),
-			{noreply, State#state{request_refs = delete_ref(Ref, Refs), from = undefined}}
+			{noreply, State#state{request_refs = delete_ref(Ref, Refs)}}
 	end;
-handle_info({coap_error, _EpID, _EndpointPid, Ref, Error}, 
-	State = #state{request_refs = Refs, client_pid = ClientPid, from = From}) ->
+% handle separate response
+handle_info({coap_ack, _EpID, _EndpointPid, Ref}, 
+	State = #state{request_refs = Refs, client_pid = ClientPid}) ->
 	case find_ref(Ref, Refs) of
 		undefined -> {noreply, State};
-		#req{client_ref=ClientRef} ->
+		Req = #req{client_ref=ClientRef, from=From} ->
+			Res = {separate, Ref},
+			ok = send_response(From, ClientPid, ClientRef, Res),
+			{noreply, State#state{request_refs = store_ref(Ref, Req#req{from = undefined, client_ref=Ref}, Refs)}}
+	end;
+% handle RST and timeout
+handle_info({coap_error, _EpID, _EndpointPid, Ref, Error}, 
+	State = #state{request_refs = Refs, client_pid = ClientPid}) ->
+	case find_ref(Ref, Refs) of
+		undefined -> {noreply, State};
+		#req{client_ref=ClientRef, from=From} ->
 		    ok = send_response(From, ClientPid, ClientRef, {error, Error}),
-			{noreply, State#state{request_refs = delete_ref(Ref, Refs), from = undefined}}
+			{noreply, State#state{request_refs = delete_ref(Ref, Refs)}}
 	end;
 handle_info(_Info, State) ->
 	{noreply, State}.

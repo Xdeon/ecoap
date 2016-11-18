@@ -166,8 +166,7 @@ in_con({in, BinMessage}, State) ->
 -spec go_await_aack(coap_message(), exchange()) -> exchange().
 go_await_aack(Message, State) ->
     % we may need to ack the message
-    #coap_message{id = MsgId, token = Token} = Message, 
-    EmptyACK = #coap_message{type = 'ACK', id = MsgId, token = Token},
+    EmptyACK = coap_message_utils:ack(Message),
     % BinAck = coap_message:encode(coap_message:response(Message)),
     BinAck = coap_message:encode(EmptyACK),
     next_state(await_aack, State#exchange{msgbin=BinAck}, ?PROCESSING_DELAY).
