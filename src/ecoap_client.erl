@@ -66,7 +66,7 @@ request(Pid, Method, Uri, Content) ->
 -spec request(pid(), coap_method(), list(), payload(), list(tuple())) -> response().
 request(Pid, Method, Uri, Content, Options) ->
 	{EpID, Path, Query} = resolve_uri(Uri),
-	OptionList = [{'Uri-Path', Path}, {'Uri-Query', Query} | Options],
+	OptionList = append_option({'Uri-Query', Query}, append_option({'Uri-Path', Path}, Options)),
 	start_endpoint(Pid, EpID, {Method, OptionList, convert_content(Content)}).
 
 -spec request_async(pid(), coap_method(), list()) -> {ok, reference()}.
@@ -80,14 +80,14 @@ request_async(Pid, Method, Uri, Content) ->
 -spec request_async(pid(), coap_method(), list(), payload(), list(tuple())) -> {ok, reference()}.
 request_async(Pid, Method, Uri, Content, Options) ->
 	{EpID, Path, Query} = resolve_uri(Uri),
-	OptionList = [{'Uri-Path', Path}, {'Uri-Query', Query} | Options],
+	OptionList = append_option({'Uri-Query', Query}, append_option({'Uri-Path', Path}, Options)),
 	ClientRef = make_ref(),
 	start_endpoint_async(Pid, EpID, {Method, OptionList, convert_content(Content)}, ClientRef), 
 	{ok, ClientRef}.
 
 -spec close(pid()) -> ok.
 close(Pid) ->
-	gen_server:cast(Pid, shutdown).
+	gen_server:call(Pid, shutdown).
 
 start_endpoint(Pid, EpID, Req) ->
 	call_endpoint(Pid, {start_endpoint, EpID, Req}).
@@ -109,6 +109,8 @@ handle_call({start_endpoint, EpID, {Method, OptionList, Content}}, From, State =
 	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
 	{ok, Ref} = request_block(EndpointPid, Method, OptionList, Content),
 	{noreply, State#state{request_refs = store_ref(Ref, #req{method=Method, option_list=OptionList, content=Content, from=From}, Refs)}};
+handle_call(shutdown, _From, State) ->
+	{stop, normal, ok, State};
 handle_call(_Request, _From, State) ->
 	{reply, ignored, State}.
 
@@ -116,8 +118,6 @@ handle_cast({start_endpoint, EpID, {Method, OptionList, Content}, ClientRef}, St
 	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
 	{ok, Ref} = request_block(EndpointPid, Method, OptionList, Content),
 	{noreply, State#state{request_refs = store_ref(Ref, #req{method=Method, option_list=OptionList, content=Content, client_ref=ClientRef}, Refs)}};
-handle_cast(shutdown, State) ->
-	{stop, normal, State};
 handle_cast(_Msg, State) ->
 	{noreply, State}.
 
@@ -177,7 +177,7 @@ handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options
 		                % more blocks follow, ask for more
 		                % no payload for requests with Block2 with NUM != 0
 		                {ok, Ref2} = coap_endpoint:send(EndpointPid,
-		                    coap_message_utils:request('CON', Method, <<>>, [{'Block2', {Num+1, false, Size}}|OptionList])),
+		                	coap_message_utils:request('CON', Method, <<>>, append_option({'Block2', {Num+1, false, Size}}, OptionList))),
 		                {noreply, State#state{request_refs = store_ref(Ref2, Req#req{fragment = <<Fragment/binary, Data/binary>>}, delete_ref(Ref, Refs))}};
 		            _Else ->
 		                % not segmented
@@ -198,6 +198,9 @@ handle_response(Ref, _EndpointPid, Message=#coap_message{code={error, Code}},
 	
 call_endpoint(Pid, Msg) ->
 	gen_server:call(Pid, Msg, ?EXCHANGE_LIFETIME).
+
+append_option({Option, Value}, Options) ->
+	lists:keystore(Option, 1, Options, {Option, Value}).
 
 find_ref(Ref, Refs) ->
 	case maps:find(Ref, Refs) of

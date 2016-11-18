@@ -47,7 +47,7 @@ start_link() ->
 %% client
 -spec close(pid()) -> ok.
 close(Pid) ->
-	gen_server:cast(Pid, shutdown).
+	gen_server:call(Pid, shutdown).
 
 %% server
 -spec start_link(pid(), inet:port_number()) -> {ok, pid()} | {error, term()}.
@@ -119,11 +119,11 @@ handle_call({get_endpoint, EpID}, _From, State=#state{endpoints=EndPoints, endpo
     end;
 handle_call(get_all_endpoints, _From, State=#state{endpoints=EndPoints}) ->
 	{reply, maps:values(EndPoints), State};
+handle_call(shutdown, _From, State) ->
+	{stop, normal, ok, State};
 handle_call(_Request, _From, State) ->
 	{reply, ignored, State}.
 
-handle_cast(shutdown, State) ->
-	{stop, normal, State};
 handle_cast(_Msg, State) ->
 	{noreply, State}.
 
