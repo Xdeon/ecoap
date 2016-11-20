@@ -1,7 +1,7 @@
 -module(coap_exchange).
 
--export([init/6, received/2, send/2, timeout/2, awaits_response/1, time_info/1]).
--export([idle/2, got_non/2, sent_non/2, got_rst/2, await_aack/2, pack_sent/2, await_pack/2, aack_sent/2]).
+-export([init/2, received/3, send/3, timeout/3, awaits_response/1, not_expired/1]).
+-export([idle/3, got_non/3, sent_non/3, got_rst/3, await_aack/3, pack_sent/3, await_pack/3, aack_sent/3]).
 
 -define(ACK_TIMEOUT, 2000).
 -define(ACK_RANDOM_FACTOR, 1000). % ACK_TIMEOUT*0.5
@@ -17,11 +17,11 @@
     timestamp = undefined :: non_neg_integer(),
     expire_time = undefined :: undefined | non_neg_integer(),
     stage = undefined :: atom(),
-    sock = undefined :: inet:socket(),
-    ep_id = undefined :: coap_endpoint_id(),
-    endpoint_pid = undefined :: pid(),
+    % sock = undefined :: inet:socket(),
+    % ep_id = undefined :: coap_endpoint_id(),
+    % endpoint_pid = undefined :: pid(),
     trid = undefined :: trid(),
-    handler_sup = undefined :: undefined | pid(),
+    % handler_sup = undefined :: undefined | pid(),
     receiver = undefined :: receiver(),
     msgbin = undefined :: undefined | binary(),
     timer = undefined :: undefined | reference(),
@@ -30,7 +30,7 @@
     }).
 
 -type exchange() :: #exchange{} | undefined.
--type coap_endpoint_id() :: ecoap_socket:coap_endpoint_id().
+% -type coap_endpoint_id() :: ecoap_socket:coap_endpoint_id().
 -type receiver() :: coap_endpoint:receiver().
 -type trid() :: coap_endpoint:trid().
 
@@ -39,28 +39,28 @@
 -include("coap_def.hrl").
 
 % -record(state, {phase, sock, cid, channel, tid, resp, receiver, msg, timer, retry_time, retry_count}).
--spec time_info(exchange()) -> {integer(), non_neg_integer()}.
-time_info(#exchange{timestamp=Timestamp, expire_time=ExpireTime}) ->
-    {Timestamp, ExpireTime}.
+-spec not_expired(exchange()) -> boolean().
+not_expired(#exchange{timestamp=Timestamp, expire_time=ExpireTime}) ->
+    erlang:convert_time_unit(erlang:monotonic_time() - Timestamp, native, milli_seconds) < ExpireTime.
 
--spec init(inet:socket(), coap_endpoint_id(), pid(), trid(), pid(), receiver()) -> exchange().
-init(Socket, EpID, EndpointPid, TrId, HdlSupPid, Receiver) ->
-    #exchange{timestamp=erlang:monotonic_time(), stage=idle, sock=Socket, ep_id=EpID, endpoint_pid=EndpointPid, trid=TrId, handler_sup=HdlSupPid, receiver=Receiver}.
+-spec init(trid(), receiver()) -> exchange().
+init(TrId, Receiver) ->
+    #exchange{timestamp=erlang:monotonic_time(), stage=idle, trid=TrId, receiver=Receiver}.
 % process incoming message
--spec received(binary(), exchange()) -> exchange().
-received(BinMessage, State=#exchange{stage=Stage}) ->
-    ?MODULE:Stage({in, BinMessage}, State).
+-spec received(binary(), map(), exchange()) -> exchange().
+received(BinMessage, TransArgs, State=#exchange{stage=Stage}) ->
+    ?MODULE:Stage({in, BinMessage}, TransArgs, State).
 % process outgoing message
--spec send(coap_message(), exchange()) -> exchange().
-send(Message, State=#exchange{stage=Stage}) ->
-    ?MODULE:Stage({out, Message}, State).
+-spec send(coap_message(), map(), exchange()) -> exchange().
+send(Message, TransArgs, State=#exchange{stage=Stage}) ->
+    ?MODULE:Stage({out, Message}, TransArgs, State).
 % when the transport expires remove terminate the state
 % timeout(transport, _State) ->
 %     undefined;
 % process timeout
--spec timeout(atom(), exchange()) -> exchange().
-timeout(Event, State=#exchange{stage=Stage}) ->
-    ?MODULE:Stage({timeout, Event}, State).
+-spec timeout(atom(), map(), exchange()) -> exchange().
+timeout(Event, TransArgs, State=#exchange{stage=Stage}) ->
+    ?MODULE:Stage({timeout, Event}, TransArgs, State).
 % check if we can send a response
 -spec awaits_response(exchange()) -> boolean().
 awaits_response(#exchange{stage=await_aack}) ->
@@ -69,22 +69,22 @@ awaits_response(_State) ->
     false.
 
 % ->NON
--spec idle({in | out, binary()}, exchange()) -> exchange().
-idle(Msg={in, <<1:2, 1:2, _:12, _Tail/bytes>>}, State=#exchange{}) ->
+-spec idle({in | out, binary()}, map(), exchange()) -> exchange().
+idle(Msg={in, <<1:2, 1:2, _:12, _Tail/bytes>>}, TransArgs, State=#exchange{}) ->
     % timeout_after(?NON_LIFETIME, Channel, TrId, transport),
-    in_non(Msg, State#exchange{expire_time=?NON_LIFETIME});
+    in_non(Msg, TransArgs, State#exchange{expire_time=?NON_LIFETIME});
 % ->CON
-idle(Msg={in, <<1:2, 0:2, _:12, _Tail/bytes>>}, State=#exchange{}) ->
+idle(Msg={in, <<1:2, 0:2, _:12, _Tail/bytes>>}, TransArgs, State=#exchange{}) ->
     % timeout_after(?EXCHANGE_LIFETIME, Channel, TrId, transport),
-    in_con(Msg, State#exchange{expire_time=?EXCHANGE_LIFETIME});
+    in_con(Msg, TransArgs, State#exchange{expire_time=?EXCHANGE_LIFETIME});
 % NON->
-idle(Msg={out, #coap_message{type='NON'}}, State=#exchange{}) ->
+idle(Msg={out, #coap_message{type='NON'}}, TransArgs, State=#exchange{}) ->
     % timeout_after(?NON_LIFETIME, Channel, TrId, transport),
-    out_non(Msg, State#exchange{expire_time=?NON_LIFETIME});
+    out_non(Msg, TransArgs, State#exchange{expire_time=?NON_LIFETIME});
 % CON->
-idle(Msg={out, #coap_message{type='CON'}}, State=#exchange{}) ->
+idle(Msg={out, #coap_message{type='CON'}}, TransArgs, State=#exchange{}) ->
     % timeout_after(?EXCHANGE_LIFETIME, Channel, TrId, transport),
-    out_con(Msg, State#exchange{expire_time=?EXCHANGE_LIFETIME}).
+    out_con(Msg, TransArgs, State#exchange{expire_time=?EXCHANGE_LIFETIME}).
 
 
 %% For Non-confirmable message %%
@@ -99,13 +99,13 @@ idle(Msg={out, #coap_message{type='CON'}}, State=#exchange{}) ->
 % New Note: shoule we remove exchange state after receiving empty ACK/RST?
 
 % --- incoming NON
--spec in_non({in, binary()}, exchange()) -> exchange().
-in_non({in, BinMessage}, State) ->
+-spec in_non({in, binary()}, map(), exchange()) -> exchange().
+in_non({in, BinMessage}, TransArgs, State) ->
     try coap_message:decode(BinMessage) of
         #coap_message{code = Method} = Message when is_atom(Method) ->
-            handle_request(Message, State);
+            handle_request(Message, TransArgs, State);
         #coap_message{} = Message ->
-            handle_response(Message, State)
+            handle_response(Message, TransArgs, State)
     catch throw:{error, _Error} -> 
         % shall we sent reset back?
         ok 
@@ -113,14 +113,14 @@ in_non({in, BinMessage}, State) ->
     next_state(got_non, State).
     % undefined.
 
--spec got_non({in, binary()}, exchange()) -> exchange().
-got_non({in, _Message}, State) ->
+-spec got_non({in, binary()}, map(), exchange()) -> exchange().
+got_non({in, _Message}, _TransArgs, State) ->
     % ignore request retransmission
     next_state(got_non, State).
 
 % --- outgoing NON
--spec out_non({out, coap_message()}, exchange()) -> exchange().
-out_non({out, Message}, State=#exchange{sock=Socket, ep_id={PeerIP, PeerPortNo}}) ->
+-spec out_non({out, coap_message()}, map(), exchange()) -> exchange().
+out_non({out, Message}, #{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, State) ->
     io:fwrite("~p send outgoing non msg ~p~n", [self(), Message]),
     BinMessage = coap_message:encode(Message),
     ok = gen_udp:send(Socket, PeerIP, PeerPortNo, BinMessage),
@@ -128,11 +128,11 @@ out_non({out, Message}, State=#exchange{sock=Socket, ep_id={PeerIP, PeerPortNo}}
     % undefined.
 
 % we may get reset
--spec sent_non({in, binary()}, exchange()) -> exchange().
-sent_non({in, BinMessage}, State)->
+-spec sent_non({in, binary()}, map(), exchange()) -> exchange().
+sent_non({in, BinMessage}, TransArgs, State)->
     try coap_message:decode(BinMessage) of
         #coap_message{type='RST'} = Message ->
-            handle_error(Message, 'RST', State);
+            handle_error(Message, 'RST', TransArgs, State);
         % in case we get wrong reply, ignore it 
         #coap_message{} -> ok
     catch throw:{error, _Error} -> 
@@ -140,72 +140,71 @@ sent_non({in, BinMessage}, State)->
     end,
     next_state(got_rst, State).
 
--spec got_rst({in, binary()}, exchange()) -> exchange().
-got_rst({in, _BinMessage}, State)->
+-spec got_rst({in, binary()}, map(), exchange()) -> exchange().
+got_rst({in, _BinMessage}, _TransArgs, State)->
     next_state(got_rst, State).
 
 % --- incoming CON->ACK|RST
--spec in_con({in, binary()}, exchange()) -> exchange().
-in_con({in, BinMessage}, State) ->
+-spec in_con({in, binary()}, map(), exchange()) -> exchange().
+in_con({in, BinMessage}, TransArgs, State) ->
     try coap_message:decode(BinMessage) of
         #coap_message{code=undefined, id=MsgId} ->
             % provoked reset
-            go_pack_sent(#coap_message{type='RST', id=MsgId}, State);
+            go_pack_sent(#coap_message{type='RST', id=MsgId}, TransArgs, State);
         #coap_message{code=Method} = Message when is_atom(Method) ->
-            handle_request(Message, State),
-            go_await_aack(Message, State);
+            handle_request(Message, TransArgs, State),
+            go_await_aack(Message, TransArgs, State);
         #coap_message{} = Message ->
-            handle_response(Message, State),
-            go_await_aack(Message, State)
+            handle_response(Message, TransArgs, State),
+            go_await_aack(Message, TransArgs, State)
     catch throw:{error, Error} ->
         go_pack_sent(#coap_message{type='ACK', code={error, 'BadRequest'},
                                        id=coap_message_utils:msg_id(BinMessage),
-                                       payload=list_to_binary(Error)}, State)
+                                       payload=list_to_binary(Error)}, TransArgs, State)
     end.
 
--spec go_await_aack(coap_message(), exchange()) -> exchange().
-go_await_aack(Message, State) ->
+-spec go_await_aack(coap_message(), map(), exchange()) -> exchange().
+go_await_aack(Message, TransArgs, State) ->
     % we may need to ack the message
     EmptyACK = coap_message_utils:ack(Message),
     % BinAck = coap_message:encode(coap_message:response(Message)),
     BinAck = coap_message:encode(EmptyACK),
-    next_state(await_aack, State#exchange{msgbin=BinAck}, ?PROCESSING_DELAY).
+    next_state(await_aack, TransArgs, State#exchange{msgbin=BinAck}, ?PROCESSING_DELAY).
 
--spec await_aack({in, binary()} | {timeout, await_aack} | {out, coap_message()}, exchange()) -> exchange().
-await_aack({in, _BinMessage}, State) ->
+-spec await_aack({in, binary()} | {timeout, await_aack} | {out, coap_message()}, map(), exchange()) -> exchange().
+await_aack({in, _BinMessage}, _TransArgs, State) ->
     % ignore request retransmission
     next_state(await_aack, State);
-await_aack({timeout, await_aack}, State=#exchange{sock=Socket, ep_id={PeerIP, PeerPortNo}, msgbin=BinAck}) ->
+await_aack({timeout, await_aack}, #{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, State=#exchange{msgbin=BinAck}) ->
     io:fwrite("~p <- ack [application didn't respond]~n", [self()]),
     % Sock ! {datagram, ChId, BinAck},
     ok = gen_udp:send(Socket, PeerIP, PeerPortNo, BinAck),
-    next_state(pack_sent, State);
+    next_state(pack_sent,State);
 
-await_aack({out, Ack}, State) ->
+await_aack({out, Ack}, TransArgs, State) ->
     % set correct type for a piggybacked response
     Ack2 = case Ack of
         #coap_message{type='CON'} -> Ack#coap_message{type='ACK'};
         Else -> Else
     end,
-    go_pack_sent(Ack2, State).
+    go_pack_sent(Ack2, TransArgs, State).
 
--spec go_pack_sent(coap_message(), exchange()) -> exchange().
-go_pack_sent(Ack, State=#exchange{sock=Socket, ep_id=EpID}) ->
+-spec go_pack_sent(coap_message(), map(), exchange()) -> exchange().
+go_pack_sent(Ack, #{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, State) ->
 	io:fwrite("~p send ack msg ~p~n", [self(), Ack]),
     BinAck = coap_message:encode(Ack),
     % Sock ! {datagram, ChId, BinAck},
-    {PeerIP, PeerPortNo} = EpID,
     ok = gen_udp:send(Socket, PeerIP, PeerPortNo, BinAck),
     next_state(pack_sent, State#exchange{msgbin=BinAck}).
     % undefined.
 
--spec pack_sent({in, binary()} | {timeout, await_aack}, exchange()) -> exchange().
-pack_sent({in, _BinMessage}, State=#exchange{sock=Socket, ep_id={PeerIP, PeerPortNo}, msgbin=BinAck}) ->
+-spec pack_sent({in, binary()} | {timeout, await_aack}, map(), exchange()) -> exchange().
+pack_sent({in, _BinMessage}, #{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, State=#exchange{msgbin=BinAck}) ->
     % retransmit the ack
     % Sock ! {datagram, ChId, BinAck},
     ok = gen_udp:send(Socket, PeerIP, PeerPortNo, BinAck),
     next_state(pack_sent, State);
-pack_sent({timeout, await_aack}, State) ->
+pack_sent({timeout, await_aack}, _TransArgs, State) ->
 	% in case the timeout msg was sent before we cancel the timer
 	% ignore the msg
 	next_state(pack_sent, State).
@@ -238,8 +237,8 @@ pack_sent({timeout, await_aack}, State) ->
 % Non-confirmable request.
 
 % --- outgoing CON->ACK|RST
--spec out_con({out, coap_message()}, exchange()) -> exchange().
-out_con({out, Message}, State=#exchange{sock=Socket, ep_id={PeerIP, PeerPortNo}}) ->
+-spec out_con({out, coap_message()}, map(), exchange()) -> exchange().
+out_con({out, Message}, TransArgs=#{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, State) ->
     io:fwrite("~p send outgoing con msg ~p~n", [self(), Message]),
     BinMessage = coap_message:encode(Message),
     % Sock ! {datagram, ChId, BinMessage},
@@ -247,48 +246,48 @@ out_con({out, Message}, State=#exchange{sock=Socket, ep_id={PeerIP, PeerPortNo}}
     %_ = random:seed(os:timestamp()),
     _ = rand:seed(exsplus),
     Timeout = ?ACK_TIMEOUT+rand:uniform(?ACK_RANDOM_FACTOR),
-    next_state(await_pack, State#exchange{msgbin=BinMessage, retry_time=Timeout, retry_count=0}, Timeout).
+    next_state(await_pack, TransArgs, State#exchange{msgbin=BinMessage, retry_time=Timeout, retry_count=0}, Timeout).
 
 % peer ack
--spec await_pack({in, binary()} | {timeout, await_pack}, exchange()) -> exchange().
-await_pack({in, BinAck}, State) ->
+-spec await_pack({in, binary()} | {timeout, await_pack}, map(), exchange()) -> exchange().
+await_pack({in, BinAck}, TransArgs, State) ->
     try coap_message:decode(BinAck) of
     	% this is an empty ack for separate response
         #coap_message{type='ACK', code=undefined} = Ack ->
-            handle_ack(Ack, State);
+            handle_ack(Ack, TransArgs, State);
         #coap_message{type='RST'} = Ack ->
-            handle_error(Ack, 'RST', State);
+            handle_error(Ack, 'RST', TransArgs, State);
         #coap_message{} = Ack ->
-        	handle_response(Ack, State)
+        	handle_response(Ack, TransArgs, State)
     catch throw:{error, _Error} -> 
         % shall we inform the receiver?
         ok 
     end,  
     next_state(aack_sent, State);
-await_pack({timeout, await_pack}, State=#exchange{sock=Socket, ep_id={PeerIP, PeerPortNo}, msgbin=BinMessage, retry_time=Timeout, retry_count=Count}) when Count < ?MAX_RETRANSMIT ->
+await_pack({timeout, await_pack}, TransArgs=#{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, State=#exchange{msgbin=BinMessage, retry_time=Timeout, retry_count=Count}) when Count < ?MAX_RETRANSMIT ->
     % BinMessage = coap_message:encode(Message),
     % Sock ! {datagram, ChId, BinMessage},
     io:fwrite("resend msg for ~p time~n", [Count]),
     % erlang:display("I am sending on remote node~n"),
     ok = gen_udp:send(Socket, PeerIP, PeerPortNo, BinMessage),
     Timeout2 = Timeout*2,
-    next_state(await_pack, State#exchange{retry_time=Timeout2, retry_count=Count+1}, Timeout2);
-await_pack({timeout, await_pack}, State=#exchange{trid={out, _MsgId}, msgbin=BinMessage}) ->
-    handle_error(coap_message:decode(BinMessage), timeout, State),
+    next_state(await_pack, TransArgs, State#exchange{retry_time=Timeout2, retry_count=Count+1}, Timeout2);
+await_pack({timeout, await_pack}, TransArgs, State=#exchange{trid={out, _MsgId}, msgbin=BinMessage}) ->
+    handle_error(coap_message:decode(BinMessage), timeout, TransArgs, State),
     next_state(aack_sent, State).
 
--spec aack_sent({in, binary()} | {timeout, await_pack}, exchange()) -> exchange().
-aack_sent({in, _Ack}, State) ->
+-spec aack_sent({in, binary()} | {timeout, await_pack}, map(), exchange()) -> exchange().
+aack_sent({in, _Ack}, _TransArgs, State) ->
     % ignore ack retransmission
     next_state(aack_sent, State);
-aack_sent({timeout, await_pack}, State) ->
+aack_sent({timeout, await_pack}, _TransArgs, State) ->
 	% in case the timeout msg was sent before we cancel the timer
 	% ignore the msg
 	next_state(aack_sent, State).
 
 % utility functions
 
-handle_request(Message=#coap_message{code=Method, options=Options}, #exchange{ep_id=EpID, endpoint_pid=EndpointPid, handler_sup=HdlSupPid, receiver=undefined}) ->
+handle_request(Message=#coap_message{code=Method, options=Options}, #{ep_id:=EpID, handler_sup:=HdlSupPid, endpoint_pid:=EndpointPid}, #exchange{receiver=undefined}) ->
     io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
     Uri = coap_message_utils:get_option('Uri-Path', Options, []),
     Query = coap_message_utils:get_option('Uri-Query', Options, []),
@@ -304,22 +303,22 @@ handle_request(Message=#coap_message{code=Method, options=Options}, #exchange{ep
             ok
     end;
 
-handle_request(Message, #exchange{ep_id=EpID, endpoint_pid=EndpointPid, receiver={Sender, Ref}}) ->
+handle_request(Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={Sender, Ref}}) ->
     io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
     Sender ! {coap_request, EpID, EndpointPid, Ref, Message},
     ok.
 
-handle_response(Message, #exchange{ep_id = EpID, endpoint_pid = EndpointPid, receiver = {Sender, Ref}}) ->
+handle_response(Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={Sender, Ref}}) ->
     io:fwrite("handle_response called from ~p with ~p~n", [self(), Message]),
 	Sender ! {coap_response, EpID, EndpointPid, Ref, Message},
 	request_complete(EndpointPid, Message).
 
-handle_error(Message, Error, #exchange{ep_id = EpID, endpoint_pid = EndpointPid, receiver = {Sender, Ref}}) ->
+handle_error(Message, Error, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={Sender, Ref}}) ->
 	io:fwrite("handle_error called from ~p with ~p~n", [self(), Message]),
 	Sender ! {coap_error, EpID, EndpointPid, Ref, Error},
 	request_complete(EndpointPid, Message).
 
-handle_ack(_Message, #exchange{ep_id = EpID, endpoint_pid = EndpointPid, receiver = {Sender, Ref}}) ->
+handle_ack(_Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={Sender, Ref}}) ->
 	io:fwrite("handle_ack called from ~p with ~p~n", [self(), _Message]),
 	Sender ! {coap_ack, EpID, EndpointPid, Ref},
 	ok.
@@ -341,11 +340,11 @@ timeout_after(Time, EndpointPid, TrId, Event) ->
     erlang:send_after(Time, EndpointPid, {timeout, TrId, Event}).
 
 % start the timer
-next_state(Stage, State=#exchange{endpoint_pid=EndpointPid, trid=TrId, timer=undefined}, Timeout) ->
+next_state(Stage, #{endpoint_pid:=EndpointPid}, State=#exchange{trid=TrId, timer=undefined}, Timeout) ->
     Timer = timeout_after(Timeout, EndpointPid, TrId, Stage),
     State#exchange{stage=Stage, timer=Timer};
 % restart the timer
-next_state(Stage, State=#exchange{endpoint_pid=EndpointPid, trid=TrId, timer=Timer1}, Timeout) ->
+next_state(Stage, #{endpoint_pid:=EndpointPid}, State=#exchange{trid=TrId, timer=Timer1}, Timeout) ->
     _ = erlang:cancel_timer(Timer1),
     Timer2 = timeout_after(Timeout, EndpointPid, TrId, Stage),
     State#exchange{stage=Stage, timer=Timer2}.

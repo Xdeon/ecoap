@@ -26,9 +26,7 @@
     [coap_handler_sup]}).
 
 -record(state, {
-	sock = undefined :: inet:socket(),
-	ep_id = undefined :: coap_endpoint_id(),
-    handler_sup = undefined :: undefined | pid(),
+    trans_args = undefined :: trans_args(),
 	tokens = undefined :: #{binary() => receiver()},
 	trans = undefined :: #{trid() => coap_exchange:exchange()},
 	nextmid = undefined :: non_neg_integer(),
@@ -37,10 +35,11 @@
     timer = undefined :: reference()
 }).
 
--opaque state() :: #state{}.
+-type trans_args() :: #{sock => inet:socket(), ep_id => coap_endpoint_id(), endpoint_pid => pid(), handler_sup => undefined | pid()}.
 -type coap_endpoint_id() :: ecoap_socket:coap_endpoint_id().
 -type trid() :: {in | out, non_neg_integer()}.
 -type receiver() :: undefined | {pid(), reference()}.
+-opaque state() :: #state{}.
 
 -export_type([state/0]).
 -export_type([trid/0]).
@@ -91,16 +90,17 @@ send_response(EndpointPid, Ref, Message) ->
 
 init([Socket, EpID]) ->
     TRef = erlang:start_timer(?SCAN_INTERVAL*1000, self(), scan),
-    {ok, #state{sock=Socket, ep_id=EpID, tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef}}.
+    TransArgs = #{sock=>Socket, ep_id=>EpID, endpoint_pid=>self()},
+    {ok, #state{tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs}}.
 
 init(SupPid, Socket, EpID) ->
     ok = proc_lib:init_ack({ok, self()}),
     {ok, Pid} = supervisor:start_child(SupPid, ?HDLSUP_SPEC),
     link(Pid),
-    % {ok, TRef} = timer:send_interval(timer:seconds(?SCAN_INTERVAL), self(), {timeout}),
-    % timer is slow, use erlang:send_after or erlang:start_timer
     TRef = erlang:start_timer(?SCAN_INTERVAL*1000, self(), scan),
-    gen_server:enter_loop(?MODULE, [], #state{sock=Socket, ep_id=EpID, handler_sup=Pid, tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, handler_refs=maps:new(), timer=TRef}).
+    TransArgs = #{sock=>Socket, ep_id=>EpID, endpoint_pid=>self(), handler_sup=>Pid},
+    gen_server:enter_loop(?MODULE, [], 
+        #state{tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs, handler_refs=maps:new()}).
 
 handle_call(_Request, _From, State) ->
 	{reply, ignored, State}.
@@ -135,17 +135,18 @@ handle_cast(_Msg, State) ->
 %%
 %%
 % incoming CON(0) or NON(1) request
-handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, _TKL:4, 0:3, _CodeDetail:5, MsgId:16, _/bytes>>}, State = #state{}) ->
+handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, _TKL:4, 0:3, _CodeDetail:5, MsgId:16, _/bytes>>}, 
+    State=#state{trans_args=TransArgs}) ->
 	TrId = {in, MsgId},
     % debug
     io:format("incoming CON/NON request, TrId:~p~n", [TrId]),
     io:format("MsgBin: ~p~n", [BinMessage]),
     % end of debug
     update_state(State, TrId,
-        coap_exchange:received(BinMessage, create_transport(TrId, undefined, State)));
+        coap_exchange:received(BinMessage, TransArgs, create_transport(TrId, undefined, State)));
 % incoming CON(0) or NON(1) response
 handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgId:16, Token:TKL/bytes, _/bytes>>},
-        State = #state{sock = Socket, trans = Trans, ep_id = {PeerIP, PeerPortNo}, tokens = Tokens}) ->
+        State=#state{trans=Trans, tokens=Tokens, trans_args=TransArgs=#{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}}) ->
 	TrId = {in, MsgId},
     % debug
 	io:format("incoming CON/NON response, TrId:~p~n", [TrId]),
@@ -154,13 +155,13 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgI
     case maps:find(TrId, Trans) of
         % this is a duplicate msg, i.e. a retransmitted CON response
         {ok, TrState} ->
-            update_state(State, TrId, coap_exchange:received(BinMessage, TrState));
+            update_state(State, TrId, coap_exchange:received(BinMessage, TransArgs, TrState));
         % this is a new msg
         error ->
              case maps:find(Token, Tokens) of
                 {ok, Receiver} ->
                     update_state(State, TrId,
-                        coap_exchange:received(BinMessage, init_transport(TrId, Receiver, State)));
+                        coap_exchange:received(BinMessage, TransArgs, init_transport(TrId, Receiver)));
                 error ->
                     % token was not recognized
                     BinReset = coap_message:encode(#coap_message{type='RST', id=MsgId}),
@@ -170,7 +171,7 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgI
     end;
 % incoming ACK(2) or RST(3) to a request or response
 handle_info({datagram, BinMessage = <<?VERSION:2, _:2, _TKL:4, _Code:8, MsgId:16, _/bytes>>},
-        State = #state{trans = Trans}) ->
+        State=#state{trans=Trans, trans_args=TransArgs}) ->
     TrId = {out, MsgId},
     % debug
     io:format("incoming ACK/RST to a req/res, TrId:~p~n", [TrId]),
@@ -183,31 +184,30 @@ handle_info({datagram, BinMessage = <<?VERSION:2, _:2, _TKL:4, _Code:8, MsgId:16
                 io:format("No matching state for TrId: ~p~n", [TrId]),
                 %% end
                 undefined; % ignore unexpected responses
-            {ok, TrState} -> coap_exchange:received(BinMessage, TrState)
+            {ok, TrState} -> coap_exchange:received(BinMessage, TransArgs, TrState)
 
         end);
 % silently ignore other versions
 handle_info({datagram, <<Ver:2, _/bytes>>}, State) when Ver /= ?VERSION ->
     % io:format("unknown CoAP version~n"),
     {noreply, State};
-handle_info({timeout, TRef, scan}, State=#state{ep_id = _EpID, timer = TRef, trans = Trans}) ->
+handle_info({timeout, TRef, scan}, State=#state{timer=TRef, trans=Trans}) ->
     NewTrans = maps:filter(fun(_TrId, TrState) -> 
-                                {Timestamp, ExpireTime} = coap_exchange:time_info(TrState),
-                                erlang:convert_time_unit(erlang:monotonic_time() - Timestamp, native, milli_seconds) < ExpireTime
+                                coap_exchange:not_expired(TrState)
                             end,
                             Trans),
     % Because timer will be automatically cancelled if the destination pid exits or is not alive, we can safely start new timer here.
     % io:format("scanning~n"),
     NewTRef = erlang:start_timer(?SCAN_INTERVAL*1000, self(), scan),
     purge_state(State#state{timer = NewTRef, trans = NewTrans});
-handle_info({timeout, TrId, Event}, State=#state{trans=Trans}) ->
+handle_info({timeout, TrId, Event}, State=#state{trans=Trans, trans_args=TransArgs}) ->
     %% code added by wilbur
     % io:format("timeout, TrId:~p Event:~p~n", [TrId, Event]),
     %% end
     update_state(State, TrId,
         case maps:find(TrId, Trans) of
             error -> undefined; % ignore unexpected responses
-            {ok, TrState} -> coap_exchange:timeout(Event, TrState)
+            {ok, TrState} -> coap_exchange:timeout(Event, TransArgs, TrState)
         end);
 handle_info({request_complete, Token}, State=#state{tokens=Tokens}) ->
     io:format("request_complete~n"),
@@ -249,11 +249,11 @@ make_new_request(Message, Receiver, State=#state{tokens=Tokens}) ->
 make_new_message(Message, Receiver, State=#state{nextmid=MsgId}) ->
     make_message({out, MsgId}, Message#coap_message{id=MsgId}, Receiver, State#state{nextmid=next_mid(MsgId)}).
 
-make_message(TrId, Message, Receiver, State) ->
+make_message(TrId, Message, Receiver, State=#state{trans_args=TransArgs}) ->
     update_state(State, TrId,
-        coap_exchange:send(Message, create_transport(TrId, Receiver, State))).
+        coap_exchange:send(Message, TransArgs, create_transport(TrId, Receiver, State))).
 
-make_new_response(Message=#coap_message{id=MsgId}, Receiver, State=#state{trans=Trans}) ->
+make_new_response(Message=#coap_message{id=MsgId}, Receiver, State=#state{trans=Trans, trans_args=TransArgs}) ->
     io:format("The response: ~p~n", [Message]),
     case maps:find({in, MsgId}, Trans) of
         {ok, TrState} ->
@@ -265,7 +265,7 @@ make_new_response(Message=#coap_message{id=MsgId}, Receiver, State=#state{trans=
                 %% Note by wilbur: we are about to send ACK
                 %% By calling coap_transport:send, we make the state change to pack_sent
                     update_state(State, {in, MsgId},
-                        coap_exchange:send(Message, TrState));
+                        coap_exchange:send(Message, TransArgs, TrState));
                 false ->
                 %% Note by wilbur: otherwise it seems we are about to send a separate response?
                 %% This may be caused by exceed PROCESSING_DELAY when generating the response?
@@ -289,16 +289,16 @@ next_mid(MsgId) ->
         true -> 1 % or 0?
     end.
 
-create_transport(TrId, Receiver, State=#state{trans=Trans}) ->
+create_transport(TrId, Receiver, #state{trans=Trans}) ->
     case maps:find(TrId, Trans) of
         {ok, TrState} -> TrState;
-        error -> init_transport(TrId, Receiver, State)
+        error -> init_transport(TrId, Receiver)
     end.
 
-init_transport(TrId, undefined, #state{sock=Socket, ep_id=EpID, handler_sup=HdlSupPid}) ->
-    coap_exchange:init(Socket, EpID, self(), TrId, HdlSupPid, undefined);
-init_transport(TrId, Receiver, #state{sock=Socket, ep_id=EpID}) ->
-    coap_exchange:init(Socket, EpID, self(), TrId, undefined, Receiver).
+init_transport(TrId, undefined) ->
+    coap_exchange:init(TrId, undefined);
+init_transport(TrId, Receiver) ->
+    coap_exchange:init(TrId, Receiver).
 
 update_state(State=#state{trans=Trans}, TrId, undefined) ->
     Trans2 = maps:remove(TrId, Trans),
