@@ -38,7 +38,7 @@
 -type trans_args() :: #{sock => inet:socket(), ep_id => coap_endpoint_id(), endpoint_pid => pid(), handler_sup => pid()}.
 -type coap_endpoint_id() :: ecoap_socket:coap_endpoint_id().
 -type trid() :: {in | out, non_neg_integer()}.
--type receiver() :: undefined | {pid(), reference()}.
+-type receiver() :: {pid(), reference()}.
 -opaque state() :: #state{}.
 
 -export_type([state/0]).
@@ -195,7 +195,7 @@ handle_info({datagram, <<Ver:2, _/bytes>>}, State) when Ver /= ?VERSION ->
 handle_info({timeout, TRef, scan}, State=#state{timer=TRef, trans=Trans}) ->
     NewTrans = maps:filter(fun(_TrId, TrState) -> coap_exchange:not_expired(TrState) end, Trans),
     % Because timer will be automatically cancelled if the destination pid exits or is not alive, we can safely start new timer here.
-    io:format("scanning~n"),
+    % io:format("scanning~n"),
     NewTRef = erlang:start_timer(?SCAN_INTERVAL*1000, self(), scan),
     purge_state(State#state{timer = NewTRef, trans = NewTrans});
 handle_info({timeout, TrId, Event}, State=#state{trans=Trans, trans_args=TransArgs}) ->

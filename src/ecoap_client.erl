@@ -35,8 +35,8 @@
 
 -type from() :: {pid(), term()}.
 -type req() :: #req{}.
--type response() :: {ok, atom(), coap_content()} | {error, atom()} | {error, atom(), coap_content()} | {separate, reference()}.
--type payload() :: coap_message_utils:payload().
+-type request_content() :: coap_content()|binary()|list().
+-type response() :: {ok, atom(), coap_content()}|{error, atom()}|{error, atom(), coap_content()}|{separate, reference()}.
 -opaque state() :: #state{}.
 -export_type([state/0]).
 
@@ -61,11 +61,11 @@ ping(Pid, Uri) ->
 request(Pid, Method, Uri) ->
 	request(Pid, Method, Uri, #coap_content{}, []).
 
--spec request(pid(), coap_method(), list(), payload()) -> response().
+-spec request(pid(), coap_method(), list(), request_content()) -> response().
 request(Pid, Method, Uri, Content) -> 
 	request(Pid, Method, Uri, Content, []).
 
--spec request(pid(), coap_method(), list(), payload(), list(tuple())) -> response().
+-spec request(pid(), coap_method(), list(), request_content(), [tuple()]) -> response().
 request(Pid, Method, Uri, Content, Options) ->
 	{EpID, Path, Query} = resolve_uri(Uri),
 	OptionList = append_option({'Uri-Query', Query}, append_option({'Uri-Path', Path}, Options)),
@@ -75,11 +75,11 @@ request(Pid, Method, Uri, Content, Options) ->
 request_async(Pid, Method, Uri) ->
 	request_async(Pid, Method, Uri, #coap_content{}, []).
 
--spec request_async(pid(), coap_method(), list(), payload()) -> {ok, reference()}.
+-spec request_async(pid(), coap_method(), list(), request_content()) -> {ok, reference()}.
 request_async(Pid, Method, Uri, Content) -> 
 	request_async(Pid, Method, Uri, Content, []).
 
--spec request_async(pid(), coap_method(), list(), payload(), list(tuple())) -> {ok, reference()}.
+-spec request_async(pid(), coap_method(), list(), request_content(), [tuple()]) -> {ok, reference()}.
 request_async(Pid, Method, Uri, Content, Options) ->
 	{EpID, Path, Query} = resolve_uri(Uri),
 	OptionList = append_option({'Uri-Query', Query}, append_option({'Uri-Path', Path}, Options)),
@@ -262,7 +262,8 @@ return_response({error, Code}, Message) ->
     {error, Code, coap_message_utils:get_content(Message)}.
 
 convert_content(Content = #coap_content{}) -> Content;
-convert_content(Content) when is_binary(Content); is_list(Content) -> #coap_content{payload=Content}.
+convert_content(Content) when is_binary(Content) -> #coap_content{payload=Content};
+convert_content(Content) when is_list(Content) -> #coap_content{payload=list_to_binary(Content)}.
 
 resolve_uri(Uri) ->
     {ok, {_Scheme, _UserInfo, Host, PortNo, Path, Query}} =

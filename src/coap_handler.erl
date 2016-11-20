@@ -19,7 +19,7 @@
 	uri = undefined :: list(binary()),
 	prefix = undefined :: list(binary()), 
 	suffix = undefined :: list(binary()),
-	query = undefined :: undefined | list(binary()),
+	query = undefined :: list(binary()),
 	module = undefined :: module(), 
 	args = undefined :: any(), 
 	insegs = undefined :: orddict:orddict(), 

@@ -1,5 +1,4 @@
 -define(DEFAULT_MAX_AGE, 60).
--define(MAX_BLOCK_SIZE, 1024).
 
 -record(coap_message, {
 	type = undefined :: coap_type(), 
@@ -15,7 +14,7 @@
 -record(coap_content, {
 	etag = undefined :: undefined | binary(),
 	max_age = ?DEFAULT_MAX_AGE :: non_neg_integer(),
-	format = undefined :: undefined | binary(),
+	format = undefined :: undefined | binary() | non_neg_integer(),
 	payload = <<>> :: binary()
 }).
 

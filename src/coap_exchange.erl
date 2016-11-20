@@ -19,14 +19,14 @@
     stage = undefined :: atom(),
     trid = undefined :: trid(),
     receiver = undefined :: receiver(),
-    msgbin = undefined :: undefined | binary(),
+    msgbin = <<>> :: binary(),
     timer = undefined :: undefined | reference(),
     retry_time = undefined :: undefined | non_neg_integer(),
     retry_count = undefined :: undefined | non_neg_integer()
     }).
 
--type exchange() :: #exchange{} | undefined.
--type receiver() :: coap_endpoint:receiver().
+-type exchange() :: undefined | #exchange{}.
+-type receiver() :: undefined | coap_endpoint:receiver().
 -type trid() :: coap_endpoint:trid().
 -type trans_args() :: coap_endpoint:trans_args().
 
