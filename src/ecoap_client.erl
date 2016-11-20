@@ -262,8 +262,7 @@ return_response({error, Code}, Message) ->
     {error, Code, coap_message_utils:get_content(Message)}.
 
 convert_content(Content = #coap_content{}) -> Content;
-convert_content(Content) when is_binary(Content) -> #coap_content{payload=Content};
-convert_content(Content) when is_list(Content) -> #coap_content{payload=list_to_binary(Content)}.
+convert_content(Content) when is_binary(Content); is_list(Content) -> #coap_content{payload=Content}.
 
 resolve_uri(Uri) ->
     {ok, {_Scheme, _UserInfo, Host, PortNo, Path, Query}} =

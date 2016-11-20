@@ -70,19 +70,19 @@ awaits_response(_State) ->
 
 % ->NON
 -spec idle({in | out, binary()}, exchange()) -> exchange().
-idle(Msg={in, <<1:2, 1:2, _:12, _Tail/bytes>>}, State=#exchange{endpoint_pid=_EndpointPid, trid=_TrId}) ->
+idle(Msg={in, <<1:2, 1:2, _:12, _Tail/bytes>>}, State=#exchange{}) ->
     % timeout_after(?NON_LIFETIME, Channel, TrId, transport),
     in_non(Msg, State#exchange{expire_time=?NON_LIFETIME});
 % ->CON
-idle(Msg={in, <<1:2, 0:2, _:12, _Tail/bytes>>}, State=#exchange{endpoint_pid=_EndpointPid, trid=_TrId}) ->
+idle(Msg={in, <<1:2, 0:2, _:12, _Tail/bytes>>}, State=#exchange{}) ->
     % timeout_after(?EXCHANGE_LIFETIME, Channel, TrId, transport),
     in_con(Msg, State#exchange{expire_time=?EXCHANGE_LIFETIME});
 % NON->
-idle(Msg={out, #coap_message{type='NON'}}, State=#exchange{endpoint_pid=_EndpointPid, trid=_TrId}) ->
+idle(Msg={out, #coap_message{type='NON'}}, State=#exchange{}) ->
     % timeout_after(?NON_LIFETIME, Channel, TrId, transport),
     out_non(Msg, State#exchange{expire_time=?NON_LIFETIME});
 % CON->
-idle(Msg={out, #coap_message{type='CON'}}, State=#exchange{endpoint_pid=_EndpointPid, trid=_TrId}) ->
+idle(Msg={out, #coap_message{type='CON'}}, State=#exchange{}) ->
     % timeout_after(?EXCHANGE_LIFETIME, Channel, TrId, transport),
     out_con(Msg, State#exchange{expire_time=?EXCHANGE_LIFETIME}).
 
