@@ -15,7 +15,7 @@
 
 -define(VERSION, 1).
 -define(MAX_MESSAGE_ID, 65535). % 16-bit number
--define(SCAN_INTERVAL, 10).
+-define(SCAN_INTERVAL, 30).
 
 -define(HDLSUP_SPEC,
     {coap_handler_sup,

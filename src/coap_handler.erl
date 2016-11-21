@@ -165,7 +165,7 @@ check_resource(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, query=Q
     end.
 
 check_preconditions(EpID, Request, Resource, State) ->
-    case if_match(Request, Resource) and if_none_match(Request, Resource) of
+    case if_match(Request, Resource) andalso if_none_match(Request, Resource) of
         true ->
             handle_method(EpID, Request, Resource, State);
         false ->
@@ -323,7 +323,7 @@ return_response(Ref, Request, Code, Reason, State) ->
 
 send_response(Ref, Response=#coap_message{options=Options},
         State=#state{endpoint_pid=EndpointPid, observer=Observer}) ->
-    %%io:fwrite("<- ~p~n", [Response]),
+    % io:fwrite("<- ~p~n", [Response]),
     {ok, _} = coap_endpoint:send_response(EndpointPid, Ref, Response),
     case Observer of
         #coap_message{} ->
