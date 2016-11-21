@@ -68,7 +68,7 @@ get_all_endpoints(Pid) ->
 init([InPort]) ->
 	% process_flag(trap_exit, true),
 	% {ok, Deduplication} = application:get_env(deduplication),
-	case gen_udp:open(InPort, [binary, {active, once}, {reuseaddr, true}]) of
+	case gen_udp:open(InPort, [binary, {active, true}, {reuseaddr, true}]) of
 		{ok, Socket} ->
 			% We set software buffer to maximum of sndbuf & recbuf of the socket 
 			% to avoid unnecessary copying
@@ -129,7 +129,7 @@ handle_cast(_Msg, State) ->
 
 handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, endpoints=EndPoints, endpoint_pool=PoolPid}) ->
 	EpID = {PeerIP, PeerPortNo},
-	ok = inet:setopts(Socket, [{active, once}]),
+	% ok = inet:setopts(Socket, [{active, once}]),
 	case find_endpoint(EpID, EndPoints) of
 		{ok, EpPid} -> 
 			%iofwrite("found endpoint ~p~n", [EpID]),
