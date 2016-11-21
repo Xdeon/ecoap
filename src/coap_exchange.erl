@@ -172,7 +172,7 @@ await_aack({in, _BinMessage}, _TransArgs, State) ->
     % ignore request retransmission
     next_state(await_aack, State);
 await_aack({timeout, await_aack}, #{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, State=#exchange{msgbin=BinAck}) ->
-    %io:fwrite("~p <- ack [application didn't respond]~n", [self()]),
+    io:fwrite("~p <- ack [application didn't respond]~n", [self()]),
     % Sock ! {datagram, ChId, BinAck},
     ok = gen_udp:send(Socket, PeerIP, PeerPortNo, BinAck),
     next_state(pack_sent,State);
