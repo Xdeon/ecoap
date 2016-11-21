@@ -14,11 +14,12 @@ init([]) ->
 get_handler(EndpointPid, SupPid, HandlerID, Observable) ->
     case start_handler(SupPid, HandlerID) of
         {ok, Pid} -> 
+            % io:format("start handler for ~p~n", [HandlerID]),
             ok = obs_handler_notify(EndpointPid, Observable, Pid),
         	{ok, Pid};
         {error, {already_started, Pid}} -> 
             %% Code added by wilbur
-            %ioformat("handler already_started~n"),
+            %io:format("handler already_started~n"),
             %% end
             {ok, Pid};
         {error, Other} -> {error, Other}
@@ -26,7 +27,7 @@ get_handler(EndpointPid, SupPid, HandlerID, Observable) ->
 
 start_handler(SupPid, HandlerID = {_, Uri, Query}) ->
     %% Code added by wilbur
-    %ioformat("start handler for ~p~n", [HandlerID]),
+    % io:format("start handler for ~p~n", [HandlerID]),
     %% end
     supervisor:start_child(SupPid,
         {HandlerID,
