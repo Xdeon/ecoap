@@ -140,8 +140,8 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, _TKL:4, 0:3, _CodeDe
     State=#state{trans_args=TransArgs}) ->
 	TrId = {in, MsgId},
     % debug
-    io:format("incoming CON/NON request, TrId:~p~n", [TrId]),
-    io:format("MsgBin: ~p~n", [BinMessage]),
+    %ioformat("incoming CON/NON request, TrId:~p~n", [TrId]),
+    %ioformat("MsgBin: ~p~n", [BinMessage]),
     % end of debug
     update_state(State, TrId,
         coap_exchange:received(BinMessage, TransArgs, create_transport(TrId, undefined, State)));
@@ -150,8 +150,8 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgI
         State=#state{trans=Trans, tokens=Tokens, trans_args=TransArgs=#{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}}) ->
 	TrId = {in, MsgId},
     % debug
-	io:format("incoming CON/NON response, TrId:~p~n", [TrId]),
-    io:format("MsgBin: ~p~n", [BinMessage]),
+	%ioformat("incoming CON/NON response, TrId:~p~n", [TrId]),
+    %ioformat("MsgBin: ~p~n", [BinMessage]),
     % end of debug
     case maps:find(TrId, Trans) of
         % this is a duplicate msg, i.e. a retransmitted CON response
@@ -166,7 +166,7 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgI
                 error ->
                     % token was not recognized
                     BinReset = coap_message:encode(#coap_message{type='RST', id=MsgId}),
-                    io:format("<- reset~n"),
+                    %ioformat("<- reset~n"),
                     ok = gen_udp:send(Socket, PeerIP, PeerPortNo, BinReset)
             end
     end;
@@ -175,14 +175,14 @@ handle_info({datagram, BinMessage = <<?VERSION:2, _:2, _TKL:4, _Code:8, MsgId:16
         State=#state{trans=Trans, trans_args=TransArgs}) ->
     TrId = {out, MsgId},
     % debug
-    io:format("incoming ACK/RST to a req/res, TrId:~p~n", [TrId]),
-    io:format("MsgBin: ~p~n", [BinMessage]),
+    %ioformat("incoming ACK/RST to a req/res, TrId:~p~n", [TrId]),
+    %ioformat("MsgBin: ~p~n", [BinMessage]),
     % end of debug
     update_state(State, TrId,
         case maps:find(TrId, Trans) of
             error -> 
                 %% Code added by wilbur
-                io:format("No matching state for TrId: ~p~n", [TrId]),
+                %ioformat("No matching state for TrId: ~p~n", [TrId]),
                 %% end
                 undefined; % ignore unexpected responses
             {ok, TrState} -> coap_exchange:received(BinMessage, TransArgs, TrState)
@@ -190,17 +190,17 @@ handle_info({datagram, BinMessage = <<?VERSION:2, _:2, _TKL:4, _Code:8, MsgId:16
         end);
 % silently ignore other versions
 handle_info({datagram, <<Ver:2, _/bytes>>}, State) when Ver /= ?VERSION ->
-    % io:format("unknown CoAP version~n"),
+    % %ioformat("unknown CoAP version~n"),
     {noreply, State};
 handle_info({timeout, TRef, scan}, State=#state{timer=TRef, trans=Trans}) ->
     NewTrans = maps:filter(fun(_TrId, TrState) -> coap_exchange:not_expired(TrState) end, Trans),
     % Because timer will be automatically cancelled if the destination pid exits or is not alive, we can safely start new timer here.
-    % io:format("scanning~n"),
+    % %ioformat("scanning~n"),
     NewTRef = erlang:start_timer(?SCAN_INTERVAL*1000, self(), scan),
     purge_state(State#state{timer = NewTRef, trans = NewTrans});
 handle_info({timeout, TrId, Event}, State=#state{trans=Trans, trans_args=TransArgs}) ->
     %% code added by wilbur
-    % io:format("timeout, TrId:~p Event:~p~n", [TrId, Event]),
+    % %ioformat("timeout, TrId:~p Event:~p~n", [TrId, Event]),
     %% end
     update_state(State, TrId,
         case maps:find(TrId, Trans) of
@@ -208,20 +208,20 @@ handle_info({timeout, TrId, Event}, State=#state{trans=Trans, trans_args=TransAr
             {ok, TrState} -> coap_exchange:timeout(Event, TransArgs, TrState)
         end);
 handle_info({request_complete, Token}, State=#state{tokens=Tokens}) ->
-    io:format("request_complete~n"),
+    %ioformat("request_complete~n"),
     Tokens2 = maps:remove(Token, Tokens),
     purge_state(State#state{tokens=Tokens2});
 % Only monitor possible observe handlers instead of every new spawned handler
 % so that we can save some extra message traffic
 handle_info({obs_handler_started, HandlerPid}, State=#state{rescnt=Count, handler_refs=Refs}) ->
-    io:format("obs_handler_started~n"),
+    %ioformat("obs_handler_started~n"),
     Ref = erlang:monitor(process, HandlerPid),
     {noreply, State#state{rescnt=Count+1, handler_refs=maps:put(Ref, HandlerPid, Refs)}};
 handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{rescnt=Count, handler_refs=Refs}) ->
     case maps:is_key(Ref, Refs) of
         true -> 
             %% Code added by wilbur
-            io:format("obs_handler_completed~n"),
+            %ioformat("obs_handler_completed~n"),
             %% end
             {noreply, State#state{rescnt=Count-1, handler_refs=maps:remove(Ref, Refs)}};
             % purge_state(State#state{rescnt=Count-1, handler_refs=maps:remove(Ref, Refs)})
@@ -229,7 +229,7 @@ handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{rescnt=Count, ha
             {noreply, State}
     end;
 handle_info(_Info, State) ->
-    io:format("unknown info ~p~n", [_Info]),
+    %ioformat("unknown info ~p~n", [_Info]),
 	{noreply, State}.
 
 terminate(_Reason, _State) ->
@@ -252,7 +252,7 @@ make_message(TrId, Message, Receiver, State=#state{trans_args=TransArgs}) ->
         coap_exchange:send(Message, TransArgs, create_transport(TrId, Receiver, State))).
 
 make_new_response(Message=#coap_message{id=MsgId}, Receiver, State=#state{trans=Trans, trans_args=TransArgs}) ->
-    io:format("The response: ~p~n", [Message]),
+    %ioformat("The response: ~p~n", [Message]),
     case maps:find({in, MsgId}, Trans) of
         {ok, TrState} ->
             %% Note by wilbur: coap_transport:awaits_response is used to 
@@ -309,9 +309,9 @@ update_state(State=#state{trans=Trans}, TrId, TrState) ->
 purge_state(State=#state{tokens=Tokens, trans=Trans, rescnt=Count}) ->
     case maps:size(Tokens) + maps:size(Trans) + Count of
         0 -> 
-            % io:format("All trans expired~n"),
+            % %ioformat("All trans expired~n"),
             {stop, normal, State};
         _Else -> 
-            % io:format("Ongoing trans exist~n"),
+            % %ioformat("Ongoing trans exist~n"),
             {noreply, State}
     end.

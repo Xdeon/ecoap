@@ -117,7 +117,7 @@ got_non({in, _Message}, _TransArgs, State) ->
 % --- outgoing NON
 -spec out_non({out, coap_message()}, trans_args(), exchange()) -> exchange().
 out_non({out, Message}, #{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, State) ->
-    io:fwrite("~p send outgoing non msg ~p~n", [self(), Message]),
+    %iofwrite("~p send outgoing non msg ~p~n", [self(), Message]),
     BinMessage = coap_message:encode(Message),
     ok = gen_udp:send(Socket, PeerIP, PeerPortNo, BinMessage),
     next_state(sent_non, State).
@@ -172,7 +172,7 @@ await_aack({in, _BinMessage}, _TransArgs, State) ->
     % ignore request retransmission
     next_state(await_aack, State);
 await_aack({timeout, await_aack}, #{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, State=#exchange{msgbin=BinAck}) ->
-    io:fwrite("~p <- ack [application didn't respond]~n", [self()]),
+    %iofwrite("~p <- ack [application didn't respond]~n", [self()]),
     % Sock ! {datagram, ChId, BinAck},
     ok = gen_udp:send(Socket, PeerIP, PeerPortNo, BinAck),
     next_state(pack_sent,State);
@@ -187,7 +187,7 @@ await_aack({out, Ack}, TransArgs, State) ->
 
 -spec go_pack_sent(coap_message(), trans_args(), exchange()) -> exchange().
 go_pack_sent(Ack, #{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, State) ->
-	io:fwrite("~p send ack msg ~p~n", [self(), Ack]),
+	%iofwrite("~p send ack msg ~p~n", [self(), Ack]),
     BinAck = coap_message:encode(Ack),
     % Sock ! {datagram, ChId, BinAck},
     ok = gen_udp:send(Socket, PeerIP, PeerPortNo, BinAck),
@@ -235,7 +235,7 @@ pack_sent({timeout, await_aack}, _TransArgs, State) ->
 % --- outgoing CON->ACK|RST
 -spec out_con({out, coap_message()}, trans_args(), exchange()) -> exchange().
 out_con({out, Message}, TransArgs=#{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, State) ->
-    io:fwrite("~p send outgoing con msg ~p~n", [self(), Message]),
+    %iofwrite("~p send outgoing con msg ~p~n", [self(), Message]),
     BinMessage = coap_message:encode(Message),
     % Sock ! {datagram, ChId, BinMessage},
     ok = gen_udp:send(Socket, PeerIP, PeerPortNo, BinMessage),
@@ -263,7 +263,7 @@ await_pack({in, BinAck}, TransArgs, State) ->
 await_pack({timeout, await_pack}, TransArgs=#{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, State=#exchange{msgbin=BinMessage, retry_time=Timeout, retry_count=Count}) when Count < ?MAX_RETRANSMIT ->
     % BinMessage = coap_message:encode(Message),
     % Sock ! {datagram, ChId, BinMessage},
-    io:fwrite("resend msg for ~p time~n", [Count]),
+    %iofwrite("resend msg for ~p time~n", [Count]),
     % erlang:display("I am sending on remote node~n"),
     ok = gen_udp:send(Socket, PeerIP, PeerPortNo, BinMessage),
     Timeout2 = Timeout*2,
@@ -284,7 +284,7 @@ aack_sent({timeout, await_pack}, _TransArgs, State) ->
 % utility functions
 
 handle_request(Message=#coap_message{code=Method, options=Options}, #{ep_id:=EpID, handler_sup:=HdlSupPid, endpoint_pid:=EndpointPid}, #exchange{receiver=undefined}) ->
-    io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
+    %iofwrite("handle_request called from ~p with ~p~n", [self(), Message]),
     Uri = coap_message_utils:get_option('Uri-Path', Options, []),
     Query = coap_message_utils:get_option('Uri-Query', Options, []),
     Observable = coap_message_utils:get_option('Observe', Options),
@@ -293,29 +293,29 @@ handle_request(Message=#coap_message{code=Method, options=Options}, #{ep_id:=EpI
             Pid ! {coap_request, EpID, EndpointPid, undefined, Message},
             ok;
         {error, {'NotFound', _}} ->
-        	io:format("handler not_found~n"),
+        	%ioformat("handler not_found~n"),
         	{ok, _} = coap_endpoint:send(EndpointPid,
                 coap_message_utils:response({error, 'NotFound'}, Message)),
             ok
     end;
 
 handle_request(Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={Sender, Ref}}) ->
-    io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
+    %iofwrite("handle_request called from ~p with ~p~n", [self(), Message]),
     Sender ! {coap_request, EpID, EndpointPid, Ref, Message},
     ok.
 
 handle_response(Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={Sender, Ref}}) ->
-    io:fwrite("handle_response called from ~p with ~p~n", [self(), Message]),
+    %iofwrite("handle_response called from ~p with ~p~n", [self(), Message]),
 	Sender ! {coap_response, EpID, EndpointPid, Ref, Message},
 	request_complete(EndpointPid, Message).
 
 handle_error(Message, Error, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={Sender, Ref}}) ->
-	io:fwrite("handle_error called from ~p with ~p~n", [self(), Message]),
+	%iofwrite("handle_error called from ~p with ~p~n", [self(), Message]),
 	Sender ! {coap_error, EpID, EndpointPid, Ref, Error},
 	request_complete(EndpointPid, Message).
 
 handle_ack(_Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={Sender, Ref}}) ->
-	io:fwrite("handle_ack called from ~p with ~p~n", [self(), _Message]),
+	%iofwrite("handle_ack called from ~p with ~p~n", [self(), _Message]),
 	Sender ! {coap_ack, EpID, EndpointPid, Ref},
 	ok.
 

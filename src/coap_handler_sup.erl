@@ -18,18 +18,18 @@ get_handler(EndpointPid, SupPid, HandlerID, Observable) ->
         	{ok, Pid};
         {error, {already_started, Pid}} -> 
             %% Code added by wilbur
-            io:format("handler already_started~n"),
+            %ioformat("handler already_started~n"),
             %% end
             {ok, Pid};
         {error, Other} -> {error, Other}
     end.
 
-start_handler(SupPid, HandlerID = {Method, Uri, Query}) ->
+start_handler(SupPid, HandlerID = {_, Uri, Query}) ->
     %% Code added by wilbur
-    io:format("start handler for ~p~n", [HandlerID]),
+    %ioformat("start handler for ~p~n", [HandlerID]),
     %% end
     supervisor:start_child(SupPid,
-        {{Method, Uri, Query},
+        {HandlerID,
             {coap_handler, start_link, [self(), Uri, Query]},
             temporary, 5000, worker, []}).
 

@@ -100,9 +100,9 @@ handle_call({get_endpoint, EpID}, _From, State=#state{endpoints=EndPoints, endpo
             {reply, {ok, EpPid}, State};
         undefined ->
             % {ok, EpSupPid, EpPid} = endpoint_sup:start_link(Socket, EpID),
-            % io:fwrite("EpSupPid: ~p EpPid: ~p~n", [EpSupPid, EpPid]),
+            % %iofwrite("EpSupPid: ~p EpPid: ~p~n", [EpSupPid, EpPid]),
             {ok, EpPid} = coap_endpoint:start_link(Socket, EpID),
-            io:fwrite("client started~n"),
+            %iofwrite("client started~n"),
             {reply, {ok, EpPid}, store_endpoint(EpID, EpPid, State)}
     end;
 handle_call({get_endpoint, EpID}, _From, State=#state{endpoints=EndPoints, endpoint_pool=PoolPid, sock=Socket}) ->
@@ -132,22 +132,22 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, en
 	ok = inet:setopts(Socket, [{active, once}]),
 	case find_endpoint(EpID, EndPoints) of
 		{ok, EpPid} -> 
-			io:fwrite("found endpoint ~p~n", [EpID]),
+			%iofwrite("found endpoint ~p~n", [EpID]),
 			EpPid ! {datagram, Bin},
 			{noreply, State};
 		undefined when is_pid(PoolPid) -> 
 			case endpoint_sup_sup:start_endpoint(PoolPid, [Socket, EpID]) of
 				{ok, _, EpPid} -> 
-					io:fwrite("start endpoint ~p~n", [EpID]),
+					%iofwrite("start endpoint ~p~n", [EpID]),
 					EpPid ! {datagram, Bin},
 					{noreply, store_endpoint(EpID, EpPid, State)};
 				{error, _Reason} -> 
-					io:fwrite("start_endpoint failed: ~p~n", [_Reason]),
+					%iofwrite("start_endpoint failed: ~p~n", [_Reason]),
 					{noreply, State}
 			end;
 		undefined ->
 			% ignore unexpected message received by a client
-			io:fwrite("client recv unexpected packet~n"),
+			%iofwrite("client recv unexpected packet~n"),
 			{noreply, State}
 	end;
 handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{endpoints=EndPoints, endpoint_refs=EndPointsRefs}) ->
@@ -159,7 +159,7 @@ handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{endpoints=EndPoi
  			{noreply, State#state{endpoints=maps:remove(EpID, EndPoints), endpoint_refs=maps:remove(Ref, EndPointsRefs)}}
  	end;
 handle_info(_Info, State) ->
-	io:fwrite("ecoap_socket recv unexpected info ~p~n", [_Info]),
+	%iofwrite("ecoap_socket recv unexpected info ~p~n", [_Info]),
 	{noreply, State}.
 
 terminate(_Reason, #state{sock=Socket}) ->

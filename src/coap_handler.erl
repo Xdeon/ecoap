@@ -49,7 +49,7 @@ init([EndpointPid, Uri, Query]) ->
     % the receiver will be determined based on the URI
     case ecoap_registry:match_handler(Uri) of
         {Prefix, Module, Args} ->
-        	% io:fwrite("Prefix:~p Uri:~p~n", [Prefix, Uri]),
+        	% %iofwrite("Prefix:~p Uri:~p~n", [Prefix, Uri]),
             % EndpointPid ! {handler_started, self()},
             {ok, #state{endpoint_pid=EndpointPid, uri=Uri, prefix=Prefix, suffix=uri_suffix(Prefix, Uri), query=Query, module=Module, args=Args,
                 insegs=orddict:new(), obseq=0}};
@@ -323,7 +323,7 @@ return_response(Ref, Request, Code, Reason, State) ->
 
 send_response(Ref, Response=#coap_message{options=Options},
         State=#state{endpoint_pid=EndpointPid, observer=Observer}) ->
-    %io:fwrite("<- ~p~n", [Response]),
+    %%iofwrite("<- ~p~n", [Response]),
     {ok, _} = coap_endpoint:send_response(EndpointPid, Ref, Response),
     case Observer of
         #coap_message{} ->
