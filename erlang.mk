@@ -16,7 +16,7 @@
 
 ERLANG_MK_FILENAME := $(realpath $(lastword $(MAKEFILE_LIST)))
 
-ERLANG_MK_VERSION = 2016.11.03
+ERLANG_MK_VERSION = 2016.11.03-7-g14b92a1
 
 # Make 3.81 and 3.82 are deprecated.
 
@@ -4203,17 +4203,16 @@ endif
 # in practice only Makefile is needed so far.
 define dep_autopatch
 	if [ -f $(DEPS_DIR)/$(1)/erlang.mk ]; then \
+		rm -rf $(DEPS_DIR)/$1/ebin/; \
 		$(call erlang,$(call dep_autopatch_appsrc.erl,$(1))); \
 		$(call dep_autopatch_erlang_mk,$(1)); \
 	elif [ -f $(DEPS_DIR)/$(1)/Makefile ]; then \
 		if [ 0 != `grep -c "include ../\w*\.mk" $(DEPS_DIR)/$(1)/Makefile` ]; then \
 			$(call dep_autopatch2,$(1)); \
-		elif [ 0 != `grep -ci rebar $(DEPS_DIR)/$(1)/Makefile` ]; then \
+		elif [ 0 != `grep -ci "^[^#].*rebar" $(DEPS_DIR)/$(1)/Makefile` ]; then \
 			$(call dep_autopatch2,$(1)); \
-		elif [ -n "`find $(DEPS_DIR)/$(1)/ -type f -name \*.mk -not -name erlang.mk -exec grep -i rebar '{}' \;`" ]; then \
+		elif [ -n "`find $(DEPS_DIR)/$(1)/ -type f -name \*.mk -not -name erlang.mk -exec grep -i "^[^#].*rebar" '{}' \;`" ]; then \
 			$(call dep_autopatch2,$(1)); \
-		else \
-			$(call erlang,$(call dep_autopatch_app.erl,$(1))); \
 		fi \
 	else \
 		if [ ! -d $(DEPS_DIR)/$(1)/src/ ]; then \
@@ -4225,6 +4224,8 @@ define dep_autopatch
 endef
 
 define dep_autopatch2
+	mv -n $(DEPS_DIR)/$1/ebin/$1.app $(DEPS_DIR)/$1/src/$1.app.src; \
+	rm -f $(DEPS_DIR)/$1/ebin/$1.app; \
 	if [ -f $(DEPS_DIR)/$1/src/$1.app.src.script ]; then \
 		$(call erlang,$(call dep_autopatch_appsrc_script.erl,$(1))); \
 	fi; \
@@ -4533,22 +4534,6 @@ define dep_autopatch_rebar.erl
 				[RunPlugin(P, compile) || P <- Plugins]
 		end
 	end(),
-	halt()
-endef
-
-define dep_autopatch_app.erl
-	UpdateModules = fun(App) ->
-		case filelib:is_regular(App) of
-			false -> ok;
-			true ->
-				{ok, [{application, '$(1)', L0}]} = file:consult(App),
-				Mods = filelib:fold_files("$(call core_native_path,$(DEPS_DIR)/$1/src)", "\\\\.erl$$", true,
-					fun (F, Acc) -> [list_to_atom(filename:rootname(filename:basename(F)))|Acc] end, []),
-				L = lists:keystore(modules, 1, L0, {modules, Mods}),
-				ok = file:write_file(App, io_lib:format("~p.~n", [{application, '$(1)', L}]))
-		end
-	end,
-	UpdateModules("$(call core_native_path,$(DEPS_DIR)/$1/ebin/$1.app)"),
 	halt()
 endef
 
@@ -6011,13 +5996,17 @@ endif
 
 CI_OTP ?=
 CI_HIPE ?=
+CI_ERLLVM ?=
 
 ifeq ($(CI_VM),native)
 ERLC_OPTS += +native
 TEST_ERLC_OPTS += +native
+else ifeq ($(CI_VM),erllvm)
+ERLC_OPTS += +native +'{hipe, [to_llvm]}'
+TEST_ERLC_OPTS += +native +'{hipe, [to_llvm]}'
 endif
 
-ifeq ($(strip $(CI_OTP) $(CI_HIPE)),)
+ifeq ($(strip $(CI_OTP) $(CI_HIPE) $(CI_ERLLVM)),)
 ci::
 else
 
@@ -6036,28 +6025,32 @@ OTP_GIT ?= https://github.com/erlang/otp
 
 CI_INSTALL_DIR ?= $(HOME)/erlang
 
-ci:: $(addprefix ci-,$(CI_OTP) $(addsuffix -native,$(CI_HIPE)))
+ci:: $(addprefix ci-,$(CI_OTP) $(addsuffix -native,$(CI_HIPE)) $(addsuffix -erllvm,$(CI_ERLLVM)))
 
 ci-prepare: $(addprefix $(CI_INSTALL_DIR)/,$(CI_OTP) $(addsuffix -native,$(CI_HIPE)))
 
 ci-setup::
 
+ci-extra::
+
 ci_verbose_0 = @echo " CI    " $(1);
 ci_verbose = $(ci_verbose_$(V))
 
 define ci_target
-ci-$(1): $(CI_INSTALL_DIR)/$(1)
-	$(verbose) $(MAKE) --no-print-directory clean;
+ci-$1: $(CI_INSTALL_DIR)/$2
+	$(verbose) $(MAKE) --no-print-directory clean
 	$(ci_verbose) \
-		PATH="$(CI_INSTALL_DIR)/$(1)/bin:$(PATH)" \
-		CI_OTP_RELEASE="$(1)" \
-		CT_OPTS="-label $(1)" \
-		CI_VM="$(2)" \
+		PATH="$(CI_INSTALL_DIR)/$2/bin:$(PATH)" \
+		CI_OTP_RELEASE="$1" \
+		CT_OPTS="-label $1" \
+		CI_VM="$3" \
 		$(MAKE) ci-setup tests
+	$(verbose) $(MAKE) --no-print-directory ci-extra
 endef
 
-$(foreach otp,$(CI_OTP),$(eval $(call ci_target,$(otp),otp)))
-$(foreach otp,$(CI_HIPE),$(eval $(call ci_target,$(otp)-native,native)))
+$(foreach otp,$(CI_OTP),$(eval $(call ci_target,$(otp),$(otp),otp)))
+$(foreach otp,$(CI_HIPE),$(eval $(call ci_target,$(otp)-native,$(otp)-native,native)))
+$(foreach otp,$(CI_ERLLVM),$(eval $(call ci_target,$(otp)-erllvm,$(otp)-native,erllvm)))
 
 define ci_otp_target
 ifeq ($(wildcard $(CI_INSTALL_DIR)/$(1)),)
@@ -6078,7 +6071,7 @@ $(CI_INSTALL_DIR)/$1-native: $(KERL)
 endif
 endef
 
-$(foreach otp,$(CI_HIPE),$(eval $(call ci_hipe_target,$(otp))))
+$(foreach otp,$(sort $(CI_HIPE) $(CI_ERLLLVM)),$(eval $(call ci_hipe_target,$(otp))))
 
 $(KERL):
 	$(verbose) mkdir -p $(ERLANG_MK_TMP)

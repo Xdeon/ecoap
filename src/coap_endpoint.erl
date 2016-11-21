@@ -6,7 +6,7 @@
 
 %% gen_server.
 -export([init/1]).
--export([init/3]).
+% -export([init/3]).
 -export([handle_call/3]).
 -export([handle_cast/2]).
 -export([handle_info/2]).
@@ -16,14 +16,6 @@
 -define(VERSION, 1).
 -define(MAX_MESSAGE_ID, 65535). % 16-bit number
 -define(SCAN_INTERVAL, 30).
-
--define(HDLSUP_SPEC,
-    {coap_handler_sup,
-    {coap_handler_sup, start_link, []},
-    temporary,
-    infinity,
-    supervisor,
-    [coap_handler_sup]}).
 
 -record(state, {
     trans_args = undefined :: trans_args(),
@@ -51,8 +43,10 @@
 %% API.
 
 -spec start_link(pid(), inet:socket(), coap_endpoint_id()) -> {ok, pid()}.
-start_link(SupPid, Socket, EpID) ->
-	proc_lib:start_link(?MODULE, init, [SupPid, Socket, EpID]).
+% start_link(SupPid, Socket, EpID) ->
+% 	proc_lib:start_link(?MODULE, init, [SupPid, Socket, EpID]).
+start_link(HdlSupPid, Socket, EpID) ->
+    gen_server:start_link(?MODULE, [HdlSupPid, Socket, EpID], []).
 
 start_link(Socket, EpID) ->
     gen_server:start_link(?MODULE, [Socket, EpID], []).
@@ -92,16 +86,12 @@ send_response(EndpointPid, Ref, Message) ->
 init([Socket, EpID]) ->
     TRef = erlang:start_timer(?SCAN_INTERVAL*1000, self(), scan),
     TransArgs = #{sock=>Socket, ep_id=>EpID, endpoint_pid=>self()},
-    {ok, #state{tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs}}.
-
-init(SupPid, Socket, EpID) ->
-    ok = proc_lib:init_ack({ok, self()}),
-    {ok, Pid} = supervisor:start_child(SupPid, ?HDLSUP_SPEC),
-    link(Pid),
+    {ok, #state{tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs}};
+    
+init([HdlSupPid, Socket, EpID]) ->
     TRef = erlang:start_timer(?SCAN_INTERVAL*1000, self(), scan),
-    TransArgs = #{sock=>Socket, ep_id=>EpID, endpoint_pid=>self(), handler_sup=>Pid},
-    gen_server:enter_loop(?MODULE, [], 
-        #state{tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs, handler_refs=maps:new()}).
+    TransArgs = #{sock=>Socket, ep_id=>EpID, endpoint_pid=>self(), handler_sup=>HdlSupPid},
+    {ok, #state{tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs, handler_refs=maps:new()}}.
 
 handle_call(_Request, _From, State) ->
 	{reply, ignored, State}.

@@ -9,7 +9,7 @@ start_link() ->
 
 init([]) ->
 	Procs = [],
-	{ok, {{one_for_one, 1, 5}, Procs}}.
+	{ok, {{one_for_one, 3, 10}, Procs}}.
 
 get_handler(EndpointPid, SupPid, HandlerID, Observable) ->
     case start_handler(SupPid, HandlerID) of
@@ -32,7 +32,7 @@ start_handler(SupPid, HandlerID = {_, Uri, Query}) ->
     supervisor:start_child(SupPid,
         {HandlerID,
             {coap_handler, start_link, [self(), Uri, Query]},
-            temporary, 5000, worker, []}).
+            temporary, 5000, worker, [coap_handler]}).
 
 obs_handler_notify(EndpointPid, Observable, Pid) ->
     case Observable of

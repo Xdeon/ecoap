@@ -155,7 +155,7 @@ handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{endpoints=EndPoi
  		error ->	
  			{noreply, State};
  		{ok, EpID} ->
-			error_logger:error_msg("coap_endpoint ~p stopped with reason ~p~n", [EpID, _Reason]),
+			% error_logger:error_msg("coap_endpoint ~p stopped with reason ~p~n", [EpID, _Reason]),
  			{noreply, State#state{endpoints=maps:remove(EpID, EndPoints), endpoint_refs=maps:remove(Ref, EndPointsRefs)}}
  	end;
 handle_info(_Info, State) ->

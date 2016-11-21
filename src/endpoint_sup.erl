@@ -6,27 +6,18 @@
 
 %% Only applies to one time use supervision tree...
 
-% start_link(Socket, EpID) ->
-%     {ok, SupPid} = supervisor:start_link(?MODULE, []),
-%     {ok, HdlSupPid} = supervisor:start_child(SupPid, 
-%       	{coap_handler_sup,
-%   		     {coap_handler_sup, start_link, []},
-%   		      permanent, infinity, supervisor, 
-%            [coap_handler_sup]}),
-%     {ok, EpPid} = supervisor:start_child(SupPid,
-%         {coap_endpoint,
-%           {coap_endpoint, start_link, [Socket, EpID, HdlSupPid]},
-%           transient, 5000, worker, 
-%           [coap_endpoint]}),
-%     {ok, SupPid, EpPid}.
-
 start_link(Socket, EpID) ->
     {ok, SupPid} = supervisor:start_link(?MODULE, []),
+    {ok, HdlSupPid} = supervisor:start_child(SupPid, 
+      	{coap_handler_sup,
+  		    {coap_handler_sup, start_link, []},
+  		    permanent, infinity, supervisor, 
+           	[coap_handler_sup]}),
     {ok, EpPid} = supervisor:start_child(SupPid,
         {coap_endpoint,
-          {coap_endpoint, start_link, [SupPid, Socket, EpID]},
-          permanent, 5000, worker, 
-          [coap_endpoint]}),
+         	{coap_endpoint, start_link, [HdlSupPid, Socket, EpID]},
+          	permanent, 5000, worker, 
+          	[coap_endpoint]}),
     {ok, SupPid, EpPid}.
 
 init([]) ->
