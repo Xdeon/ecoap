@@ -120,11 +120,13 @@ handle_call({get_endpoint, EpID}, _From, State=#state{endpoints=EndPoints, endpo
 handle_call(get_all_endpoints, _From, State=#state{endpoints=EndPoints}) ->
 	{reply, maps:values(EndPoints), State};
 handle_call(_Request, _From, State) ->
+	error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
 	{reply, ignored, State}.
 
 handle_cast(shutdown, State) ->
 	{stop, normal, State};
 handle_cast(_Msg, State) ->
+	error_logger:error_msg("unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
 	{noreply, State}.
 
 handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, endpoints=EndPoints, endpoint_pool=PoolPid}) ->
@@ -155,7 +157,6 @@ handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{endpoints=EndPoi
  		error ->	
  			{noreply, State};
  		{ok, EpID} ->
-			% error_logger:error_msg("coap_endpoint ~p stopped with reason ~p~n", [EpID, _Reason]),
  			{noreply, State#state{endpoints=maps:remove(EpID, EndPoints), endpoint_refs=maps:remove(Ref, EndPointsRefs)}}
  	end;
 
@@ -164,7 +165,7 @@ handle_info({datagram, {PeerIP, PeerPortNo}, Data}, State=#state{sock=Socket}) -
     {noreply, State};
 
 handle_info(_Info, State) ->
-	%io:fwrite("ecoap_socket recv unexpected info ~p~n", [_Info]),
+    error_logger:error_msg("unexpected info ~p received by ~p as ~p~n", [_Info, self(), ?MODULE]),
 	{noreply, State}.
 
 terminate(_Reason, #state{sock=Socket}) ->

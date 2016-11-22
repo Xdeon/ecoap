@@ -94,6 +94,7 @@ init([HdlSupPid, Socket, EpID]) ->
     {ok, #state{tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs, handler_refs=maps:new()}}.
 
 handle_call(_Request, _From, State) ->
+    error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
 	{reply, ignored, State}.
 
 % outgoing CON(0) or NON(1) request
@@ -108,6 +109,7 @@ handle_cast({send_response, Message, Receiver}, State) ->
 handle_cast(shutdown, State) ->
     {stop, normal, State};
 handle_cast(_Msg, State) ->
+    error_logger:error_msg("unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
 	{noreply, State}.
 
 %% CoAP Message Format
@@ -219,7 +221,7 @@ handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{rescnt=Count, ha
             {noreply, State}
     end;
 handle_info(_Info, State) ->
-    %io:format("unknown info ~p~n", [_Info]),
+    error_logger:error_msg("unexpected info ~p received by ~p as ~p~n", [_Info, self(), ?MODULE]),
 	{noreply, State}.
 
 terminate(_Reason, _State) ->

@@ -58,6 +58,7 @@ init([EndpointPid, Uri, Query]) ->
     end.
 
 handle_call(_Request, _From, State) ->
+    error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
 	{reply, ignored, State}.
 
 handle_cast({obs_notify, _Resource}, State=#state{observer=undefined}) ->
@@ -69,6 +70,7 @@ handle_cast({obs_notify, {error, Code}}, State=#state{observer=Observer}) ->
     {ok, State2} = cancel_observer(Observer, State),
     return_response(Observer, {error, Code}, State2);
 handle_cast(_Msg, State) ->
+    error_logger:error_msg("unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
 	{noreply, State}.
 
 handle_info({timeout, TRef, cache_expired}, State=#state{observer=undefined, timer=TRef}) ->
