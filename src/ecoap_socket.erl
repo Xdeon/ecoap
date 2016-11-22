@@ -136,7 +136,7 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, en
 			EpPid ! {datagram, Bin},
 			{noreply, State};
 		undefined when is_pid(PoolPid) -> 
-			case endpoint_sup_sup:start_endpoint(PoolPid, [Socket, EpID]) of
+			case endpoint_sup_sup:start_endpoint(PoolPid, [self(), EpID]) of
 				{ok, _, EpPid} -> 
 					%io:fwrite("start endpoint ~p~n", [EpID]),
 					EpPid ! {datagram, Bin},
@@ -158,6 +158,11 @@ handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{endpoints=EndPoi
 			% error_logger:error_msg("coap_endpoint ~p stopped with reason ~p~n", [EpID, _Reason]),
  			{noreply, State#state{endpoints=maps:remove(EpID, EndPoints), endpoint_refs=maps:remove(Ref, EndPointsRefs)}}
  	end;
+
+handle_info({datagram, {PeerIP, PeerPortNo}, Data}, State=#state{sock=Socket}) ->
+	 ok = gen_udp:send(Socket, PeerIP, PeerPortNo, Data),
+    {noreply, State};
+
 handle_info(_Info, State) ->
 	%io:fwrite("ecoap_socket recv unexpected info ~p~n", [_Info]),
 	{noreply, State}.
