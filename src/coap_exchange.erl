@@ -296,10 +296,6 @@ handle_request(Message=#coap_message{code=Method, options=Options}, #{ep_id:=EpI
     Observable = coap_message_utils:get_option('Observe', Options),
     case coap_handler_sup:get_handler(EndpointPid, HdlSupPid, {Method, Uri, Query}, Observable) of
         {ok, Pid} ->
-            case is_process_alive(Pid) of
-                false -> io:format("handler crashes in ~p~n", [self()]);
-                true -> ok
-            end,
             Pid ! {coap_request, EpID, EndpointPid, undefined, Message},
             ok;
         {error, {'NotFound', _}} ->

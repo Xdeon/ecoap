@@ -94,23 +94,23 @@ init(SupPid, InPort) ->
 			{error, Reason}
 	end.
 
-handle_call({get_endpoint, EpID}, _From, State=#state{endpoints=EndPoints, endpoint_pool=undefined, sock=Socket}) ->
+handle_call({get_endpoint, EpID}, _From, State=#state{endpoints=EndPoints, endpoint_pool=undefined}) ->
     case find_endpoint(EpID, EndPoints) of
         {ok, EpPid} ->
             {reply, {ok, EpPid}, State};
         undefined ->
             % {ok, EpSupPid, EpPid} = endpoint_sup:start_link(Socket, EpID),
             % %io:fwrite("EpSupPid: ~p EpPid: ~p~n", [EpSupPid, EpPid]),
-            {ok, EpPid} = coap_endpoint:start_link(Socket, EpID),
+            {ok, EpPid} = coap_endpoint:start_link(self(), EpID),
             %io:fwrite("client started~n"),
             {reply, {ok, EpPid}, store_endpoint(EpID, EpPid, State)}
     end;
-handle_call({get_endpoint, EpID}, _From, State=#state{endpoints=EndPoints, endpoint_pool=PoolPid, sock=Socket}) ->
+handle_call({get_endpoint, EpID}, _From, State=#state{endpoints=EndPoints, endpoint_pool=PoolPid}) ->
 	case find_endpoint(EpID, EndPoints) of
 		{ok, EpPid} ->
 			{reply, {ok, EpPid}, State};
 		undefined ->
-		    case endpoint_sup_sup:start_endpoint(PoolPid, [Socket, EpID]) of
+		    case endpoint_sup_sup:start_endpoint(PoolPid, [self(), EpID]) of
 		        {ok, _, EpPid} ->
 		            {reply, {ok, EpPid}, store_endpoint(EpID, EpPid, State)};
 		        Error ->

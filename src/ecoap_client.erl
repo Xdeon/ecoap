@@ -89,7 +89,7 @@ request_async(Pid, Method, Uri, Content, Options) ->
 
 -spec close(pid()) -> ok.
 close(Pid) ->
-	gen_server:call(Pid, shutdown).
+	gen_server:cast(Pid, shutdown).
 
 start_endpoint(Pid, EpID, Req) ->
 	call_endpoint(Pid, {start_endpoint, EpID, Req}).
@@ -113,8 +113,6 @@ handle_call({start_endpoint, EpID, {Method, OptionList, Content}}, From, State=#
 	{ok, Ref} = request_block(EndpointPid, Method, OptionList, Content),
 	{noreply, State#state{request_refs=store_ref(Ref, #req{method=Method, option_list=OptionList, content=Content, from=From}, Refs)}};
 
-handle_call(shutdown, _From, State) ->
-	{stop, normal, ok, State};
 handle_call(_Request, _From, State) ->
 	{reply, ignored, State}.
 
@@ -122,6 +120,8 @@ handle_cast({start_endpoint, EpID, {Method, OptionList, Content}, ClientRef}, St
 	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
 	{ok, Ref} = request_block(EndpointPid, Method, OptionList, Content),
 	{noreply, State#state{request_refs=store_ref(Ref, #req{method=Method, option_list=OptionList, content=Content, client_ref=ClientRef}, Refs)}};
+handle_cast(shutdown, State) ->
+	{stop, normal, State};
 handle_cast(_Msg, State) ->
 	{noreply, State}.
 
