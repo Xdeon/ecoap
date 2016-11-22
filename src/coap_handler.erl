@@ -73,15 +73,16 @@ handle_cast(_Msg, State) ->
     error_logger:error_msg("unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
 	{noreply, State}.
 
+handle_info({coap_request, EpID, _EndpointPid, _Receiver=undefined, Request}, State) ->
+    handle(EpID, Request, State);
 handle_info({timeout, TRef, cache_expired}, State=#state{observer=undefined, timer=TRef}) ->
     {stop, normal, State};
 handle_info({timeout, TRef, cache_expired}, State=#state{timer=TRef}) ->
     % multi-block cache expired, but the observer is still active
     {noreply, State};
-handle_info({coap_request, EpID, _EndpointPid, _Receiver=undefined, Request}, State) ->
-	handle(EpID, Request, State);
-handle_info({coap_ack, _EpID, _EndpointPid, Ref},
-        State=#state{module=Module, obstate=ObState}) ->
+handle_info(_Info, State=#state{observer=undefined}) ->
+    {noreply, State};
+handle_info({coap_ack, _EpID, _EndpointPid, Ref}, State=#state{module=Module, obstate=ObState}) ->
     case invoke_callback(Module, coap_ack, [Ref, ObState]) of
         {ok, ObState2} ->
             {noreply, State#state{obstate=ObState2}}
@@ -89,8 +90,6 @@ handle_info({coap_ack, _EpID, _EndpointPid, Ref},
 handle_info({coap_error, _EpID, _EndpointPid, _Ref, _Error}, State=#state{observer=Observer}) ->
     {ok, State2} = cancel_observer(Observer, State),
     {stop, normal, State2};
-handle_info(_Info, State=#state{observer=undefined}) ->
-	{noreply, State};
 handle_info(Info, State=#state{module=Module, observer=Observer, obstate=ObState}) ->
     case invoke_callback(Module, handle_info, [Info, ObState]) of
         {notify, Ref, Resource=#coap_content{}, ObState2} ->
