@@ -25,8 +25,9 @@
 	sock = undefined :: inet:socket(),
 	endpoints = undefined :: coap_endpoints(),
 	endpoint_refs = undefined :: coap_endpoint_refs(),
-	endpoint_pool = undefined :: undefined | pid()
+	endpoint_pool = undefined :: undefined | pid(),
 	% deduplication = undefined :: boolean()
+	sender_pid = undefined :: unexpected | pid()
 }).
 
 -opaque state() :: #state{}.
@@ -87,8 +88,15 @@ init(SupPid, InPort) ->
 			register(?MODULE, self()),
 			ok = proc_lib:init_ack({ok, self()}),
 			{ok, Pid} = supervisor:start_child(SupPid, ?SPEC({endpoint_sup, start_link, []})),
+			{ok, SenderPid} = supervisor:start_child(SupPid, {sender,
+														    {sender, start_link, [State#state.sock]},
+														    temporary,
+														    5000,
+														    worker,
+														    [sender]}),
 		    link(Pid),
-		    gen_server:enter_loop(?MODULE, [], State#state{endpoint_pool=Pid}, {local, ?MODULE});
+		    link(SenderPid),
+		    gen_server:enter_loop(?MODULE, [], State#state{endpoint_pool=Pid, sender_pid=SenderPid}, {local, ?MODULE});
 		{stop, Reason} ->
 			ok = proc_lib:init_ack({error, Reason}),
 			{error, Reason}
@@ -129,7 +137,7 @@ handle_cast(_Msg, State) ->
 	error_logger:error_msg("unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
 	{noreply, State}.
 
-handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, endpoints=EndPoints, endpoint_pool=PoolPid}) ->
+handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, endpoints=EndPoints, endpoint_pool=PoolPid, sender_pid=SenderPid}) ->
 	EpID = {PeerIP, PeerPortNo},
 	% ok = inet:setopts(Socket, [{active, once}]),
 	case find_endpoint(EpID, EndPoints) of
@@ -138,7 +146,7 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, en
 			EpPid ! {datagram, Bin},
 			{noreply, State};
 		undefined when is_pid(PoolPid) -> 
-			case endpoint_sup_sup:start_endpoint(PoolPid, [self(), EpID]) of
+			case endpoint_sup_sup:start_endpoint(PoolPid, [SenderPid, EpID]) of
 				{ok, _, EpPid} -> 
 					%io:fwrite("start endpoint ~p~n", [EpID]),
 					EpPid ! {datagram, Bin},
