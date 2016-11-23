@@ -102,6 +102,7 @@ init(SupPid, InPort) ->
 			{error, Reason}
 	end.
 
+% get an endpoint when being as a client
 handle_call({get_endpoint, EpID}, _From, State=#state{endpoints=EndPoints, endpoint_pool=undefined}) ->
     case find_endpoint(EpID, EndPoints) of
         {ok, EpPid} ->
@@ -113,12 +114,13 @@ handle_call({get_endpoint, EpID}, _From, State=#state{endpoints=EndPoints, endpo
             %io:fwrite("client started~n"),
             {reply, {ok, EpPid}, store_endpoint(EpID, EpPid, State)}
     end;
-handle_call({get_endpoint, EpID}, _From, State=#state{endpoints=EndPoints, endpoint_pool=PoolPid}) ->
+% get an endpoint when being as a server
+handle_call({get_endpoint, EpID}, _From, State=#state{endpoints=EndPoints, endpoint_pool=PoolPid, sender_pid=SenderPid}) ->
 	case find_endpoint(EpID, EndPoints) of
 		{ok, EpPid} ->
 			{reply, {ok, EpPid}, State};
 		undefined ->
-		    case endpoint_sup_sup:start_endpoint(PoolPid, [self(), EpID]) of
+		    case endpoint_sup_sup:start_endpoint(PoolPid, [SenderPid, EpID]) of
 		        {ok, _, EpPid} ->
 		            {reply, {ok, EpPid}, store_endpoint(EpID, EpPid, State)};
 		        Error ->
