@@ -72,11 +72,12 @@ init([InPort]) ->
 		{ok, Socket} ->
 			% We set software buffer to maximum of sndbuf & recbuf of the socket 
 			% to avoid unnecessary copying
-			{ok, [{sndbuf, SndBufSize}]} = inet:getopts(Socket, [sndbuf]),
-			{ok, [{recbuf, RecBufSize}]} = inet:getopts(Socket, [recbuf]),
-			ok = inet:setopts(Socket, [{recbuf, RecBufSize * 200}]),
-			ok = inet:setopts(Socket, [{sndbuf, RecBufSize * 200}]),
-			ok = inet:setopts(Socket, [{buffer, max(SndBufSize, RecBufSize)}]),
+			% {ok, [{sndbuf, SndBufSize}]} = inet:getopts(Socket, [sndbuf]),
+			% {ok, [{recbuf, RecBufSize}]} = inet:getopts(Socket, [recbuf]),
+			% ok = inet:setopts(Socket, [{recbuf, RecBufSize * 200}]),
+			% ok = inet:setopts(Socket, [{sndbuf, RecBufSize * 200}]),
+			% ok = inet:setopts(Socket, [{buffer, max(SndBufSize, RecBufSize)}]),
+			ok = inet:setopts(Socket, [{recbuf, 1024*1024}]),
 			error_logger:info_msg("coap listen on *:~p~n", [InPort]),
 			{ok, #state{sock=Socket, endpoints=maps:new(), endpoint_refs=maps:new()}};
 		{error, Reason} ->
@@ -163,6 +164,10 @@ handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{endpoints=EndPoi
  		{ok, EpID} ->
  			{noreply, State#state{endpoints=maps:remove(EpID, EndPoints), endpoint_refs=maps:remove(Ref, EndPointsRefs)}}
  	end;
+
+% handle_info({udp_passive, Socket}, State=#state{sock=Socket}) ->
+% 	ok = inet:setopts(Socket, [{active, 100}]),
+% 	{noreply, State};
 
 % handle_info({datagram, {PeerIP, PeerPortNo}, Data}, State=#state{sock=Socket}) ->
 % 	 ok = gen_udp:send(Socket, PeerIP, PeerPortNo, Data),

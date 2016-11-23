@@ -12,8 +12,8 @@ start() ->
     ecoap_registry:register_handler([<<"storage">>], ?MODULE, undefined).
 
 stop() ->
-    application:stop(ecoap),
-    application:stop(mnesia).
+    ok = application:stop(ecoap),
+    ok = application:stop(mnesia).
 
 % resource operations
 coap_discover(Prefix, _Args) ->

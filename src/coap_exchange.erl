@@ -119,7 +119,7 @@ got_non({in, _Message}, _TransArgs, State) ->
 out_non({out, Message}, #{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, State) ->
     %io:fwrite("~p send outgoing non msg ~p~n", [self(), Message]),
     BinMessage = coap_message:encode(Message),
-    ok = gen_udp:send(Socket, PeerIP, PeerPortNo, BinMessage),
+    ok = inet_udp:send(Socket, PeerIP, PeerPortNo, BinMessage),
     % Socket ! {datagram, {PeerIP, PeerPortNo}, BinMessage},
     next_state(sent_non, State).
     % undefined.
@@ -175,7 +175,7 @@ await_aack({in, _BinMessage}, _TransArgs, State) ->
 await_aack({timeout, await_aack}, #{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, State=#exchange{msgbin=BinAck}) ->
     io:fwrite("~p <- ack [application didn't respond]~n", [self()]),
     % Sock ! {datagram, ChId, BinAck},
-    ok = gen_udp:send(Socket, PeerIP, PeerPortNo, BinAck),
+    ok = inet_udp:send(Socket, PeerIP, PeerPortNo, BinAck),
     % Socket ! {datagram, {PeerIP, PeerPortNo}, BinAck},
     next_state(pack_sent,State);
 
@@ -192,7 +192,7 @@ go_pack_sent(Ack, #{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, State) ->
 	%io:fwrite("~p send ack msg ~p~n", [self(), Ack]),
     BinAck = coap_message:encode(Ack),
     % Sock ! {datagram, ChId, BinAck},
-    ok = gen_udp:send(Socket, PeerIP, PeerPortNo, BinAck),
+    ok = inet_udp:send(Socket, PeerIP, PeerPortNo, BinAck),
     % Socket ! {datagram, {PeerIP, PeerPortNo}, BinAck},
     next_state(pack_sent, State#exchange{msgbin=BinAck}).
     % undefined.
@@ -201,7 +201,7 @@ go_pack_sent(Ack, #{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, State) ->
 pack_sent({in, _BinMessage}, #{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, State=#exchange{msgbin=BinAck}) ->
     % retransmit the ack
     % Sock ! {datagram, ChId, BinAck},
-    ok = gen_udp:send(Socket, PeerIP, PeerPortNo, BinAck),
+    ok = inet_udp:send(Socket, PeerIP, PeerPortNo, BinAck),
     % Socket ! {datagram, {PeerIP, PeerPortNo}, BinAck},
     next_state(pack_sent, State);
 pack_sent({timeout, await_aack}, _TransArgs, State) ->
@@ -241,7 +241,7 @@ pack_sent({timeout, await_aack}, _TransArgs, State) ->
 out_con({out, Message}, TransArgs=#{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, State) ->
     %io:fwrite("~p send outgoing con msg ~p~n", [self(), Message]),
     BinMessage = coap_message:encode(Message),
-    ok = gen_udp:send(Socket, PeerIP, PeerPortNo, BinMessage),
+    ok = inet_udp:send(Socket, PeerIP, PeerPortNo, BinMessage),
     % Socket ! {datagram, {PeerIP, PeerPortNo}, BinMessage},
     %_ = random:seed(os:timestamp()),
     _ = rand:seed(exsplus),
@@ -267,7 +267,7 @@ await_pack({in, BinAck}, TransArgs, State) ->
 await_pack({timeout, await_pack}, TransArgs=#{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, State=#exchange{msgbin=BinMessage, retry_time=Timeout, retry_count=Count}) when Count < ?MAX_RETRANSMIT ->
     % BinMessage = coap_message:encode(Message),
     %io:fwrite("resend msg for ~p time~n", [Count]),
-    ok = gen_udp:send(Socket, PeerIP, PeerPortNo, BinMessage),
+    ok = inet_udp:send(Socket, PeerIP, PeerPortNo, BinMessage),
     % Socket ! {datagram, {PeerIP, PeerPortNo}, BinMessage},
     Timeout2 = Timeout*2,
     next_state(await_pack, TransArgs, State#exchange{retry_time=Timeout2, retry_count=Count+1}, Timeout2);
