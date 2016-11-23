@@ -1,7 +1,7 @@
 -module(coap_handler_sup).
 -behaviour(supervisor).
 
--export([start_link/0, get_handler/2]).
+-export([start_link/0, get_handler/3]).
 -export([init/1]).
 
 start_link() ->
@@ -16,14 +16,16 @@ init([]) ->
     ],
     {ok, {{simple_one_for_one, 0, 1}, Procs}}.
 
-get_handler(SupPid, HandlerID) ->
-    case start_handler(SupPid, HandlerID) of
-        {ok, Pid} -> {ok, Pid};
-        {error, Other} -> {error, Other}
+get_handler(SupPid, HandlerID, HandlerRegs) ->
+    case maps:find(HandlerID, HandlerRegs) of
+        error ->          
+            start_handler(SupPid, HandlerID);
+        {ok, Pid} ->
+            {ok, Pid}
     end.
 
-start_handler(SupPid, {Uri, Query}) ->
-    supervisor:start_child(SupPid, [self(), Uri, Query]).
+start_handler(SupPid, HandlerID) ->
+    supervisor:start_child(SupPid, [self(), HandlerID]).
 
 % init([]) ->
 % 	Procs = [],

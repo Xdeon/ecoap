@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 %% API.
--export([start_link/3, notify/2]).
+-export([start_link/2, notify/2]).
 
 %% gen_server.
 -export([init/1]).
@@ -16,10 +16,11 @@
 
 -record(state, {
 	endpoint_pid = undefined :: pid(),
-	uri = undefined :: list(binary()),
-	prefix = undefined :: list(binary()), 
-	suffix = undefined :: list(binary()),
-	query = undefined :: list(binary()),
+    id= undefined :: {atom(), [binary()], [binary()]},
+	uri = undefined :: [binary()],
+	prefix = undefined :: [binary()], 
+	suffix = undefined :: [binary()],
+	query = undefined :: [binary()],
 	module = undefined :: module(), 
 	args = undefined :: any(), 
 	insegs = undefined :: orddict:orddict(), 
@@ -33,9 +34,9 @@
 
 %% API.
 
--spec start_link(pid(), list(binary()), list(binary())) -> {ok, pid()}.
-start_link(EndpointPid, Uri, Query) ->
-	gen_server:start_link(?MODULE, [EndpointPid, Uri, Query], []).
+-spec start_link(pid(), {atom(), [binary()], [binary()]}) -> {ok, pid()}.
+start_link(EndpointPid, ID) ->
+	gen_server:start_link(?MODULE, [EndpointPid, ID], []).
 
 notify(Uri, Resource) ->
     case pg2:get_members({coap_observer, Uri}) of
@@ -45,13 +46,13 @@ notify(Uri, Resource) ->
 
 %% gen_server.
 
-init([EndpointPid, Uri, Query]) ->
+init([EndpointPid, ID={_, Uri, Query}]) ->
     % the receiver will be determined based on the URI
     case ecoap_registry:match_handler(Uri) of
         {Prefix, Module, Args} ->
         	% %io:fwrite("Prefix:~p Uri:~p~n", [Prefix, Uri]),
             % EndpointPid ! {handler_started, self()},
-            {ok, #state{endpoint_pid=EndpointPid, uri=Uri, prefix=Prefix, suffix=uri_suffix(Prefix, Uri), query=Query, module=Module, args=Args,
+            {ok, #state{endpoint_pid=EndpointPid, id=ID, uri=Uri, prefix=Prefix, suffix=uri_suffix(Prefix, Uri), query=Query, module=Module, args=Args,
                 insegs=orddict:new(), obseq=0}};
         undefined ->
             {stop, 'NotFound'}
@@ -111,12 +112,14 @@ code_change(_OldVsn, State, _Extra) ->
 
 %% Internal
 
-handle(EpID, Request=#coap_message{options=Options}, State=#state{endpoint_pid=EndpointPid}) ->
+handle(EpID, Request=#coap_message{options=Options}, State=#state{endpoint_pid=EndpointPid, id=ID}) ->
 	Block1 = coap_message_utils:get_option('Block1', Options),
     case catch assemble_payload(Request, Block1, State) of
         {error, Code} ->
             return_response(Request, {error, Code}, State);
         {'Continue', State2} ->
+            % io:format("Has Block1~n"),
+            gen_server:cast(EndpointPid, {register_handler, ID, self()}),
             {ok, _} = coap_endpoint:send_response(EndpointPid, [],
                 coap_message_utils:set_opt('Block1', Block1,
                     coap_message_utils:response({ok, 'Continue'}, Request))),
@@ -216,7 +219,8 @@ handle_method(_EpID, Request, _Resource, State) ->
     return_response(Request, {error, 'MethodNotAllowed'}, State).
 
 handle_observe(EpID, Request, Content=#coap_content{},
-        State=#state{prefix=Prefix, suffix=Suffix, uri=Uri, module=Module, observer=undefined}) ->
+        State=#state{endpoint_pid=EndpointPid, id=ID, prefix=Prefix, suffix=Suffix, uri=Uri, module=Module, observer=undefined}) ->
+    gen_server:cast(EndpointPid, {register_handler, ID, self()}),
     % the first observe request from this user to this resource
     case invoke_callback(Module, coap_observe, [EpID, Prefix, Suffix, requires_ack(Request)]) of
         {ok, ObState} ->
@@ -323,7 +327,7 @@ return_response(Ref, Request, Code, Reason, State) ->
     send_response(Ref, coap_message_utils:response(Code, Reason, Request), State#state{last_response=Code}).
 
 send_response(Ref, Response=#coap_message{options=Options},
-        State=#state{endpoint_pid=EndpointPid, observer=Observer}) ->
+        State=#state{endpoint_pid=EndpointPid, observer=Observer, id=ID}) ->
     % io:fwrite("<- ~p~n", [Response]),
     {ok, _} = coap_endpoint:send_response(EndpointPid, Ref, Response),
     case Observer of
@@ -334,6 +338,7 @@ send_response(Ref, Response=#coap_message{options=Options},
             case coap_message_utils:get_option('Block2', Options) of
                 {_, true, _} ->
                     % client is expected to ask for more blocks
+                    gen_server:cast(EndpointPid, {register_handler, ID, self()}),
                     set_timeout(?EXCHANGE_LIFETIME, State);
                 _Else ->
                     % no further communication concerning this request

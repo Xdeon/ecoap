@@ -1,13 +1,25 @@
 -module(test_resource).
 -export([coap_discover/2, coap_get/4, coap_post/4, coap_put/4, coap_delete/3, coap_observe/4, coap_unobserve/1, handle_info/2, coap_ack/2]).
+-export([start/0, stop/0]).
 
 -include("coap_def.hrl").
 -behaviour(coap_resource).
 
+start() ->
+    ok = application:start(mnesia),
+    {atomic, ok} = mnesia:create_table(resources, []),
+    {ok, _} = application:ensure_all_started(ecoap),
+    ecoap_registry:register_handler([<<"storage">>], ?MODULE, undefined).
+
+stop() ->
+    application:stop(ecoap),
+    application:stop(mnesia).
+
 % resource operations
 coap_discover(Prefix, _Args) ->
     io:format("discover ~p~n", [Prefix]),
-    [{absolute, Prefix++Name, []} || Name <- mnesia:dirty_all_keys(resources)].
+    % [{absolute, Prefix++Name, []} || Name <- mnesia:dirty_all_keys(resources)].
+    [{absolute, Prefix, []}].
 
 coap_get(_ChId, Prefix, [], _) ->
     #coap_content{payload = <<"welcome to my ", (list_to_binary(Prefix))/binary>>};

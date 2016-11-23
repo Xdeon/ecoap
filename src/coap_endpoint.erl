@@ -22,12 +22,16 @@
 	tokens = undefined :: #{binary() => receiver()},
 	trans = undefined :: #{trid() => coap_exchange:exchange()},
 	nextmid = undefined :: non_neg_integer(),
-	rescnt = undefined :: non_neg_integer(),
-    handler_refs = undefined :: undefined | #{reference() => pid()},
+	% rescnt = undefined :: non_neg_integer(),
+    handler_refs = undefined :: undefined | #{reference() => tuple()},
     timer = undefined :: reference()
 }).
 
--type trans_args() :: #{sock => inet:socket(), ep_id => coap_endpoint_id(), endpoint_pid => pid(), handler_sup => pid()}.
+-type trans_args() :: #{sock => inet:socket(), 
+                        ep_id => coap_endpoint_id(), 
+                        endpoint_pid => pid(), 
+                        handler_sup => pid(),
+                        handler_regs => #{tuple() => pid()}}.
 -type coap_endpoint_id() :: ecoap_socket:coap_endpoint_id().
 -type trid() :: {in | out, non_neg_integer()}.
 -type receiver() :: {pid(), reference()}.
@@ -86,12 +90,12 @@ send_response(EndpointPid, Ref, Message) ->
 init([Socket, EpID]) ->
     TRef = erlang:start_timer(?SCAN_INTERVAL*1000, self(), scan),
     TransArgs = #{sock=>Socket, ep_id=>EpID, endpoint_pid=>self()},
-    {ok, #state{tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs}};
+    {ok, #state{tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), timer=TRef, trans_args=TransArgs}};
     
 init([HdlSupPid, Socket, EpID]) ->
     TRef = erlang:start_timer(?SCAN_INTERVAL*1000, self(), scan),
-    TransArgs = #{sock=>Socket, ep_id=>EpID, endpoint_pid=>self(), handler_sup=>HdlSupPid},
-    {ok, #state{tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs, handler_refs=maps:new()}}.
+    TransArgs = #{sock=>Socket, ep_id=>EpID, endpoint_pid=>self(), handler_sup=>HdlSupPid, handler_regs=>#{}},
+    {ok, #state{tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), timer=TRef, trans_args=TransArgs, handler_refs=maps:new()}}.
 
 handle_call(_Request, _From, State) ->
     error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
@@ -106,6 +110,11 @@ handle_cast({send_message, Message, Receiver}, State) ->
 % outgoing response, either CON(0) or NON(1), piggybacked ACK(2) or RST(3)
 handle_cast({send_response, Message, Receiver}, State) ->
     make_new_response(Message, Receiver, State);
+handle_cast({register_handler, ID, Pid}, State=#state{trans_args=TransArgs=#{handler_regs:=Regs}, handler_refs=Refs}) ->
+    io:format("register_handler ~p for ~p~n", [Pid, ID]),
+    Ref = erlang:monitor(process, Pid),
+    {noreply, State#state{trans_args=TransArgs#{handler_regs:=maps:put(ID, Pid, Regs)}, handler_refs=maps:put(Ref, ID, Refs)}};
+
 handle_cast(shutdown, State) ->
     {stop, normal, State};
 handle_cast(_Msg, State) ->
@@ -205,19 +214,15 @@ handle_info({request_complete, Token}, State=#state{tokens=Tokens}) ->
     purge_state(State#state{tokens=Tokens2});
 % Only monitor possible observe handlers instead of every new spawned handler
 % so that we can save some extra message traffic
-handle_info({obs_handler_started, HandlerPid}, State=#state{rescnt=Count, handler_refs=Refs}) ->
-    %io:format("obs_handler_started~n"),
-    Ref = erlang:monitor(process, HandlerPid),
-    {noreply, State#state{rescnt=Count+1, handler_refs=maps:put(Ref, HandlerPid, Refs)}};
-handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{rescnt=Count, handler_refs=Refs}) ->
-    case maps:is_key(Ref, Refs) of
-        true -> 
+handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{trans_args=TransArgs=#{handler_regs:=Regs}, handler_refs=Refs}) ->
+    case maps:find(Ref, Refs) of
+        {ok, ID} -> 
             %% Code added by wilbur
-            %io:format("obs_handler_completed~n"),
+            io:format("reg_handler_completed~n"),
             %% end
-            {noreply, State#state{rescnt=Count-1, handler_refs=maps:remove(Ref, Refs)}};
+            {noreply, State#state{trans_args=TransArgs#{handler_regs:=maps:remove(ID, Regs)}, handler_refs=maps:remove(Ref, Refs)}};
             % purge_state(State#state{rescnt=Count-1, handler_refs=maps:remove(Ref, Refs)})
-        false -> 
+        error -> 
             {noreply, State}
     end;
 handle_info(_Info, State) ->
@@ -298,8 +303,8 @@ update_state(State=#state{trans=Trans}, TrId, TrState) ->
     Trans2 = maps:put(TrId, TrState, Trans),
     {noreply, State#state{trans=Trans2}}.
 
-purge_state(State=#state{tokens=Tokens, trans=Trans, rescnt=Count}) ->
-    case maps:size(Tokens) + maps:size(Trans) + Count of
+purge_state(State=#state{tokens=Tokens, trans=Trans, handler_refs=Refs}) ->
+    case maps:size(Tokens) + maps:size(Trans) + maps:size(Refs) of
         0 -> 
             % %io:format("All trans expired~n"),
             {stop, normal, State};

@@ -286,11 +286,13 @@ aack_sent({timeout, await_pack}, _TransArgs, State) ->
 
 % utility functions
 
-handle_request(Message=#coap_message{options=Options}, #{ep_id:=EpID, handler_sup:=HdlSupPid, endpoint_pid:=EndpointPid}, #exchange{receiver=undefined}) ->
+handle_request(Message=#coap_message{code=Method, options=Options}, 
+    #{ep_id:=EpID, handler_sup:=HdlSupPid, endpoint_pid:=EndpointPid, handler_regs:=HandlerRegs}, 
+    #exchange{receiver=undefined}) ->
     %io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
     Uri = coap_message_utils:get_option('Uri-Path', Options, []),
     Query = coap_message_utils:get_option('Uri-Query', Options, []),
-    case coap_handler_sup:get_handler(HdlSupPid, {Uri, Query}) of
+    case coap_handler_sup:get_handler(HdlSupPid, {Method, Uri, Query}, HandlerRegs) of
         {ok, Pid} ->
             Pid ! {coap_request, EpID, EndpointPid, undefined, Message},
             ok;
@@ -365,3 +367,12 @@ next_state(Stage, State=#exchange{stage=Stage1, timer=Timer}) ->
             ok
     end,
     State#exchange{stage=Stage, timer=undefined}.
+
+    
+
+
+
+
+
+
+
