@@ -99,10 +99,10 @@ init(SupPid, InPort) ->
 
 % get an endpoint when being as a client
 handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoints=EndPoints, endpoint_pool=undefined}) ->
-    case find_endpoint(EpID, EndPoints) of
+    case maps:find(EpID, EndPoints) of
         {ok, EpPid} ->
             {reply, {ok, EpPid}, State};
-        undefined ->
+        error ->
             % {ok, EpSupPid, EpPid} = endpoint_sup:start_link(Socket, EpID),
             % %io:fwrite("EpSupPid: ~p EpPid: ~p~n", [EpSupPid, EpPid]),
             {ok, EpPid} = coap_endpoint:start_link(Socket, EpID),
@@ -111,10 +111,10 @@ handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoints=End
     end;
 % get an endpoint when being as a server
 handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoints=EndPoints, endpoint_pool=PoolPid}) ->
-	case find_endpoint(EpID, EndPoints) of
+	case maps:find(EpID, EndPoints) of
 		{ok, EpPid} ->
 			{reply, {ok, EpPid}, State};
-		undefined ->
+		error ->
 		    case endpoint_sup_sup:start_endpoint(PoolPid, [Socket, EpID]) of
 		        {ok, _, EpPid} ->
 		            {reply, {ok, EpPid}, store_endpoint(EpID, EpPid, State)};
@@ -137,12 +137,12 @@ handle_cast(_Msg, State) ->
 handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, endpoints=EndPoints, endpoint_pool=PoolPid}) ->
 	EpID = {PeerIP, PeerPortNo},
 	% ok = inet:setopts(Socket, [{active, once}]),
-	case find_endpoint(EpID, EndPoints) of
+	case maps:find(EpID, EndPoints) of
 		{ok, EpPid} -> 
 			%io:fwrite("found endpoint ~p~n", [EpID]),
 			EpPid ! {datagram, Bin},
 			{noreply, State};
-		undefined when is_pid(PoolPid) -> 
+		error when is_pid(PoolPid) -> 
 			case endpoint_sup_sup:start_endpoint(PoolPid, [Socket, EpID]) of
 				{ok, _, EpPid} -> 
 					%io:fwrite("start endpoint ~p~n", [EpID]),
@@ -152,7 +152,7 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, en
 					%io:fwrite("start_endpoint failed: ~p~n", [_Reason]),
 					{noreply, State}
 			end;
-		undefined ->
+		error ->
 			% ignore unexpected message received by a client
 			%io:fwrite("client recv unexpected packet~n"),
 			{noreply, State}
@@ -185,12 +185,6 @@ code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
 %% Internal   
-find_endpoint(EpID, EndPoints) ->
-    case maps:find(EpID, EndPoints) of
-        error -> undefined;
-        {ok, EpPid} -> {ok, EpPid}
-    end.
-
 store_endpoint(EpID, EpPid, State=#state{endpoints=EndPoints, endpoint_refs=EndPointsRefs}) ->
 	Ref = erlang:monitor(process, EpPid),
 	State#state{endpoints=maps:put(EpID, EpPid, EndPoints), endpoint_refs=maps:put(Ref, EpID, EndPointsRefs)}.
