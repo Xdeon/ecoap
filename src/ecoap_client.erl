@@ -4,7 +4,7 @@
 %% API.
 -export([start_link/0]).
 -export([ping/2, request/3, request/4, request/5, request_async/3, request_async/4, request_async/5, close/1]).
-% -export([observe/2, observe/3, unobserve/2, unobserve/3]).
+-export([observe/2, observe/3, unobserve/2, unobserve/3]).
 
 %% gen_server.
 -export([init/1]).
@@ -17,16 +17,20 @@
 -record(state, {
 	sock_pid = undefined :: pid(),
 	request_refs = undefined :: #{reference() => req()},
+	obs_refs = undefined :: #{reference() => {ecoap_socket:coap_endpoint_id(), binary()}},
 	client_pid = undefined :: pid()
 }).
 
 -record(req, {
 	method = undefined :: undefined | coap_method(),
 	option_list = undefined :: undefined | list(tuple()),
+	% token is only used for observing
+	% token = <<>> :: binary(),
 	content = undefined :: undefined | coap_content(),
 	fragment = <<>> :: binary(),
 	from = undefined :: undefined | from(),
-	client_ref = undefined :: undefined | reference()
+	client_ref = undefined :: undefined | reference(),
+	lastseq = undefined :: undefined | non_neg_integer()
 }).
 
 -define(EXCHANGE_LIFETIME, 247000).
@@ -54,6 +58,24 @@ ping(Pid, Uri) ->
 		_Else -> error
 	end.
 
+observe(Pid, Uri) ->
+	observe(Pid, Uri, []).
+
+observe(Pid, Uri, Options) ->
+	{EpID, Req} = assemble_request('GET', Uri, append_option({'Observe', 0}, Options), <<>>),
+	ClientRef = make_ref(),
+	gen_server:cast(Pid, {start_observe, EpID, Req, ClientRef}),
+	{ok, ClientRef}.
+
+unobserve(Pid, Uri) ->
+	unobserve(Pid, Uri, []).
+
+unobserve(Pid, Uri, Options) ->
+	{EpID, Req} = assemble_request('GET', Uri, append_option({'Observe', 1}, Options), <<>>),
+	ClientRef = make_ref(),
+	gen_server:cast(Pid, {cancel_observe, EpID, Req, ClientRef}),
+	{ok, ClientRef}.
+
 %% Note that options defined in Content will overwrite the same ones defined in Options
 %% But if options in Content are with their default value 'undefined' then they will not be used
 
@@ -67,9 +89,8 @@ request(Pid, Method, Uri, Content) ->
 
 -spec request(pid(), coap_method(), list(), request_content(), [tuple()]) -> response().
 request(Pid, Method, Uri, Content, Options) ->
-	{EpID, Path, Query} = resolve_uri(Uri),
-	OptionList = append_option({'Uri-Query', Query}, append_option({'Uri-Path', Path}, Options)),
-	start_endpoint(Pid, EpID, {Method, OptionList, convert_content(Content)}).
+	{EpID, Req} = assemble_request(Method, Uri, Options, Content),
+	start_endpoint(Pid, EpID, Req).
 
 -spec request_async(pid(), coap_method(), list()) -> {ok, reference()}.
 request_async(Pid, Method, Uri) ->
@@ -81,11 +102,13 @@ request_async(Pid, Method, Uri, Content) ->
 
 -spec request_async(pid(), coap_method(), list(), request_content(), [tuple()]) -> {ok, reference()}.
 request_async(Pid, Method, Uri, Content, Options) ->
+	{EpID, Req} = assemble_request(Method, Uri, Options, Content),
+	start_endpoint_async(Pid, EpID, Req).
+
+assemble_request(Method, Uri, Options, Content) ->
 	{EpID, Path, Query} = resolve_uri(Uri),
 	OptionList = append_option({'Uri-Query', Query}, append_option({'Uri-Path', Path}, Options)),
-	ClientRef = make_ref(),
-	start_endpoint_async(Pid, EpID, {Method, OptionList, convert_content(Content)}, ClientRef), 
-	{ok, ClientRef}.
+	{EpID, {Method, OptionList, convert_content(Content)}}.
 
 -spec close(pid()) -> ok.
 close(Pid) ->
@@ -94,14 +117,16 @@ close(Pid) ->
 start_endpoint(Pid, EpID, Req) ->
 	call_endpoint(Pid, {start_endpoint, EpID, Req}).
 
-start_endpoint_async(Pid, EpID, Req, ClientRef) -> 
-	gen_server:cast(Pid, {start_endpoint, EpID, Req, ClientRef}).
+start_endpoint_async(Pid, EpID, Req) -> 
+	ClientRef = make_ref(),
+	gen_server:cast(Pid, {start_endpoint, EpID, Req, ClientRef}),
+	{ok, ClientRef}.
 
 %% gen_server.
 
 init([ClientPid]) ->
 	{ok, SockPid} = ecoap_socket:start_link(),
-	{ok, #state{sock_pid=SockPid, request_refs=maps:new(), client_pid=ClientPid}}.
+	{ok, #state{sock_pid=SockPid, request_refs=maps:new(), obs_refs=maps:new(), client_pid=ClientPid}}.
 
 handle_call({ping, EpID}, From, State=#state{sock_pid=SockPid, request_refs=Refs}) ->
 	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
@@ -116,10 +141,30 @@ handle_call({start_endpoint, EpID, {Method, OptionList, Content}}, From, State=#
 handle_call(_Request, _From, State) ->
 	{reply, ignored, State}.
 
-handle_cast({start_endpoint, EpID, {Method, OptionList, Content}, ClientRef}, State = #state{sock_pid=SockPid, request_refs=Refs}) ->
+handle_cast({start_endpoint, EpID, {Method, OptionList, Content}, ClientRef}, State=#state{sock_pid=SockPid, request_refs=Refs}) ->
 	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
 	{ok, Ref} = request_block(EndpointPid, Method, OptionList, Content),
 	{noreply, State#state{request_refs=store_ref(Ref, #req{method=Method, option_list=OptionList, content=Content, client_ref=ClientRef}, Refs)}};
+
+handle_cast({start_observe, EpID, {Method, OptionList, _Content}, ClientRef}, State=#state{sock_pid=SockPid, request_refs=Refs, obs_refs=Obs}) ->
+	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
+	Token = crypto:strong_rand_bytes(4),
+	{ok, Ref} = coap_endpoint:send_request_with_token(EndpointPid,  
+					coap_message_utils:request('CON', Method, <<>>, OptionList), Token),
+	OptionList2 = proplists:delete('Observe', OptionList),
+	Req = #req{method=Method, option_list=OptionList2, client_ref=ClientRef},
+	{noreply, State#state{obs_refs=store_ref(EpID, Token, Obs), request_refs=store_ref(Ref, Req, Refs)}};
+
+handle_cast({cancel_observe, EpID, {Method, OptionList, _Content}, ClientRef}, State=#state{sock_pid=SockPid, obs_refs=Obs, request_refs=Refs}) ->
+	case find_ref(EpID, Obs) of
+		undefined -> {noreply, State};
+		Token ->
+			{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
+			{ok, Ref} = coap_endpoint:send_request_with_token(EndpointPid,  
+					coap_message_utils:request('CON', Method, <<>>, OptionList), Token),
+			{noreply, State#state{request_refs=store_ref(Ref, #req{method=Method, option_list=OptionList, client_ref=ClientRef}, Refs)}}
+	end;
+
 handle_cast(shutdown, State) ->
 	{stop, normal, State};
 handle_cast(_Msg, State) ->
@@ -186,8 +231,13 @@ handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options
 	            _Else ->
 	                % not segmented
 	                Res = return_response({ok, Code}, Message#coap_message{payload = <<Fragment/binary, Data/binary>>}),
-	                ok = send_response(From, ClientPid, ClientRef, Res),
-	                {noreply, State#state{request_refs=delete_ref(Ref, Refs)}}
+
+	                case coap_message_utils:get_option('Observe', Options) of
+	                	undefined -> 
+			                ok = send_response(From, ClientPid, ClientRef, Res),
+			                {noreply, State#state{request_refs=delete_ref(Ref, Refs)}};
+	                	Obseq -> send_notify(Ref, Req, Obseq, Message#coap_message{payload = <<Fragment/binary, Data/binary>>}, State)
+	                end
 		    end
 	end;
 handle_response(Ref, _EndpointPid, Message=#coap_message{code={error, Code}}, 
@@ -200,25 +250,25 @@ handle_response(Ref, _EndpointPid, Message=#coap_message{code={error, Code}},
 			{noreply, State#state{request_refs=delete_ref(Ref, Refs)}}
 	end.
 
-% send_notify(Ref, Req=#req{lastseq=LastSeq}, Obstate, Message=#coap_message{code={ok, Code}},
-%         State=#state{client_pid=ClientPid, request_refs=Refs}) ->
-%     case Obstate of
-%         undefined ->
-%             % subscription is terminated
-%             ClientPid ! {coap_notify, self(), undefined, {ok, Code}, coap_message_utils:get_content(Message)},
-%             {stop, normal, State};
-%         N when LastSeq == undefined; N > LastSeq ->
-%             % report and stay subscribed
-%             ClientPid ! {coap_notify, self(), N, {ok, Code}, coap_message_utils:get_content(Message)},
-%             {noreply, State#state{request_refs = store_ref(Ref, Req#req{lastseq=N}, Refs)}};
-%         N when N =< LastSeq ->
-%             % ignore, but stay subscribed
-%             {noreply, State}
-%     end;
-% send_notify(_Ref, _Req, _Obstate, Message=#coap_message{code={error, Code}},
-% 	State=#state{client_pid=ClientPid}) ->
-% 	ClientPid ! {coap_notify, self(), undefined, {error, Code}, coap_message_utils:get_content(Message)},
-%     {stop, normal, State}.
+send_notify(Ref, Req=#req{lastseq=LastSeq}, Obseq, Message=#coap_message{code={ok, Code}},
+        State=#state{client_pid=ClientPid, request_refs=Refs}) ->
+    case Obseq of
+        undefined ->
+            % subscription is terminated
+            ClientPid ! {coap_notify, self(), undefined, {ok, Code}, coap_message_utils:get_content(Message)},
+            {stop, normal, State};
+        N when LastSeq == undefined; N > LastSeq ->
+            % report and stay subscribed
+            ClientPid ! {coap_notify, self(), N, {ok, Code}, coap_message_utils:get_content(Message)},
+            {noreply, State#state{request_refs = store_ref(Ref, Req#req{lastseq=N}, Refs)}};
+        N when N =< LastSeq ->
+            % ignore, but stay subscribed
+            {noreply, State}
+    end;
+send_notify(_Ref, _Req, _Obstate, Message=#coap_message{code={error, Code}},
+	State=#state{client_pid=ClientPid}) ->
+	ClientPid ! {coap_notify, self(), undefined, {error, Code}, coap_message_utils:get_content(Message)},
+    {stop, normal, State}.
 	
 call_endpoint(Pid, Msg) ->
 	gen_server:call(Pid, Msg, ?EXCHANGE_LIFETIME).

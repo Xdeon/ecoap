@@ -161,7 +161,7 @@ append_option({SameOptId, OptVal2}, [{SameOptId, OptVal1} | OptionList]) ->
     case is_repeatable_option(SameOptId) of
         true ->
             % we must keep the order
-            [{SameOptId, OptVal1++[OptVal2]} | OptionList];
+            [{SameOptId, lists:append(OptVal1, [OptVal2])} | OptionList];
         false ->
             throw({error, atom_to_list(SameOptId)++" is not repeatable"})
     end;
