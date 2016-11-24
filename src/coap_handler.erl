@@ -136,12 +136,12 @@ assemble_payload(#coap_message{payload=Segment}, {Num, true, Size}, State=#state
         _Else -> {error, 'BadRequest'}
     end;
 assemble_payload(#coap_message{payload=Segment}, {_Num, false, _Size}, State=#state{insegs=Segs}) ->
-    Payload = lists:foldl(
-        fun ({Num1, Segment1}, Acc) when Num1*byte_size(Segment1) == byte_size(Acc) ->
+    Payload = orddict:fold(
+        fun (Num1, Segment1, Acc) when Num1*byte_size(Segment1) == byte_size(Acc) ->
                 <<Acc/binary, Segment1/binary>>;
-            (_Else, _Acc) ->
+            (_, _, _Acc) ->
                 throw({error, 'RequestEntityIncomplete'})
-        end, <<>>, orddict:to_list(Segs)),
+        end, <<>>, Segs),
     {ok, <<Payload/binary, Segment/binary>>, State#state{insegs=orddict:new()}}.
 
 process_request(EpID, Request=#coap_message{options=Options},
@@ -374,10 +374,10 @@ uri_suffix(Prefix, Uri) ->
 	lists:nthtail(length(Prefix), Uri).
 
 invoke_callback(Module, Fun, Args) ->
-    try {ok, apply(Module, Fun, Args)} of
+    case catch {ok, apply(Module, Fun, Args)} of
         {ok, Response} ->
-            Response
-    catch _:Error ->
+            Response;
+        {'EXIT', Error} ->
             error_logger:error_msg("~p", [Error]),
             {error, 'InternalServerError'}
     end.
