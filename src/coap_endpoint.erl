@@ -44,6 +44,9 @@
 
 -include("coap_def.hrl").
 
+% TODO:
+% Should we make trid as another field in trans_arg instead of putting trid in each exchange record?
+
 %% API.
 
 -spec start_link(pid(), inet:socket(), coap_endpoint_id()) -> {ok, pid()}.

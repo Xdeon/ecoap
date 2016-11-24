@@ -242,11 +242,11 @@ handle_observe(_EpID, Request, Content, State) ->
 requires_ack(#coap_message{type='CON'}) -> true;
 requires_ack(#coap_message{type='NON'}) -> false.
 
-handle_unobserve(_EpID, Request, Resource, State=#state{observer=undefined}) ->
-    return_resource(Request, Resource, State);
-handle_unobserve(_EpID, Request, Resource, State) ->
+handle_unobserve(_EpID, Request=#coap_message{token=Token}, Resource, State=#state{observer=#coap_message{token=Token}}) ->
     {ok, State2} = cancel_observer(Request, State),
-    return_resource(Request, Resource, State2).
+    return_resource(Request, Resource, State2);
+handle_unobserve(_EpID, Request, Resource, State) ->
+    return_resource(Request, Resource, State).
 
 cancel_observer(#coap_message{}, State=#state{uri=Uri, module=Module, obstate=ObState}) ->
     ok = invoke_callback(Module, coap_unobserve, [ObState]),
