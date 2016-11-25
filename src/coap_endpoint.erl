@@ -250,7 +250,6 @@ code_change(_OldVsn, State, _Extra) ->
 
 %% Internal
 make_new_request(Message, Token, Receiver, State=#state{tokens=Tokens}) ->
-    io:format("send req with token: ~p~n", [Token]),
     Tokens2 = maps:put(Token, Receiver, Tokens),
     make_new_message(Message#coap_message{token=Token}, Receiver, State#state{tokens=Tokens2}).
 
