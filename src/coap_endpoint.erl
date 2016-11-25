@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 %% API.
--export([start_link/3, start_link/2, close/1, 
+-export([start_link/4, start_link/2, close/1, 
     ping/1, send/2, send_message/3, send_request/3, send_request_with_token/3, send_response/3]).
 
 %% gen_server.
@@ -25,7 +25,8 @@
 	nextmid = undefined :: non_neg_integer(),
 	rescnt = undefined :: non_neg_integer(),
     handler_refs = undefined :: undefined | #{reference() => tuple()},
-    timer = undefined :: reference()
+    timer = undefined :: reference(),
+    mode = server :: server | client
 }).
 
 -type trans_args() :: #{sock => inet:socket(), 
@@ -50,12 +51,17 @@
 
 %% API.
 
--spec start_link(pid(), inet:socket(), coap_endpoint_id()) -> {ok, pid()}.
 % start_link(SupPid, Socket, EpID) ->
 % 	proc_lib:start_link(?MODULE, init, [SupPid, Socket, EpID]).
-start_link(HdlSupPid, Socket, EpID) ->
-    gen_server:start_link(?MODULE, [HdlSupPid, Socket, EpID], []).
+% start_link(HdlSupPid, Socket, EpID) ->
+%     % gen_server:start_link(?MODULE, [HdlSupPid, Socket, EpID], []).
+%     start_link(HdlSupPid, Socket, EpID, server).
 
+-spec start_link(pid(), inet:socket(), coap_endpoint_id(), client|server) -> {ok, pid()}.
+start_link(HdlSupPid, Socket, EpID, Mode) ->
+    gen_server:start_link(?MODULE, [HdlSupPid, Socket, EpID, Mode], []).
+
+-spec start_link(inet:socket(), coap_endpoint_id()) -> {ok, pid()}.
 start_link(Socket, EpID) ->
     gen_server:start_link(?MODULE, [Socket, EpID], []).
 
@@ -100,12 +106,12 @@ send_response(EndpointPid, Ref, Message) ->
 init([Socket, EpID]) ->
     TRef = erlang:start_timer(?SCAN_INTERVAL*1000, self(), scan),
     TransArgs = #{sock=>Socket, ep_id=>EpID, endpoint_pid=>self()},
-    {ok, #state{tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs}};
+    {ok, #state{tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs, mode=client}};
     
-init([HdlSupPid, Socket, EpID]) ->
+init([HdlSupPid, Socket, EpID, Mode]) ->
     TRef = erlang:start_timer(?SCAN_INTERVAL*1000, self(), scan),
     TransArgs = #{sock=>Socket, ep_id=>EpID, endpoint_pid=>self(), handler_sup=>HdlSupPid, handler_regs=>#{}},
-    {ok, #state{tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs, handler_refs=maps:new()}}.
+    {ok, #state{tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs, handler_refs=maps:new(), mode=Mode}}.
 
 handle_call(_Request, _From, State) ->
     error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
@@ -181,7 +187,8 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgI
                     % token was not recognized
                     BinReset = coap_message:encode(#coap_message{type='RST', id=MsgId}),
                     %io:format("<- reset~n"),
-                    ok = gen_udp:send(Socket, PeerIP, PeerPortNo, BinReset)
+                    ok = gen_udp:send(Socket, PeerIP, PeerPortNo, BinReset),
+                    {noreply, State}
             end
     end;
 % incoming ACK(2) or RST(3) to a request or response
@@ -315,6 +322,8 @@ update_state(State=#state{trans=Trans}, TrId, TrState) ->
     Trans2 = maps:put(TrId, TrState, Trans),
     {noreply, State#state{trans=Trans2}}.
 
+purge_state(State=#state{mode=client}) ->
+    {noreply, State};
 purge_state(State=#state{tokens=Tokens, trans=Trans, rescnt=Count}) ->
     case maps:size(Tokens) + maps:size(Trans) + Count of
         0 -> 

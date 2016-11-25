@@ -195,7 +195,10 @@ go_pack_sent(Ack, #{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, State) ->
     ok = inet_udp:send(Socket, PeerIP, PeerPortNo, BinAck),
     % Socket ! {datagram, {PeerIP, PeerPortNo}, BinAck},
     next_state(pack_sent, State#exchange{msgbin=BinAck}).
-    % undefined.
+    % case Ack of
+    %     #coap_message{code=undefined} -> undefined;   % TODO: still need to store msgid for filtering 
+    %     _Else -> next_state(pack_sent, State#exchange{msgbin=BinAck})
+    % end.
 
 -spec pack_sent({in, binary()} | {timeout, await_aack}, trans_args(), exchange()) -> exchange().
 pack_sent({in, _BinMessage}, #{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, State=#exchange{msgbin=BinAck}) ->
@@ -263,7 +266,8 @@ await_pack({in, BinAck}, TransArgs, State) ->
         % shall we inform the receiver?
         ok 
     end,  
-    next_state(aack_sent, State);
+    % next_state(aack_sent, State);
+    undefined;
 await_pack({timeout, await_pack}, TransArgs=#{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, State=#exchange{msgbin=BinMessage, retry_time=Timeout, retry_count=Count}) when Count < ?MAX_RETRANSMIT ->
     % BinMessage = coap_message:encode(Message),
     %io:fwrite("resend msg for ~p time~n", [Count]),
@@ -273,7 +277,8 @@ await_pack({timeout, await_pack}, TransArgs=#{sock:=Socket, ep_id:={PeerIP, Peer
     next_state(await_pack, TransArgs, State#exchange{retry_time=Timeout2, retry_count=Count+1}, Timeout2);
 await_pack({timeout, await_pack}, TransArgs, State=#exchange{trid={out, _MsgId}, msgbin=BinMessage}) ->
     handle_error(coap_message:decode(BinMessage), timeout, TransArgs, State),
-    next_state(aack_sent, State).
+    % next_state(aack_sent, State).
+    undefined.
 
 -spec aack_sent({in, binary()} | {timeout, await_pack}, trans_args(), exchange()) -> exchange().
 aack_sent({in, _Ack}, _TransArgs, State) ->
