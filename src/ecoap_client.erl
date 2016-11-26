@@ -293,16 +293,16 @@ handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options
 	        		case Obseq of
 	        			undefined -> 
 	        				ok = send_response(From, ClientPid, ClientRef, Res);
-	        			Num when LastSeq == undefined; Num > LastSeq ->
+	        			Num when LastSeq == undefined; ((Num > LastSeq) and (Num - LastSeq < 16#0FFF)); ((Num < LastSeq) and (LastSeq - Num >= 16#0FFF)) ->
 	        				ok = send_notify(ClientPid, ClientRef, Num, Res);
-	        			Num when LastSeq =< Num ->
+	        			Num when Num =< LastSeq ->
 	        				ok
 	        		end,
 	        		{noreply, State#state{req_refs=delete_ref(Ref, ReqRefs)}};
-	        	Num when LastSeq == undefined; Num > LastSeq ->
+	        	Num when LastSeq == undefined; ((Num > LastSeq) and (Num - LastSeq < 16#0FFF)); ((Num < LastSeq) and (LastSeq - Num >= 16#0FFF)) ->
 	        		ok = send_notify(ClientPid, ClientRef, Num, Res),
 	        		{noreply, State#state{req_refs=store_ref(Ref, Req#req{lastseq=Num}, ReqRefs)}};
-	        	Num when LastSeq =< Num -> 
+	        	Num when Num =< LastSeq -> 
 	        		{noreply, State}
 	        end
     end;
