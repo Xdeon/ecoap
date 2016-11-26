@@ -205,7 +205,7 @@ handle_info({datagram, BinMessage = <<?VERSION:2, _:2, _TKL:4, _Code:8, MsgId:16
                 %% Code added by wilbur
                 %io:format("No matching state for TrId: ~p~n", [TrId]),
                 %% end
-                undefined; % ignore unexpected responses
+                undefined; % ignore unexpected responses; ignore ack retransmission because the exchange has been removed
             {ok, TrState} -> coap_exchange:received(BinMessage, TransArgs, TrState)
 
         end);
