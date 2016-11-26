@@ -2,9 +2,8 @@
 
 -export([msg_id/1, request/2, request/3, request/4, ack/1, response/1, response/2, response/3]).
 
--export([set_opt/3, del_opt/2, 
-         set_type/2, set_code/2, set_payload/2, set_content/2, set_content/3, 
-         get_content/1, get_option/2, get_option/3, has_option/2]).
+-export([set_opt/3, set_type/2, set_code/2, set_payload/2, set_content/2, set_content/3, 
+         get_content/1, get_option/2, get_option/3, has_option/2, remove_option/2]).
 
 -define(MAX_BLOCK_SIZE, 1024).
 
@@ -78,6 +77,10 @@ get_option(Option, OptionList, Default) ->
 has_option(Option, OptionList) ->
     lists:keymember(Option, 1, OptionList).
 
+-spec remove_option(coap_option(), [tuple()]) -> [tuple()].
+remove_option(Option, OptionList) ->
+    lists:keydelete(Option, 1, OptionList).
+
 -spec set_type(coap_type(), coap_message()) -> coap_message().
 set_type(Type, Msg) ->
     Msg#coap_message{
@@ -100,12 +103,6 @@ set_opt(Option, Value, Msg) -> set_option(Option, Value, Msg).
 set_option(Option, Value, Msg=#coap_message{options=Options}) ->
     Msg#coap_message{
         options=lists:keystore(Option, 1, Options, {Option, Value})
-    }.
-
--spec del_opt(coap_option(), coap_message()) -> coap_message().
-del_opt(Option, Msg=#coap_message{options=Options}) ->
-    Msg#coap_message{
-        options=lists:keydelete(Option, 1, Options)
     }.
 
 -spec set_payload(coap_content()|binary()|list(), coap_message()) -> coap_message().

@@ -313,14 +313,10 @@ handle_request(Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{rec
     Sender ! {coap_request, EpID, EndpointPid, Ref, Message},
     ok.
 
-handle_response(Message=#coap_message{options=Options}, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={Sender, Ref}}) ->
+handle_response(Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={Sender, Ref}}) ->
     %io:fwrite("handle_response called from ~p with ~p~n", [self(), Message]),    
     Sender ! {coap_response, EpID, EndpointPid, Ref, Message},
-    % an observe notification should not remove the request token
-    case coap_message_utils:has_option('Observe', Options) of
-        true -> ok;
-        false -> request_complete(EndpointPid, Message)
-    end.
+    request_complete(EndpointPid, Message).
 
 handle_error(Message, Error, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={Sender, Ref}}) ->
 	%io:fwrite("handle_error called from ~p with ~p~n", [self(), Message]),
@@ -337,6 +333,7 @@ request_complete(EndpointPid, #coap_message{token=Token, options=Options}) ->
         undefined ->
             EndpointPid ! {request_complete, Token},
             ok;
+        % an observe notification should not remove the request token
         _Else ->
             ok
     end.

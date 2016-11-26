@@ -173,9 +173,10 @@ handle_cast({start_observe, Uri, EpID, {Method, Options, _Content}, ClientRef},
 	Token = crypto:strong_rand_bytes(4),
 	{ok, Ref} = coap_endpoint:send_request_with_token(EndpointPid,  
 					coap_message_utils:request('CON', Method, <<>>, Options), Token),
-	Options2 = proplists:delete('Observe', Options),
+	Options2 = coap_message_utils:remove_option('Observe', Options),
 	Req = #req{method=Method, options=Options2, token=Token, client_ref=ClientRef},
-	{noreply, State#state{obs_regs=store_ref(Uri, Ref, ObsRegs), req_refs=store_ref(Ref, Req, ReqRefs)}};
+	OldRef =  find_ref(Uri, ObsRegs),
+	{noreply, State#state{obs_regs=store_ref(Uri, Ref, ObsRegs), req_refs=store_ref(Ref, Req, delete_ref(OldRef, ReqRefs))}};
 
 handle_cast({cancel_observe, Uri, EpID, {Method, Options, _Content}, ClientRef}, 
 	State=#state{sock_pid=SockPid, client_pid=ClientPid, req_refs=ReqRefs, obs_regs=ObsRegs}) ->
@@ -186,8 +187,8 @@ handle_cast({cancel_observe, Uri, EpID, {Method, Options, _Content}, ClientRef},
 			{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
 			{ok, Ref2} = coap_endpoint:send_request_with_token(EndpointPid,  
 					coap_message_utils:request('CON', Method, <<>>, Options), Token),
-			Options2 = proplists:delete('Observe', Options),
-			Req = #req{method=Method, options=Options2, client_ref=ClientRef},
+			Options2 = coap_message_utils:remove_option('Observe', Options),
+			Req = #req{method=Method, options=Options2, token=Token, client_ref=ClientRef},
 			{noreply, State#state{obs_regs=delete_ref(Uri, ObsRegs), req_refs=store_ref(Ref2, Req, delete_ref(Ref, ReqRefs))}}
 	end;
 
