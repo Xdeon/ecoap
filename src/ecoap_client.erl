@@ -30,8 +30,8 @@
 	fragment = <<>> :: binary(),
 	from = undefined :: undefined | from(),
 	client_ref = undefined :: undefined | reference(),
-	block_obseq = undefined :: undefined | non_neg_integer(),
-	lastseq = undefined :: undefined | non_neg_integer()
+	block_obseq = undefined :: undefined | non_neg_integer()
+	% lastseq = undefined :: undefined | non_neg_integer()
 }).
 
 -define(EXCHANGE_LIFETIME, 247000).
@@ -263,7 +263,7 @@ handle_response(Ref, EndpointPid, _Message=#coap_message{code={ok, 'Continue'}, 
 handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options=Options1, payload=Data}, 
 	State = #state{req_refs=ReqRefs, client_pid = ClientPid}) ->
 	Req = find_ref(Ref, ReqRefs),
-	#req{method=Method, options=Options2, fragment=Fragment, client_ref=ClientRef, from=From, block_obseq=Obseq, lastseq=LastSeq} = Req,
+	#req{method=Method, options=Options2, fragment=Fragment, client_ref=ClientRef, from=From, block_obseq=Obseq} = Req,
 	case coap_message_utils:get_option('Block2', Options1) of
         {Num, true, Size} ->
             % more blocks follow, ask for more
@@ -278,11 +278,7 @@ handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options
             	N ->
             		% This is the first response of a blockwise transfer when observing certain resource
             		% We remember the observe seq number here because following requests will be normal ones
-            		% Note: We put the current observe seq in the lastseq filed of the origin observe request record 
-            		% so that following notifications could inheritate it
-            		NewReqRefs = store_ref(Ref2, Req#req{fragment=NewFragment, block_obseq=N}, 
-            			store_ref(Ref, Req#req{lastseq=N}, ReqRefs)),
-            		{noreply, State#state{req_refs=NewReqRefs}}	
+            		{noreply, State#state{req_refs=store_ref(Ref2, Req#req{fragment=NewFragment, block_obseq=N}, ReqRefs)}}	
             end;
         _Else ->
             % not segmented
@@ -293,16 +289,12 @@ handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options
 	        		case Obseq of
 	        			undefined -> 
 	        				ok = send_response(From, ClientPid, ClientRef, Res);
-	        			Num when LastSeq == undefined; ((Num > LastSeq) and (Num - LastSeq < 16#0FFF)); ((Num < LastSeq) and (LastSeq - Num >= 16#0FFF)) ->
-	        				ok = send_notify(ClientPid, ClientRef, Num, Res);
-	        			Num when Num =< LastSeq ->
-	        				ok
+	        			Num ->
+	        				ok = send_notify(ClientPid, ClientRef, Num, Res)
 	        		end,
 	        		{noreply, State#state{req_refs=delete_ref(Ref, ReqRefs)}};
-	        	Num when LastSeq == undefined; ((Num > LastSeq) and (Num - LastSeq < 16#0FFF)); ((Num < LastSeq) and (LastSeq - Num >= 16#0FFF)) ->
+	        	Num ->
 	        		ok = send_notify(ClientPid, ClientRef, Num, Res),
-	        		{noreply, State#state{req_refs=store_ref(Ref, Req#req{lastseq=Num}, ReqRefs)}};
-	        	Num when Num =< LastSeq -> 
 	        		{noreply, State}
 	        end
     end;
