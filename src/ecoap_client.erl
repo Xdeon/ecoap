@@ -69,13 +69,15 @@ observe(Pid, Uri) ->
 -spec observe(pid(), list(), [tuple()]) -> {reference(), non_neg_integer(), response()}|response().
 observe(Pid, Uri, Options) ->
 	{EpID, Req} = assemble_request('GET', Uri, append_option({'Observe', 0}, Options), <<>>),
+	Accpet = coap_message_utils:get_option('Accpet', Options),
+	Key = {Uri, Accpet},
 	ClientRef = make_ref(),
-	gen_server:cast(Pid, {start_observe, Uri, EpID, Req, ClientRef}),
+	gen_server:cast(Pid, {start_observe, Key, EpID, Req, ClientRef}),
 	receive 
 		% Server does not support observing the resource or an error happened
 		{async_response, ClientRef, Pid, Res} -> 
 			% We need to remove the observe relation
-			remove_observe(Pid, Uri),
+			remove_observe(Pid, Key),
 			Res;
 		{coap_notify, ClientRef, Pid, N, Res} -> 
 			{ClientRef, N, Res}
@@ -88,8 +90,9 @@ unobserve(Pid, Uri) ->
 -spec unobserve(pid(), list(), [tuple()]) -> {reference(), response()}|{error, no_observe}.
 unobserve(Pid, Uri, Options) ->
 	{EpID, Req} = assemble_request('GET', Uri, append_option({'Observe', 1}, Options), <<>>),
+	Accpet = coap_message_utils:get_option('Accpet', Options),
 	ClientRef = make_ref(),
-	gen_server:cast(Pid, {cancel_observe, Uri, EpID, Req, ClientRef}),
+	gen_server:cast(Pid, {cancel_observe, {Uri, Accpet}, EpID, Req, ClientRef}),
 	receive 
 		% We are trying to unobserve something we did not start observing
 		{error, no_observe} -> {error, no_observe};
@@ -167,20 +170,23 @@ handle_cast({send_request, EpID, {Method, Options, Content}, ClientRef}, State=#
 	Req = #req{method=Method, options=Options, content=Content, client_ref=ClientRef},
 	{noreply, State#state{req_refs=store_ref(Ref, Req, ReqRefs)}};
 
-handle_cast({start_observe, Uri, EpID, {Method, Options, _Content}, ClientRef}, 
+handle_cast({start_observe, Key, EpID, {Method, Options, _Content}, ClientRef}, 
 	State=#state{sock_pid=SockPid, req_refs=ReqRefs, obs_regs=ObsRegs}) ->
+	OldRef = find_ref(Key, ObsRegs),
+	Token = case find_ref(OldRef, ReqRefs) of
+				undefined -> crypto:strong_rand_bytes(4);
+				#req{token=OldToken} -> OldToken
+			end,
 	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
-	Token = crypto:strong_rand_bytes(4),
 	{ok, Ref} = coap_endpoint:send_request_with_token(EndpointPid,  
 					coap_message_utils:request('CON', Method, <<>>, Options), Token),
 	Options2 = coap_message_utils:remove_option('Observe', Options),
 	Req = #req{method=Method, options=Options2, token=Token, client_ref=ClientRef},
-	OldRef =  find_ref(Uri, ObsRegs),
-	{noreply, State#state{obs_regs=store_ref(Uri, Ref, ObsRegs), req_refs=store_ref(Ref, Req, delete_ref(OldRef, ReqRefs))}};
+	{noreply, State#state{obs_regs=store_ref(Key, Ref, ObsRegs), req_refs=store_ref(Ref, Req, delete_ref(OldRef, ReqRefs))}};
 
-handle_cast({cancel_observe, Uri, EpID, {Method, Options, _Content}, ClientRef}, 
+handle_cast({cancel_observe, Key, EpID, {Method, Options, _Content}, ClientRef}, 
 	State=#state{sock_pid=SockPid, client_pid=ClientPid, req_refs=ReqRefs, obs_regs=ObsRegs}) ->
-	case find_ref(Uri, ObsRegs) of
+	case find_ref(Key, ObsRegs) of
 		undefined ->  ClientPid ! {error, no_observe}, {noreply, State};
 		Ref -> 
 			#req{token=Token} = find_ref(Ref, ReqRefs),
@@ -189,12 +195,12 @@ handle_cast({cancel_observe, Uri, EpID, {Method, Options, _Content}, ClientRef},
 					coap_message_utils:request('CON', Method, <<>>, Options), Token),
 			Options2 = coap_message_utils:remove_option('Observe', Options),
 			Req = #req{method=Method, options=Options2, token=Token, client_ref=ClientRef},
-			{noreply, State#state{obs_regs=delete_ref(Uri, ObsRegs), req_refs=store_ref(Ref2, Req, delete_ref(Ref, ReqRefs))}}
+			{noreply, State#state{obs_regs=delete_ref(Key, ObsRegs), req_refs=store_ref(Ref2, Req, delete_ref(Ref, ReqRefs))}}
 	end;
 
-handle_cast({remove_observe, Uri}, State=#state{obs_regs=ObsRegs, req_refs=ReqRefs}) ->
-	Ref = find_ref(Uri, ObsRegs),
-	{noreply, State#state{obs_regs=delete_ref(Uri, ObsRegs), req_refs=delete_ref(Ref, ReqRefs)}};
+handle_cast({remove_observe, Key}, State=#state{obs_regs=ObsRegs, req_refs=ReqRefs}) ->
+	Ref = find_ref(Key, ObsRegs),
+	{noreply, State#state{obs_regs=delete_ref(Key, ObsRegs), req_refs=delete_ref(Ref, ReqRefs)}};
 
 handle_cast(shutdown, State) ->
 	{stop, normal, State};
