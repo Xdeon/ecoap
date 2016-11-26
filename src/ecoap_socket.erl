@@ -32,7 +32,7 @@
 -opaque state() :: #state{}.
 -type coap_endpoint_id() :: {inet:ip_address(), inet:port_number()}.
 -type coap_endpoints() :: #{coap_endpoint_id() => pid()}.
--type coap_endpoint_refs() :: #{reference() => {coap_endpoint_id(), pid()}}.
+-type coap_endpoint_refs() :: #{reference() => coap_endpoint_id()}.
 
 -export_type([state/0]).
 -export_type([coap_endpoint_id/0]).
