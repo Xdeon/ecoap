@@ -68,7 +68,7 @@ get_all_endpoints(Pid) ->
 init([InPort]) ->
 	% process_flag(trap_exit, true),
 	% {ok, Deduplication} = application:get_env(deduplication),
-	case gen_udp:open(InPort, [binary, {active, true}, {reuseaddr, true}]) of
+	case gen_udp:open(InPort, [binary, {active, true}, {reuseaddr, true}, {recbuf, 1024*1024}]) of
 		{ok, Socket} ->
 			% We set software buffer to maximum of sndbuf & recbuf of the socket 
 			% to avoid unnecessary copying
@@ -77,7 +77,6 @@ init([InPort]) ->
 			% ok = inet:setopts(Socket, [{recbuf, RecBufSize * 200}]),
 			% ok = inet:setopts(Socket, [{sndbuf, RecBufSize * 200}]),
 			% ok = inet:setopts(Socket, [{buffer, max(SndBufSize, RecBufSize)}]),
-			ok = inet:setopts(Socket, [{recbuf, 1024*1024}]),
 			error_logger:info_msg("coap listen on *:~p~n", [InPort]),
 			{ok, #state{sock=Socket, endpoints=maps:new(), endpoint_refs=maps:new()}};
 		{error, Reason} ->
