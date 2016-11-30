@@ -73,15 +73,21 @@ observe(Pid, Uri, Options) ->
 	Accpet = coap_message_utils:get_option('Accpet', Options),
 	Key = {Uri, Accpet},
 	ClientRef = make_ref(),
+	MonitorRef = erlang:monitor(process, Pid),
 	gen_server:cast(Pid, {start_observe, Key, EpID, Req, ClientRef}),
 	receive 
 		% Server does not support observing the resource or an error happened
 		{async_response, ClientRef, Pid, Res} -> 
+			erlang:demonitor(MonitorRef, [flush]),
 			% We need to remove the observe reference 
 			remove_observe_ref(Pid, Key),
+			erlang:demonitor(MonitorRef, [flush]),
 			Res;
 		{coap_notify, ClientRef, Pid, N, Res} -> 
-			{ClientRef, N, Res}
+			erlang:demonitor(MonitorRef, [flush]),
+			{ClientRef, N, Res};
+		{'DOWN', MonitorRef, process, _Pid, _Reason} ->
+			{error, noproc}
 	after ?EXCHANGE_LIFETIME ->
 		{error, timeout}
 	end.
@@ -95,11 +101,18 @@ unobserve(Pid, Uri, Options) ->
 	{EpID, Req} = assemble_request('GET', Uri, append_option({'Observe', 1}, Options), <<>>),
 	Accpet = coap_message_utils:get_option('Accpet', Options),
 	ClientRef = make_ref(),
+	MonitorRef = erlang:monitor(process, Pid),
 	gen_server:cast(Pid, {cancel_observe, {Uri, Accpet}, EpID, Req, ClientRef}),
 	receive 
 		% We are trying to unobserve something we did not start observing
-		{error, no_observe} -> {error, no_observe};
-		{async_response, ClientRef, Pid, Res} -> {ClientRef, Res}
+		{error, no_observe} -> 
+			erlang:demonitor(MonitorRef, [flush]),
+			{error, no_observe};
+		{async_response, ClientRef, Pid, Res} -> 
+			erlang:demonitor(MonitorRef, [flush]),
+			{ClientRef, Res};
+		{'DOWN', MonitorRef, process, _Pid, _Reason} -> 
+			{error, noproc}
 	after ?EXCHANGE_LIFETIME ->
 		{error, timeout}
 	end.
