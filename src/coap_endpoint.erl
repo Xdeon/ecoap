@@ -217,7 +217,7 @@ handle_info({timeout, TRef, scan}, State=#state{timer=TRef, trans=Trans}) ->
     NewTrans = maps:filter(fun(_TrId, TrState) -> coap_exchange:not_expired(TrState) end, Trans),
     % Because timer will be automatically cancelled if the destination pid exits or is not alive, we can safely start new timer here.
     % %io:format("scanning~n"),
-    NewTRef = erlang:start_timer(?SCAN_INTERVAL*1000, self(), scan),
+    NewTRef = erlang:start_timer(?SCAN_INTERVAL, self(), scan),
     purge_state(State#state{timer = NewTRef, trans = NewTrans});
 handle_info({timeout, TrId, Event}, State=#state{trans=Trans, trans_args=TransArgs}) ->
     %% code added by wilbur
