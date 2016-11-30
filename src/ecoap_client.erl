@@ -67,7 +67,7 @@ close(Pid) ->
 observe(Pid, Uri) ->
 	observe(Pid, Uri, []).
 
--spec observe(pid(), list(), [tuple()]) -> {reference(), non_neg_integer(), response()}|response().
+-spec observe(pid(), list(), [tuple()]) -> {reference(), non_neg_integer(), response()}|response()|{error, atom()}.
 observe(Pid, Uri, Options) ->
 	{EpID, Req} = assemble_request('GET', Uri, append_option({'Observe', 0}, Options), <<>>),
 	Accpet = coap_message_utils:get_option('Accpet', Options),
@@ -81,7 +81,6 @@ observe(Pid, Uri, Options) ->
 			erlang:demonitor(MonitorRef, [flush]),
 			% We need to remove the observe reference 
 			remove_observe_ref(Pid, Key),
-			erlang:demonitor(MonitorRef, [flush]),
 			Res;
 		{coap_notify, ClientRef, Pid, N, Res} -> 
 			erlang:demonitor(MonitorRef, [flush]),
@@ -92,11 +91,11 @@ observe(Pid, Uri, Options) ->
 		{error, timeout}
 	end.
 
--spec unobserve(pid(), list()) -> {reference(), response()}|{error, no_observe}.
+-spec unobserve(pid(), list()) -> {reference(), response()}|{error, atom()}.
 unobserve(Pid, Uri) ->
 	unobserve(Pid, Uri, []).
 
--spec unobserve(pid(), list(), [tuple()]) -> {reference(), response()}|{error, no_observe}.
+-spec unobserve(pid(), list(), [tuple()]) -> response()|{error, atom()}.
 unobserve(Pid, Uri, Options) ->
 	{EpID, Req} = assemble_request('GET', Uri, append_option({'Observe', 1}, Options), <<>>),
 	Accpet = coap_message_utils:get_option('Accpet', Options),
@@ -104,13 +103,13 @@ unobserve(Pid, Uri, Options) ->
 	MonitorRef = erlang:monitor(process, Pid),
 	gen_server:cast(Pid, {cancel_observe, {Uri, Accpet}, EpID, Req, ClientRef}),
 	receive 
+		{async_response, ClientRef, Pid, Res} -> 
+			erlang:demonitor(MonitorRef, [flush]),
+			Res;
 		% We are trying to unobserve something we did not start observing
 		{error, no_observe} -> 
 			erlang:demonitor(MonitorRef, [flush]),
 			{error, no_observe};
-		{async_response, ClientRef, Pid, Res} -> 
-			erlang:demonitor(MonitorRef, [flush]),
-			{ClientRef, Res};
 		{'DOWN', MonitorRef, process, _Pid, _Reason} -> 
 			{error, noproc}
 	after ?EXCHANGE_LIFETIME ->
@@ -161,6 +160,9 @@ send_request_async(Pid, EpID, Req) ->
 
 remove_observe_ref(Pid, Key) ->
 	gen_server:cast(Pid, {remove_observe_ref, Key}).
+
+call_endpoint(Pid, Msg) ->
+	gen_server:call(Pid, Msg, ?EXCHANGE_LIFETIME).
 
 %% gen_server.
 
@@ -323,9 +325,6 @@ send_notify(ClientPid, ClientRef, Obseq, Res) ->
     ClientPid ! {coap_notify, ClientRef, self(), Obseq, Res},
     ok.
 	
-call_endpoint(Pid, Msg) ->
-	gen_server:call(Pid, Msg, ?EXCHANGE_LIFETIME).
-
 append_option({Option, Value}, Options) ->
 	lists:keystore(Option, 1, Options, {Option, Value}).
 
