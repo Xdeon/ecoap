@@ -21,25 +21,33 @@
 -type coap_content() :: #coap_content{}.
 
 -type coap_type() :: 'CON' | 'NON' | 'ACK' | 'RST' .
+
 -type coap_method() :: 'GET' | 'POST' | 'PUT' | 'DELETE'.
--type coap_success() :: {ok, 'Created' | 'Deleted' | 'Valid' | 'Changed' | 'Content' | 'Continue'}. 
--type coap_error() :: {error, 'BadRequest' 
-							| 'Unauthorized' 
-							| 'BadOption' 
-							| 'Forbidden' 
-							| 'NotFound' 
-							| 'MethodNotAllowed' 
-							| 'NotAcceptable' 
-							| 'RequestEntityIncomplete' 
-							| 'PreconditionFailed' 
-							| 'RequestEntityTooLarge' 
-							| 'UnsupportedContentFormat' 
-							| 'InternalServerError' 
-							| 'NotImplemented' 
-							| 'BadGateway' 
-							| 'ServiceUnavailable' 
-							| 'GatewayTimeout' 
-							| 'ProxyingNotSupported'}.
+
+-type success_code() :: 'Created' | 'Deleted' | 'Valid' | 'Changed' | 'Content' | 'Continue'.
+
+-type error_code() :: 'BadRequest' 
+					| 'Unauthorized' 
+					| 'BadOption' 
+					| 'Forbidden' 
+					| 'NotFound' 
+					| 'MethodNotAllowed' 
+					| 'NotAcceptable' 
+					| 'RequestEntityIncomplete' 
+					| 'PreconditionFailed' 
+					| 'RequestEntityTooLarge' 
+					| 'UnsupportedContentFormat' 
+					| 'InternalServerError' 
+					| 'NotImplemented' 
+					| 'BadGateway' 
+					| 'ServiceUnavailable' 
+					| 'GatewayTimeout' 
+					| 'ProxyingNotSupported'.
+
+-type coap_success() :: {ok, success_code()}. 
+
+-type coap_error() :: {error, error_code()}.
+
 -type coap_code() :: coap_method() | coap_success() | coap_error().
 
 -type coap_option() :: 'If-Match'
@@ -57,6 +65,3 @@
 					| 'Proxy-Uri'
 					| 'Proxy-Scheme'
 					| 'Size1'.
-
-
-
