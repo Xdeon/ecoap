@@ -60,6 +60,7 @@ get_endpoint(Pid, {PeerIP, PeerPortNo}) ->
     gen_server:call(Pid, {get_endpoint, {PeerIP, PeerPortNo}}).
 
 %% utility function
+-spec get_all_endpoints(pid()) -> [pid()].
 get_all_endpoints(Pid) ->
 	gen_server:call(Pid, get_all_endpoints).
 
