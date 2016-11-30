@@ -10,20 +10,10 @@ start_link(MFA = {_,_,_}) ->
 	supervisor:start_link(?MODULE, MFA).
 
 init({M, F, A}) ->
-	MaxRestart = 0,
-	MaxTime = 1,
-	{ok, 
-        {
-            #{strategy => simple_one_for_one, 
-              intensity => MaxRestart, 
-              period => MaxTime}, 
-            [
-                #{id => endpoint_sup, 
-                start => {M, F, A}, 
-                restart => temporary, shutdown => infinity, type => supervisor, modules => [M]}
-            ]
-        }
-    }.
+    Procs = [#{id => endpoint_sup, 
+               start => {M, F, A}, 
+               restart => temporary, shutdown => infinity, type => supervisor, modules => [M]}],
+	{ok, {#{strategy => simple_one_for_one, intensity => 0, period => 1}, Procs}}.
 
 start_endpoint(SupPid, Args) ->
     supervisor:start_child(SupPid, Args).

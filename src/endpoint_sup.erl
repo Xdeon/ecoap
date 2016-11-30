@@ -9,15 +9,19 @@
 start_link(Socket, EpID, Mode) ->
     {ok, SupPid} = supervisor:start_link(?MODULE, []),
     {ok, HdlSupPid} = supervisor:start_child(SupPid, 
-      	{coap_handler_sup,
-  		    {coap_handler_sup, start_link, []},
-  		    permanent, infinity, supervisor, 
-           	[coap_handler_sup]}),
+      	#{id => coap_handler_sup,
+  		    start => {coap_handler_sup, start_link, []},
+  		    restart => permanent, 
+          shutdown => infinity, 
+          type => supervisor, 
+          modules => [coap_handler_sup]}),
     {ok, EpPid} = supervisor:start_child(SupPid,
-        {coap_endpoint,
-         	{coap_endpoint, start_link, [HdlSupPid, Socket, EpID, Mode]},
-          	permanent, 5000, worker, 
-          	[coap_endpoint]}),
+        #{id => coap_endpoint,
+         start => {coap_endpoint, start_link, [HdlSupPid, Socket, EpID, Mode]},
+         restart => permanent, 
+         shutdown => 5000, 
+         type => worker, 
+         modules => [coap_endpoint]}),
     {ok, SupPid, EpPid}.
 
 init([]) ->
