@@ -16,7 +16,7 @@
 
 -define(VERSION, 1).
 -define(MAX_MESSAGE_ID, 65535). % 16-bit number
--define(SCAN_INTERVAL, 30).
+-define(SCAN_INTERVAL, 30000).
 
 -record(state, {
     trans_args = undefined :: trans_args(),
@@ -104,12 +104,12 @@ send_response(EndpointPid, Ref, Message) ->
 %% gen_server.
 
 init([Socket, EpID]) ->
-    TRef = erlang:start_timer(?SCAN_INTERVAL*1000, self(), scan),
+    TRef = erlang:start_timer(?SCAN_INTERVAL, self(), scan),
     TransArgs = #{sock=>Socket, ep_id=>EpID, endpoint_pid=>self()},
     {ok, #state{tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs, mode=client}};
     
 init([HdlSupPid, Socket, EpID, Mode]) ->
-    TRef = erlang:start_timer(?SCAN_INTERVAL*1000, self(), scan),
+    TRef = erlang:start_timer(?SCAN_INTERVAL, self(), scan),
     TransArgs = #{sock=>Socket, ep_id=>EpID, endpoint_pid=>self(), handler_sup=>HdlSupPid, handler_regs=>#{}},
     {ok, #state{tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs, handler_refs=maps:new(), mode=Mode}}.
 
