@@ -78,7 +78,6 @@ init([InPort]) ->
 			% ok = inet:setopts(Socket, [{recbuf, RecBufSize * 200}]),
 			% ok = inet:setopts(Socket, [{sndbuf, RecBufSize * 200}]),
 			% ok = inet:setopts(Socket, [{buffer, max(SndBufSize, RecBufSize)}]),
-			error_logger:info_msg("coap listen on *:~p~n", [InPort]),
 			{ok, #state{sock=Socket, endpoints=maps:new(), endpoint_refs=maps:new()}};
 		{error, Reason} ->
 			{stop, Reason}
@@ -87,6 +86,7 @@ init([InPort]) ->
 init(SupPid, InPort) ->
 	case init([InPort]) of
 		{ok, State} ->
+			error_logger:info_msg("coap listen on *:~p~n", [InPort]),
 			register(?MODULE, self()),
 			ok = proc_lib:init_ack({ok, self()}),
 			{ok, Pid} = supervisor:start_child(SupPid, ?SPEC({endpoint_sup, start_link, []})),
