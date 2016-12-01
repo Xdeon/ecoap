@@ -18,7 +18,7 @@
 	sock_pid = undefined :: pid(),
 	req_refs = undefined :: #{reference() => req()},
 	obs_regs = undefined :: #{list() => reference()},
-	client_pid = undefined :: pid()
+	client_pid = undefined :: undefined | pid()
 }).
 
 -record(req, {
