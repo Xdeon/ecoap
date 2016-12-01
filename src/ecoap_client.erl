@@ -31,7 +31,6 @@
 	from = undefined :: undefined | from(),
 	client_ref = undefined :: undefined | reference(),
 	block_obseq = undefined :: undefined | non_neg_integer()
-	% lastseq = undefined :: undefined | non_neg_integer()
 }).
 
 -define(EXCHANGE_LIFETIME, 247000).
@@ -42,18 +41,11 @@
 -type req() :: #req{}.
 -type request_content() :: coap_content()|binary()|list().
 -type response() :: {ok, atom(), coap_content()}|{error, atom()}|{error, atom(), coap_content()}|{separate, reference()}.
+-type observe_response() :: {reference(), non_neg_integer(), response()}|response().
 -opaque state() :: #state{}.
 -export_type([state/0]).
 
 %% API.
-
--spec ping(pid(), list()) -> ok | error.
-ping(Pid, Uri) ->
-	{EpID, _Path, _Query} = resolve_uri(Uri),
-	case call_endpoint(Pid, {ping, EpID}) of
-		{error, 'RST'} -> ok;
-		_Else -> error
-	end.
 
 -spec start_link() -> {ok, pid()}.
 start_link() ->
@@ -63,15 +55,24 @@ start_link() ->
 close(Pid) ->
 	gen_server:cast(Pid, shutdown).
 
--spec observe(pid(), list()) -> {reference(), non_neg_integer(), response()}|response().
+-spec ping(pid(), list()) -> ok | error.
+ping(Pid, Uri) ->
+	{EpID, _Path, _Query} = resolve_uri(Uri),
+	case send_request(Pid, EpID, ping, self()) of
+		{error, 'RST'} -> ok;
+		_Else -> error
+	end.
+
+-spec observe(pid(), list()) -> observe_response().
 observe(Pid, Uri) ->
 	observe(Pid, Uri, []).
 
--spec observe(pid(), list(), [tuple()]) -> {reference(), non_neg_integer(), response()}|response()|{error, atom()}.
+-spec observe(pid(), list(), [tuple()]) -> observe_response().
 observe(Pid, Uri, Options) ->
 	{EpID, Req} = assemble_request('GET', Uri, append_option({'Observe', 0}, Options), <<>>),
 	Accpet = coap_message_utils:get_option('Accpet', Options),
 	Key = {Uri, Accpet},
+	% We use another reference instead of the monitor reference here because it will still be used after this call finshes
 	ClientRef = make_ref(),
 	MonitorRef = erlang:monitor(process, Pid),
 	gen_server:cast(Pid, {start_observe, Key, EpID, Req, ClientRef}),
@@ -91,19 +92,18 @@ observe(Pid, Uri, Options) ->
 		{error, timeout}
 	end.
 
--spec unobserve(pid(), list()) -> {reference(), response()}|{error, atom()}.
+-spec unobserve(pid(), list()) -> response().
 unobserve(Pid, Uri) ->
 	unobserve(Pid, Uri, []).
 
--spec unobserve(pid(), list(), [tuple()]) -> response()|{error, atom()}.
+-spec unobserve(pid(), list(), [tuple()]) -> response().
 unobserve(Pid, Uri, Options) ->
 	{EpID, Req} = assemble_request('GET', Uri, append_option({'Observe', 1}, Options), <<>>),
 	Accpet = coap_message_utils:get_option('Accpet', Options),
-	ClientRef = make_ref(),
 	MonitorRef = erlang:monitor(process, Pid),
-	gen_server:cast(Pid, {cancel_observe, {Uri, Accpet}, EpID, Req, ClientRef}),
+	gen_server:cast(Pid, {cancel_observe, {Uri, Accpet}, EpID, Req, MonitorRef}),
 	receive 
-		{async_response, ClientRef, Pid, Res} -> 
+		{async_response, MonitorRef, Pid, Res} -> 
 			erlang:demonitor(MonitorRef, [flush]),
 			Res;
 		% We are trying to unobserve something we did not start observing
@@ -151,7 +151,7 @@ assemble_request(Method, Uri, Options, Content) ->
 	{EpID, {Method, Options2, convert_content(Content)}}.
 
 send_request(Pid, EpID, Req, ClientPid) ->
-	call_endpoint(Pid, {send_request, EpID, Req, ClientPid}).
+	gen_server:call(Pid, {send_request, EpID, Req, ClientPid}, ?EXCHANGE_LIFETIME).
 
 send_request_async(Pid, EpID, Req, ClientPid) -> 
 	ClientRef = make_ref(),
@@ -161,25 +161,22 @@ send_request_async(Pid, EpID, Req, ClientPid) ->
 remove_observe_ref(Pid, Key) ->
 	gen_server:cast(Pid, {remove_observe_ref, Key}).
 
-call_endpoint(Pid, Msg) ->
-	gen_server:call(Pid, Msg, ?EXCHANGE_LIFETIME).
-
 %% gen_server.
 
 init([]) ->
 	{ok, SockPid} = ecoap_socket:start_link(),
 	{ok, #state{sock_pid=SockPid, req_refs=maps:new(), obs_regs=maps:new()}}.
 
+handle_call({send_request, EpID, ping, ClientPid}, From, State=#state{sock_pid=SockPid, req_refs=ReqRefs}) ->
+	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
+	{ok, Ref} = coap_endpoint:ping(EndpointPid),
+	{noreply, State#state{client_pid=ClientPid, req_refs=store_ref(Ref, #req{from=From}, ReqRefs)}};
+
 handle_call({send_request, EpID, {Method, Options, Content}, ClientPid}, From, State=#state{sock_pid=SockPid, req_refs=ReqRefs}) ->
 	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
 	{ok, Ref} = request_block(EndpointPid, Method, Options, Content),
 	Req = #req{method=Method, options=Options, content=Content, from=From},
 	{noreply, State#state{client_pid=ClientPid, req_refs=store_ref(Ref, Req, ReqRefs)}};
-
-handle_call({ping, EpID}, From, State=#state{sock_pid=SockPid, req_refs=ReqRefs}) ->
-	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
-	{ok, Ref} = coap_endpoint:ping(EndpointPid),
-	{noreply, State#state{req_refs=store_ref(Ref, #req{from=From}, ReqRefs)}};
 
 handle_call(_Request, _From, State) ->
 	{reply, ignored, State}.
