@@ -95,8 +95,7 @@ handle_call({send_request, EpID, {Method, Options, Content}}, From, State) ->
 handle_call(_Request, _From, State) ->
 	{reply, ignored, State}.
 
-handle_cast(shutdown, State=#state{sock_pid=SockPid, endpoint_pid=EndpointPid}) ->
-	ok = close_transport(SockPid, EndpointPid),
+handle_cast(shutdown, State) ->
 	{stop, normal, State};
 handle_cast(_Msg, State) ->
 	{noreply, State}.
@@ -115,7 +114,8 @@ handle_info({coap_error, _EpID, _EndpointPid, Ref, Error},
 handle_info(_Info, State) ->
 	{noreply, State}.
 
-terminate(_Reason, _State) ->
+terminate(_Reason, _State=#state{sock_pid=SockPid, endpoint_pid=EndpointPid}) ->
+	ok = close_transport(SockPid, EndpointPid),
 	ok.
 
 code_change(_OldVsn, State, _Extra) ->
