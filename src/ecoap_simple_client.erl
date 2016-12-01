@@ -1,15 +1,20 @@
-% This module provide a pure synchronous CoAP client
-% which means it can only send new request until response of the last sent request has been recevied
-% Each request is made in a pair of newly-opened ecoap_socket and coap_endpoint processes 
-% and both are closed after request is completed
+% This module provide a simple synchronous CoAP client
+% Each request is made in a pair of newly-opened ecoap_socket and coap_endpoint processes synchronously
+% After a request is completed, related processes are automatically shut down
+% It aims at simplicity for use without need for starting, terminating and managing process manually
+% Thus it can not be used as an OTP-compliant component
 % It also does not support separate response in favour of simplicity and to avoid race condition
+% The result of a separate responsed resource is, however, depends on the time it takes to finish
+% If it is finished within 247s than it will appear as a synchronous response that just takes a bit longer to complete
+% If it is beyond 247s than the request will finally times out
+% But note that there will not be any empty ACK to a separate CON response since everything has been shutdown after receiving
 
 -module(ecoap_simple_client).
 -behaviour(gen_server).
 
 %% API.
 -export([start_link/0, close/1]).
--export([ping/2, request/3, request/4, request/5]).
+-export([ping/1, request/2, request/3, request/4]).
 
 %% gen_server.
 -export([init/1]).
@@ -53,26 +58,32 @@ start_link() ->
 close(Pid) -> 
 	gen_server:cast(Pid, shutdown).
 
--spec ping(pid(), list()) -> ok | error.
-ping(Pid, Uri) ->
+-spec ping(list()) -> ok | error.
+ping(Uri) ->
+	{ok, Pid} = start_link(),
 	{EpID, _Path, _Query} = resolve_uri(Uri),
-	case send_request(Pid, EpID, ping) of
+	Res = case send_request(Pid, EpID, ping) of
 		{error, 'RST'} -> ok;
 		_Else -> error
-	end.
+	end,
+	ok = close(Pid),
+	Res.
 
--spec request(pid(), coap_method(), list()) -> response().
-request(Pid, Method, Uri) ->
-	request(Pid, Method, Uri, #coap_content{}, []).
+-spec request(coap_method(), list()) -> response().
+request(Method, Uri) ->
+	request(Method, Uri, #coap_content{}, []).
 
--spec request(pid(), coap_method(), list(), request_content()) -> response().
-request(Pid, Method, Uri, Content) -> 
-	request(Pid, Method, Uri, Content, []).
+-spec request(coap_method(), list(), request_content()) -> response().
+request(Method, Uri, Content) ->
+	request(Method, Uri, Content, []).	
 
--spec request(pid(), coap_method(), list(), request_content(), [tuple()]) -> response().
-request(Pid, Method, Uri, Content, Options) ->
+-spec request(coap_method(), list(), request_content(), [tuple()]) -> response().
+request(Method, Uri, Content, Options) ->
+	{ok, Pid} = start_link(),
 	{EpID, Req} = assemble_request(Method, Uri, Options, Content),
-	send_request(Pid, EpID, Req).
+	Res = send_request(Pid, EpID, Req),
+	ok = close(Pid),
+	Res.
 
 %% gen_server.
 
@@ -106,9 +117,8 @@ handle_info({coap_response, _EpID, EndpointPid, Ref, Message}, State=#state{ref=
 
 % handle RST and timeout
 handle_info({coap_error, _EpID, _EndpointPid, Ref, Error}, 
-	State=#state{sock_pid=SockPid, endpoint_pid=EndpointPid, ref=Ref, from=From}) ->
+	State=#state{ref=Ref, from=From}) ->
 	ok = send_response(From, {error, Error}), 
-	ok = close_transport(SockPid, EndpointPid),
 	{noreply, State};
 
 handle_info(_Info, State) ->
@@ -145,7 +155,7 @@ handle_response(EndpointPid, _Message=#coap_message{code={ok, 'Continue'}, optio
 	{noreply, State#state{ref=Ref2}};
 
 handle_response(EndpointPid, Message=#coap_message{code={ok, Code}, options=Options1, payload=Data}, 
-	State=#state{sock_pid=SockPid, endpoint_pid=EndpointPid, 
+	State=#state{endpoint_pid=EndpointPid, 
 		req=Req=#req{method=Method, options=Options2, fragment=Fragment}, from=From}) ->
 	case coap_message_utils:get_option('Block2', Options1) of
         {Num, true, Size} ->
@@ -156,17 +166,14 @@ handle_response(EndpointPid, Message=#coap_message{code={ok, Code}, options=Opti
 				{noreply, State#state{ref=Ref2, req=Req#req{fragment= <<Fragment/binary, Data/binary>>}}};
 		 _Else ->
 		 	Res = return_response({ok, Code}, Message#coap_message{payload= <<Fragment/binary, Data/binary>>}),
-		 	% io:format("haha~n"),
 		 	ok = send_response(From, Res),
-	 		ok = close_transport(SockPid, EndpointPid),
 		 	{noreply, State}
     end;
 
 handle_response(_EndpointPid, Message=#coap_message{code={error, Code}}, 
-	State=#state{sock_pid=SockPid, endpoint_pid=EndpointPid, from=From}) ->
+	State=#state{from=From}) ->
 	Res = return_response({error, Code}, Message),
 	ok = send_response(From, Res),
-	ok = close_transport(SockPid, EndpointPid),
 	{noreply, State}.
 
 send_response(From, Res) ->
