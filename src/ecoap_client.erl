@@ -57,7 +57,7 @@ ping(Pid, Uri) ->
 
 -spec start_link() -> {ok, pid()}.
 start_link() ->
-	gen_server:start_link(?MODULE, [self()], []).
+	gen_server:start_link(?MODULE, [], []).
 
 -spec close(pid()) -> ok.
 close(Pid) ->
@@ -130,7 +130,7 @@ request(Pid, Method, Uri, Content) ->
 -spec request(pid(), coap_method(), list(), request_content(), [tuple()]) -> response().
 request(Pid, Method, Uri, Content, Options) ->
 	{EpID, Req} = assemble_request(Method, Uri, Options, Content),
-	send_request(Pid, EpID, Req).
+	send_request(Pid, EpID, Req, self()).
 
 -spec request_async(pid(), coap_method(), list()) -> {ok, reference()}.
 request_async(Pid, Method, Uri) ->
@@ -143,19 +143,19 @@ request_async(Pid, Method, Uri, Content) ->
 -spec request_async(pid(), coap_method(), list(), request_content(), [tuple()]) -> {ok, reference()}.
 request_async(Pid, Method, Uri, Content, Options) ->
 	{EpID, Req} = assemble_request(Method, Uri, Options, Content),
-	send_request_async(Pid, EpID, Req).
+	send_request_async(Pid, EpID, Req, self()).
 
 assemble_request(Method, Uri, Options, Content) ->
 	{EpID, Path, Query} = resolve_uri(Uri),
 	Options2 = append_option({'Uri-Query', Query}, append_option({'Uri-Path', Path}, Options)),
 	{EpID, {Method, Options2, convert_content(Content)}}.
 
-send_request(Pid, EpID, Req) ->
-	call_endpoint(Pid, {send_request, EpID, Req}).
+send_request(Pid, EpID, Req, ClientPid) ->
+	call_endpoint(Pid, {send_request, EpID, Req, ClientPid}).
 
-send_request_async(Pid, EpID, Req) -> 
+send_request_async(Pid, EpID, Req, ClientPid) -> 
 	ClientRef = make_ref(),
-	gen_server:cast(Pid, {send_request, EpID, Req, ClientRef}),
+	gen_server:cast(Pid, {send_request, EpID, Req, ClientRef, ClientPid}),
 	{ok, ClientRef}.
 
 remove_observe_ref(Pid, Key) ->
@@ -166,15 +166,15 @@ call_endpoint(Pid, Msg) ->
 
 %% gen_server.
 
-init([ClientPid]) ->
+init([]) ->
 	{ok, SockPid} = ecoap_socket:start_link(),
-	{ok, #state{sock_pid=SockPid, req_refs=maps:new(), obs_regs=maps:new(), client_pid=ClientPid}}.
+	{ok, #state{sock_pid=SockPid, req_refs=maps:new(), obs_regs=maps:new()}}.
 
-handle_call({send_request, EpID, {Method, Options, Content}}, From, State=#state{sock_pid=SockPid, req_refs=ReqRefs}) ->
+handle_call({send_request, EpID, {Method, Options, Content}, ClientPid}, From, State=#state{sock_pid=SockPid, req_refs=ReqRefs}) ->
 	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
 	{ok, Ref} = request_block(EndpointPid, Method, Options, Content),
 	Req = #req{method=Method, options=Options, content=Content, from=From},
-	{noreply, State#state{req_refs=store_ref(Ref, Req, ReqRefs)}};
+	{noreply, State#state{client_pid=ClientPid, req_refs=store_ref(Ref, Req, ReqRefs)}};
 
 handle_call({ping, EpID}, From, State=#state{sock_pid=SockPid, req_refs=ReqRefs}) ->
 	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
@@ -184,11 +184,11 @@ handle_call({ping, EpID}, From, State=#state{sock_pid=SockPid, req_refs=ReqRefs}
 handle_call(_Request, _From, State) ->
 	{reply, ignored, State}.
 
-handle_cast({send_request, EpID, {Method, Options, Content}, ClientRef}, State=#state{sock_pid=SockPid, req_refs=ReqRefs}) ->
+handle_cast({send_request, EpID, {Method, Options, Content}, ClientRef, ClientPid}, State=#state{sock_pid=SockPid, req_refs=ReqRefs}) ->
 	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
 	{ok, Ref} = request_block(EndpointPid, Method, Options, Content),
 	Req = #req{method=Method, options=Options, content=Content, client_ref=ClientRef},
-	{noreply, State#state{req_refs=store_ref(Ref, Req, ReqRefs)}};
+	{noreply, State#state{client_pid=ClientPid, req_refs=store_ref(Ref, Req, ReqRefs)}};
 
 handle_cast({start_observe, Key, EpID, {Method, Options, _Content}, ClientRef}, 
 	State=#state{sock_pid=SockPid, req_refs=ReqRefs, obs_regs=ObsRegs}) ->

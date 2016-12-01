@@ -49,7 +49,7 @@
 start_link() ->
 	gen_server:start_link(?MODULE, [], []).
 
--sepc ping(pid(), list()) -> ok | error.
+-spec ping(pid(), list()) -> ok | error.
 ping(Pid, Uri) ->
 	{EpID, _Path, _Query} = resolve_uri(Uri),
 	case send_request(Pid, EpID, ping) of
