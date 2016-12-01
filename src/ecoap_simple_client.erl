@@ -8,7 +8,7 @@
 -behaviour(gen_server).
 
 %% API.
--export([start_link/0]).
+-export([start_link/0, close/1]).
 -export([ping/2, request/3, request/4, request/5]).
 
 %% gen_server.
@@ -48,6 +48,10 @@
 -spec start_link() -> {ok, pid()}.
 start_link() ->
 	gen_server:start_link(?MODULE, [], []).
+
+-spec close(pid()) -> ok.
+close(Pid) -> 
+	gen_server:cast(Pid, shutdown).
 
 -spec ping(pid(), list()) -> ok | error.
 ping(Pid, Uri) ->
@@ -91,6 +95,9 @@ handle_call({send_request, EpID, {Method, Options, Content}}, From, State) ->
 handle_call(_Request, _From, State) ->
 	{reply, ignored, State}.
 
+handle_cast(shutdown, State=#state{sock_pid=SockPid, endpoint_pid=EndpointPid}) ->
+	ok = close_transport(SockPid, EndpointPid),
+	{stop, normal, State};
 handle_cast(_Msg, State) ->
 	{noreply, State}.
 
