@@ -17,8 +17,7 @@
 -record(state, {
 	sock_pid = undefined :: pid(),
 	req_refs = undefined :: #{reference() => req()},
-	obs_regs = undefined :: #{list() => reference()},
-	client_pid = undefined :: undefined | pid()
+	obs_regs = undefined :: #{list() => reference()}
 }).
 
 -record(req, {
@@ -30,6 +29,7 @@
 	fragment = <<>> :: binary(),
 	from = undefined :: undefined | from(),
 	client_ref = undefined :: undefined | reference(),
+	client_pid = undefined :: undefined | pid(),
 	block_obseq = undefined :: undefined | non_neg_integer()
 }).
 
@@ -170,13 +170,13 @@ init([]) ->
 handle_call({send_request, EpID, ping, ClientPid}, From, State=#state{sock_pid=SockPid, req_refs=ReqRefs}) ->
 	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
 	{ok, Ref} = coap_endpoint:ping(EndpointPid),
-	{noreply, State#state{client_pid=ClientPid, req_refs=store_ref(Ref, #req{from=From}, ReqRefs)}};
+	{noreply, State#state{req_refs=store_ref(Ref, #req{from=From, client_pid=ClientPid}, ReqRefs)}};
 
 handle_call({send_request, EpID, {Method, Options, Content}, ClientPid}, From, State=#state{sock_pid=SockPid, req_refs=ReqRefs}) ->
 	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
 	{ok, Ref} = request_block(EndpointPid, Method, Options, Content),
-	Req = #req{method=Method, options=Options, content=Content, from=From},
-	{noreply, State#state{client_pid=ClientPid, req_refs=store_ref(Ref, Req, ReqRefs)}};
+	Req = #req{method=Method, options=Options, content=Content, from=From, client_pid=ClientPid},
+	{noreply, State#state{req_refs=store_ref(Ref, Req, ReqRefs)}};
 
 handle_call(_Request, _From, State) ->
 	{reply, ignored, State}.
@@ -184,8 +184,8 @@ handle_call(_Request, _From, State) ->
 handle_cast({send_request, EpID, {Method, Options, Content}, ClientRef, ClientPid}, State=#state{sock_pid=SockPid, req_refs=ReqRefs}) ->
 	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
 	{ok, Ref} = request_block(EndpointPid, Method, Options, Content),
-	Req = #req{method=Method, options=Options, content=Content, client_ref=ClientRef},
-	{noreply, State#state{client_pid=ClientPid, req_refs=store_ref(Ref, Req, ReqRefs)}};
+	Req = #req{method=Method, options=Options, content=Content, client_ref=ClientRef, client_pid=ClientPid},
+	{noreply, State#state{req_refs=store_ref(Ref, Req, ReqRefs)}};
 
 handle_cast({start_observe, Key, EpID, {Method, Options, _Content}, ClientRef, ClientPid}, 
 	State=#state{sock_pid=SockPid, req_refs=ReqRefs, obs_regs=ObsRegs}) ->
@@ -198,11 +198,11 @@ handle_cast({start_observe, Key, EpID, {Method, Options, _Content}, ClientRef, C
 	{ok, Ref} = coap_endpoint:send_request_with_token(EndpointPid,  
 					coap_message_utils:request('CON', Method, <<>>, Options), Token),
 	Options2 = coap_message_utils:remove_option('Observe', Options),
-	Req = #req{method=Method, options=Options2, token=Token, client_ref=ClientRef},
-	{noreply, State#state{client_pid=ClientPid, obs_regs=store_ref(Key, Ref, ObsRegs), req_refs=store_ref(Ref, Req, delete_ref(OldRef, ReqRefs))}};
+	Req = #req{method=Method, options=Options2, token=Token, client_ref=ClientRef, client_pid=ClientPid},
+	{noreply, State#state{obs_regs=store_ref(Key, Ref, ObsRegs), req_refs=store_ref(Ref, Req, delete_ref(OldRef, ReqRefs))}};
 
 handle_cast({cancel_observe, Key, EpID, {Method, Options, _Content}, ClientRef, ClientPid}, 
-	State=#state{sock_pid=SockPid, client_pid=ClientPid, req_refs=ReqRefs, obs_regs=ObsRegs}) ->
+	State=#state{sock_pid=SockPid, req_refs=ReqRefs, obs_regs=ObsRegs}) ->
 	case find_ref(Key, ObsRegs) of
 		undefined ->  ClientPid ! {error, no_observe}, {noreply, State};
 		Ref -> 
@@ -211,8 +211,8 @@ handle_cast({cancel_observe, Key, EpID, {Method, Options, _Content}, ClientRef, 
 			{ok, Ref2} = coap_endpoint:send_request_with_token(EndpointPid,  
 					coap_message_utils:request('CON', Method, <<>>, Options), Token),
 			Options2 = coap_message_utils:remove_option('Observe', Options),
-			Req = #req{method=Method, options=Options2, token=Token, client_ref=ClientRef},
-			{noreply, State#state{client_pid=ClientPid, obs_regs=delete_ref(Key, ObsRegs), req_refs=store_ref(Ref2, Req, delete_ref(Ref, ReqRefs))}}
+			Req = #req{method=Method, options=Options2, token=Token, client_ref=ClientRef, client_pid=ClientPid},
+			{noreply, State#state{obs_regs=delete_ref(Key, ObsRegs), req_refs=store_ref(Ref2, Req, delete_ref(Ref, ReqRefs))}}
 	end;
 
 handle_cast({remove_observe_ref, Key}, State=#state{obs_regs=ObsRegs, req_refs=ReqRefs}) ->
@@ -234,14 +234,14 @@ handle_info({coap_response, _EpID, EndpointPid, Ref, Message}, State) ->
 	handle_response(Ref, EndpointPid, Message, State);
 
 % handle separate response acknowledgement
-handle_info({coap_ack, _EpID, _EndpointPid, Ref}, State=#state{req_refs=ReqRefs, client_pid=ClientPid}) ->
-	Req = #req{client_ref=ClientRef, from=From} = find_ref(Ref, ReqRefs),
+handle_info({coap_ack, _EpID, _EndpointPid, Ref}, State=#state{req_refs=ReqRefs}) ->
+	Req = #req{client_ref=ClientRef, from=From, client_pid=ClientPid} = find_ref(Ref, ReqRefs),
 	ok = send_response(From, ClientPid, ClientRef, {separate, Ref}),
 	{noreply, State#state{req_refs=store_ref(Ref, Req#req{from=undefined, client_ref=Ref}, ReqRefs)}};
 
 % handle RST and timeout
-handle_info({coap_error, _EpID, _EndpointPid, Ref, Error}, State=#state{req_refs=ReqRefs, client_pid=ClientPid}) ->
-	#req{client_ref=ClientRef, from=From} = find_ref(Ref, ReqRefs),
+handle_info({coap_error, _EpID, _EndpointPid, Ref, Error}, State=#state{req_refs=ReqRefs}) ->
+	#req{client_ref=ClientRef, from=From, client_pid=ClientPid} = find_ref(Ref, ReqRefs),
     ok = send_response(From, ClientPid, ClientRef, {error, Error}),
 	{noreply, State#state{req_refs=delete_ref(Ref, ReqRefs)}};
 
@@ -273,9 +273,9 @@ handle_response(Ref, EndpointPid, _Message=#coap_message{code={ok, 'Continue'}, 
 	{noreply, State#state{req_refs=store_ref(Ref2, Req, delete_ref(Ref, ReqRefs))}};
 
 handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options=Options1, payload=Data}, 
-	State = #state{req_refs=ReqRefs, client_pid = ClientPid}) ->
+	State = #state{req_refs=ReqRefs}) ->
 	Req = find_ref(Ref, ReqRefs),
-	#req{method=Method, options=Options2, fragment=Fragment, client_ref=ClientRef, from=From, block_obseq=Obseq} = Req,
+	#req{method=Method, options=Options2, fragment=Fragment, client_ref=ClientRef, client_pid=ClientPid, from=From, block_obseq=Obseq} = Req,
 	case coap_message_utils:get_option('Block2', Options1) of
         {Num, true, Size} ->
             % more blocks follow, ask for more
@@ -312,8 +312,8 @@ handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options
     end;
 
 handle_response(Ref, _EndpointPid, Message=#coap_message{code={error, Code}}, 
-	State = #state{req_refs=ReqRefs, client_pid=ClientPid}) ->
-	#req{client_ref=ClientRef, from=From} = find_ref(Ref, ReqRefs),
+	State = #state{req_refs=ReqRefs}) ->
+	#req{client_ref=ClientRef, from=From, client_pid=ClientPid} = find_ref(Ref, ReqRefs),
 	Res = return_response({error, Code}, Message),
 	ok = send_response(From, ClientPid, ClientRef, Res),
 	{noreply, State#state{req_refs=delete_ref(Ref, ReqRefs)}}.
