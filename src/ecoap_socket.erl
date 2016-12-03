@@ -141,6 +141,7 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, en
 		{ok, EpPid} -> 
 			%io:fwrite("found endpoint ~p~n", [EpID]),
 			EpPid ! {datagram, Bin},
+			erlang:yield(),
 			{noreply, State};
 		error when is_pid(PoolPid) -> 
 			case endpoint_sup_sup:start_endpoint(PoolPid, [Socket, EpID, server]) of
