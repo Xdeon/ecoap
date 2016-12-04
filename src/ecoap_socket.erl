@@ -99,7 +99,7 @@ init(SupPid, InPort) ->
 
 % get an endpoint when being as a client
 handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoints=EndPoints, endpoint_pool=undefined}) ->
-    case maps:find(EpID, EndPoints) of
+    case find_endpoint(EpID, EndPoints) of
         {ok, EpPid} ->
             {reply, {ok, EpPid}, State};
         error ->
@@ -111,7 +111,7 @@ handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoints=End
     end;
 % get an endpoint when being as a server
 handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoints=EndPoints, endpoint_pool=PoolPid}) ->
-	case maps:find(EpID, EndPoints) of
+	case find_endpoint(EpID, EndPoints) of
 		{ok, EpPid} ->
 			{reply, {ok, EpPid}, State};
 		error ->
@@ -137,7 +137,7 @@ handle_cast(_Msg, State) ->
 handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, endpoints=EndPoints, endpoint_pool=PoolPid}) ->
 	EpID = {PeerIP, PeerPortNo},
 	% ok = inet:setopts(Socket, [{active, once}]),
-	case maps:find(EpID, EndPoints) of
+	case find_endpoint(EpID, EndPoints) of
 		{ok, EpPid} -> 
 			%io:fwrite("found endpoint ~p~n", [EpID]),
 			EpPid ! {datagram, Bin},
@@ -185,6 +185,9 @@ code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
 %% Internal   
+find_endpoint(EpID, EndPoints) ->
+	maps:find(EpID, EndPoints).
+
 store_endpoint(EpID, EpPid, State=#state{endpoints=EndPoints, endpoint_refs=EndPointsRefs}) ->
 	Ref = erlang:monitor(process, EpPid),
 	State#state{endpoints=maps:put(EpID, EpPid, EndPoints), endpoint_refs=maps:put(Ref, EpID, EndPointsRefs)}.
