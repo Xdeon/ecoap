@@ -69,7 +69,7 @@ get_all_endpoints(Pid) ->
 init([InPort]) ->
 	% process_flag(trap_exit, true),
 	% {ok, Deduplication} = application:get_env(deduplication),
-	case gen_udp:open(InPort, [binary, {active, true}, {reuseaddr, true}, {recbuf, 1024*1024}]) of
+	case gen_udp:open(InPort, [binary, {active, true}, {reuseaddr, true}, {recbuf, 1024*1024}, {sndbuf, 1024*1024}]) of
 		{ok, Socket} ->
 			% We set software buffer to maximum of sndbuf & recbuf of the socket 
 			% to avoid unnecessary copying
