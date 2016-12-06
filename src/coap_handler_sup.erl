@@ -8,13 +8,14 @@ start_link() ->
 	supervisor:start_link(?MODULE, []).
 
 init([]) ->
-    Procs = [
-        {coap_handler,
-            {coap_handler, start_link, []},
-            temporary, 5000, worker, [coap_handler]
-        }
-    ],
-    {ok, {{simple_one_for_one, 0, 1}, Procs}}.
+    Procs = [#{id => coap_handler,
+               start => {coap_handler, start_link, []},
+               restart => temporary, 
+               shutdown => 5000, 
+               type => worker, 
+               modules => [coap_handler]}
+            ],
+    {ok, {#{strategy => simple_one_for_one, intensity => 0, period => 1}, Procs}}.
 
 get_handler(SupPid, HandlerID, HandlerRegs) ->
     case maps:find(HandlerID, HandlerRegs) of
