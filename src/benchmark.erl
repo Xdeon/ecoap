@@ -28,11 +28,11 @@ coap_get(_ChId, _Prefix, [<<"fibonacci">>], []) ->
 coap_get(_ChId, _Prefix, [<<"fibonacci">>], [Query|_]) ->
     Num = case re:run(Query, "^n=[0-9]+") of
         {match, [{Pos, Len}]} ->
-            lists:nth(2, binary:split(binary:part(Query, Pos, Len), <<"=">>));
+            binary_to_integer(lists:nth(2, binary:split(binary:part(Query, Pos, Len), <<"=">>)));
         nomatch -> 
             20
     end,
-    #coap_content{payload = <<"fibonacci(", Num/binary, ") = ", (integer_to_binary(fib(binary_to_integer(Num))))/binary>>};
+    #coap_content{payload= <<"fibonacci(", (integer_to_binary(Num))/binary, ") = ", (integer_to_binary(fib(Num)))/binary>>};
 
 coap_get(_ChId, _Prefix, _Name, _Query) ->
     {error, 'NotFound'}.
