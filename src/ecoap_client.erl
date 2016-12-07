@@ -290,6 +290,9 @@ handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options
             	N ->
             		% This is the first response of a blockwise transfer when observing certain resource
             		% We remember the observe seq number here because following requests will be normal ones
+            		% TODO: what happens if we can not detect an already ongoing blockwise transfer for a notification 
+            		% when a new notification for the same token is received while the blockwise transfer is still in progress?
+            		% HINT: usually we should not allow multiple blockwise transfers in parallel
             		{noreply, State#state{req_refs=store_ref(Ref2, Req#req{fragment=NewFragment, block_obseq=N}, ReqRefs)}}	
             end;
         _Else ->
