@@ -40,9 +40,9 @@
 
 -type from() :: {pid(), term()}.
 -type req() :: #req{}.
--type request_content() :: coap_content()|binary()|list().
--type response() :: {ok, atom(), coap_content()}|{error, atom()}|{error, atom(), coap_content()}|{separate, reference()}.
--type observe_response() :: {reference(), non_neg_integer(), response()}|response().
+-type request_content() :: coap_content() | binary() | list().
+-type response() :: {ok, success_code(), coap_content()} | {error, error_code()} | {error, error_code(), coap_content()} | {separate, reference()}.
+-type observe_response() :: {reference(), non_neg_integer(), response()} | response().
 -type observe_key() :: {list(), atom() | non_neg_integer()}.
 -opaque state() :: #state{}.
 -export_type([state/0]).
@@ -64,6 +64,19 @@ ping(Pid, Uri) ->
 		{error, 'RST'} -> ok;
 		_Else -> error
 	end.
+
+% Start an observe relation to a specific resource
+
+% If the observe relation is established sucessfully, this function returns the first notification as {ClientRef, N, Res}
+% where ClientRef is the reference used to identify following notifications, N is the initial observe sequence number and Res is the response content.
+% If the resource is not observable, the function just returns the response content as if it was from a plain GET request.
+
+% Following notifications will be sent to the caller process as messages in form of {coap_notify, ClientRef, Pid, N, Res}
+% where ClientRef is the reference, Pid is the ecoap_client pid, N is the observe sequence number and Res is the response content.
+% If some error happened in server side and a reset/error code is received during observing, 
+% the response is sent to the caller process as message in form of {async_response, ClientRef, Pid, Res} where Res is {error, _}.
+
+% If the ecoap_client process crashed or is not responsive, the function returns {error, noproc}/{error, timeout}.
 
 -spec observe(pid(), list()) -> observe_response().
 observe(Pid, Uri) ->
@@ -93,6 +106,13 @@ observe(Pid, Uri, Options) ->
 	after ?EXCHANGE_LIFETIME ->
 		{error, timeout}
 	end.
+
+% Cancel an observe relation to a specific resource
+
+% If unobserve resource succeed, the function returns the response as if it was from a plain GET request;
+% If no matching observe relation exists, the function returns {error, no_observe}, 
+% note observe relation is matched against URI and accept content-format;
+% If the ecoap_client process crashed or is not responsive, the function returns {error, no_proc}/{error, timeout}.
 
 -spec unobserve(pid(), list()) -> response().
 unobserve(Pid, Uri) ->
