@@ -159,7 +159,15 @@ set_payload_block(Content, Block, Msg=#coap_message{}) ->
 -spec set_payload_block(binary(), 'Block1'|'Block2', block_opt(), coap_message()) -> coap_message().
 set_payload_block(Content, BlockId, {Num, _, Size}, Msg) when byte_size(Content) > (Num+1)*Size ->
     set_opt(BlockId, {Num, true, Size},
-        set_payload(binary:part(Content, Num*Size, Size), Msg));
+        set_payload(part(Content, Num*Size, Size), Msg));
 set_payload_block(Content, BlockId, {Num, _, Size}, Msg) ->
     set_opt(BlockId, {Num, false, Size},
-        set_payload(binary:part(Content, Num*Size, byte_size(Content)-Num*Size), Msg)).
+        set_payload(part(Content, Num*Size, byte_size(Content)-Num*Size), Msg)).
+
+% In case peer requested a non-existing block we just respond with an empty payload instead of crash
+% e.g. request with a block number and size that indicate a block beyond the actual size of the resource
+% This behaviour is the same as Californium 1.0.x/2.0.x
+part(Binary, Pos, Len) when Len >= 0 ->
+    binary:part(Binary, Pos, Len);
+part(_, _, _) ->
+    <<>>.
