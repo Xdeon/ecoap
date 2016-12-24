@@ -287,10 +287,12 @@ request_block(EndpointPid, Method, ROpt, Block1, Content) ->
         coap_message_utils:request('CON', Method, <<>>, ROpt))).
 
 % TODO:
-% Think about the following case, how should we deal with it
-% More specifically, what happens if we can not detect an already ongoing blockwise transfer for a notification 
+% what happens if we can not detect an already ongoing blockwise transfer for a notification 
 % when a new notification for the same token is received while the blockwise transfer is still in progress?
+% This may also lead to: already running blockwise transfer(s) might mix up old with new blocks of the (changed) resource.
 % NOTE: usually we should not allow multiple blockwise transfers in parallel
+
+% Think about the following case, how should we deal with it
 
 % <-----   CON [MID=8002, T=09c9], 2.05, 2:0/1/16, (observe=2)
 % ACK [MID=8002], 0                         ----->
