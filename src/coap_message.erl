@@ -337,14 +337,14 @@ is_repeatable_option(_Else) -> false.
 
 -include_lib("eunit/include/eunit.hrl").
 
-parse_test() ->
+parse_test_() ->
 	MsgBin = <<64,1,45,91,183,115,101,110,115,111,114,115,4,116,101,109,112,193,2>>,
     Msg = decode(MsgBin),
     MsgBin2 = encode(Msg),
-    ?assertEqual(MsgBin, MsgBin2).
+    ?_assertEqual(MsgBin, MsgBin2).
 
 % note that the options below must be sorted by the option numbers
-codec_test()-> [
+codec_test_()-> [
     test_codec(#coap_message{type='RST', id=0, options=[]}),
     test_codec(#coap_message{type='CON', code='GET', id=100,
         options=[{'Block1', {0,true,128}}, {'Observe', 1}]}),
@@ -357,6 +357,6 @@ codec_test()-> [
 test_codec(Message) ->
     Message2 = encode(Message),
     Message1 = decode(Message2),
-    ?assertEqual(Message, Message1).
+    ?_assertEqual(Message, Message1).
 
 -endif.
