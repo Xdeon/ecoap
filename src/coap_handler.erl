@@ -24,7 +24,7 @@
 	module = undefined :: module(), 
 	args = undefined :: any(), 
 	insegs = undefined :: orddict:orddict(), 
-	last_response = undefined :: any(), 
+	last_response = undefined :: undefined | {ok, success_code(), coap_content()} | coap_success() | coap_error(), 
 	observer = undefined :: undefined | coap_message(), 
 	obseq = undefined :: non_neg_integer(), 
 	obstate = undefined :: any(), 
@@ -38,6 +38,7 @@
 start_link(EndpointPid, ID) ->
 	gen_server:start_link(?MODULE, [EndpointPid, ID], []).
 
+-spec notify([binary()], coap_content() | coap_error()) -> ok | [ok].
 notify(Uri, Resource) ->
     case pg2:get_members({coap_observer, Uri}) of
         {error, _} -> ok;

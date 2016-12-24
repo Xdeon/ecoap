@@ -25,11 +25,11 @@
 start_link() ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
--spec register_handler(list(binary()), module(), _) -> ok | {error, duplicated}.
+-spec register_handler([binary()], module(), _) -> ok | {error, duplicated}.
 register_handler(Prefix, Module, Args) ->
     gen_server:call(?MODULE, {register, Prefix, Module, Args}).
 
--spec unregister_handler(list(binary())) -> ok .
+-spec unregister_handler([binary()]) -> ok .
 unregister_handler(Prefix) ->
     gen_server:call(?MODULE, {unregister, Prefix}).
 
@@ -37,7 +37,7 @@ unregister_handler(Prefix) ->
 get_links() ->
     lists:usort(get_links(ets:tab2list(?HANDLER_TAB))).
 
--spec match_handler(list(binary())) -> {list(binary()), module(), _} | undefined.
+-spec match_handler([binary()]) -> {[binary()], module(), _} | undefined.
 match_handler(Uri) -> match_handler(Uri, ets:tab2list(?HANDLER_TAB)).
 
 -spec clear_registry() -> true.
