@@ -286,6 +286,43 @@ request_block(EndpointPid, Method, ROpt, Block1, Content) ->
     coap_endpoint:send(EndpointPid, coap_message_utils:set_content(Content, Block1,
         coap_message_utils:request('CON', Method, <<>>, ROpt))).
 
+% TODO:
+% Think about the following case, how should we deal with it
+% More specifically, what happens if we can not detect an already ongoing blockwise transfer for a notification 
+% when a new notification for the same token is received while the blockwise transfer is still in progress?
+% NOTE: usually we should not allow multiple blockwise transfers in parallel
+
+% <-----   CON [MID=8002, T=09c9], 2.05, 2:0/1/16, (observe=2)
+% ACK [MID=8002], 0                         ----->
+% CON [MID=33807, T=2cedd382e00a0198], GET, /test, 2:1/0/16    ----->
+% <-----   ACK [MID=33807, T=2cedd382e00a0198], 2.05, 2:1/1/16
+% CON [MID=33808, T=2cedd382e00a0198], GET, /test, 2:2/0/16    ----->
+
+% //////// Overriding notification ////////
+% <-----   CON [MID=8003, T=09c9], 2.05, 2:0/1/16, (observe=3)
+% ACK [MID=8003], 0                         ----->
+% CON [MID=33809, T=7770ba91], GET, /test, 2:1/0/16    ----->
+% <-----   ACK [MID=33808, T=2cedd382e00a0198], 2.05, 2:2/0/16
+% <-----   ACK [MID=33809, T=7770ba91], 2.05, 2:1/1/16
+% CON [MID=33810, T=7770ba91], GET, /test, 2:2/0/16    ----->
+% <-----   ACK [MID=33810, T=7770ba91], 2.05, 2:2/0/16
+
+% <-----   CON [MID=8004, T=09c9], 2.05, 2:0/1/16, (observe=4)
+% ACK [MID=8004], 0                         ----->
+% CON [MID=33811, T=36], GET, /test, 2:1/0/16    ----->
+
+% //////// Overriding notification 2 ////////
+% <-----   CON [MID=8005, T=09c9], 2.05, 2:0/1/16, (observe=5)
+% ACK [MID=8005], 0                         ----->
+
+% //////// Conflicting notification block ////////
+% CON [MID=33812, T=2c8eb312ea], GET, /test, 2:1/0/16    ----->
+% <-----   ACK [MID=33811, T=36], 2.05, 2:1/1/16
+% <-----   ACK [MID=33812, T=2c8eb312ea], 2.05, 2:1/1/16
+% CON [MID=33813, T=2c8eb312ea], GET, /test, 2:2/0/16    ----->
+% <-----   ACK [MID=33813, T=2c8eb312ea], 2.05, 2:2/0/16
+
+
 handle_response(Ref, EndpointPid, _Message=#coap_message{code={ok, 'Continue'}, options=Options1}, 
 	State=#state{req_refs=ReqRefs}) ->
 	Req = #req{method=Method, options=Options2, content=Content} = find_ref(Ref, ReqRefs),
@@ -311,9 +348,6 @@ handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options
             	N ->
             		% This is the first response of a blockwise transfer when observing certain resource
             		% We remember the observe seq number here because following requests will be normal ones
-            		% TODO: what happens if we can not detect an already ongoing blockwise transfer for a notification 
-            		% when a new notification for the same token is received while the blockwise transfer is still in progress?
-            		% HINT: usually we should not allow multiple blockwise transfers in parallel
             		{noreply, State#state{req_refs=store_ref(Ref2, Req#req{fragment=NewFragment, block_obseq=N}, ReqRefs)}}	
             end;
         _Else ->

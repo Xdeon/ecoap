@@ -16,7 +16,7 @@
 
 -record(state, {
 	endpoint_pid = undefined :: pid(),
-    id= undefined :: {atom(), [binary()], [binary()]},
+    id = undefined :: {atom(), [binary()], [binary()]},
 	uri = undefined :: [binary()],
 	prefix = undefined :: [binary()], 
 	suffix = undefined :: [binary()],
