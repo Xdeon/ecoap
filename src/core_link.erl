@@ -14,6 +14,13 @@
 -import(coap_iana, [content_formats/0]).
 -import(coap_iana, [decode_enum/2, decode_enum/3, encode_enum/2, encode_enum/3]).
 
+-type coap_uri() :: {'absolute', [binary()], [coap_uri_param()]}.
+-type coap_uri_param() :: {atom(), binary()}.
+
+-export_type([coap_uri/0]).
+-export_type([coap_uri_param/0]).
+
+-spec decode(binary() | list()) -> coap_uri() | {error, any()}.
 decode(Binary) when is_binary(Binary) ->
     decode(binary_to_list(Binary));
 decode(String) ->
@@ -27,6 +34,7 @@ decode(String) ->
         Err -> {error, Err}
     end.
 
+-spec encode([coap_uri_param()]) -> list().
 encode(LinkList) ->
     lists:foldl(
         fun (Link, []) -> encode_link_value(Link);
@@ -67,6 +75,7 @@ content_type_to_int(Value) when is_binary(Value) ->
 content_type_to_int(Value) when is_integer(Value) ->
     integer_to_list(Value).
 
+-ifdef(TEST).
 
 -include_lib("eunit/include/eunit.hrl").
 
@@ -87,4 +96,5 @@ test_decode(String, Struct) ->
     % try reverse encoding of the decoded structure
     ?_assertEqual(String, encode(Struct2))].
 
+-endif.
 % end of file

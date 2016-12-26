@@ -12,8 +12,7 @@
 -include("coap_def.hrl").
 
 -type coap_endpoint_id() :: ecoap_socket:coap_endpoint_id().
--type coap_uri() :: {'absolute', [binary()], [coap_uri_param()]}.
--type coap_uri_param() :: {atom(), binary()}.
+-type coap_uri() :: core_link:coap_uri().
 
 % called when a client asks for .well-known/core resources
 -callback coap_discover(Prefix, Args) -> [Uri] when
