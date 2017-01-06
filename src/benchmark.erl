@@ -18,7 +18,8 @@ stop() ->
 % resource operations
 coap_discover(_Prefix, _Args) ->
     [{absolute, [<<"benchmark">>], []},
-    {absolute, [<<"fibonacci">>], []}].
+    {absolute, [<<"fibonacci">>], []},
+    {absolute, [<<"helloWorld">>], []}].
 
 coap_get(_ChId, _Prefix, [<<"benchmark">>], _Query) ->
     #coap_content{payload = <<"hello world">>};
@@ -33,6 +34,9 @@ coap_get(_ChId, _Prefix, [<<"fibonacci">>], [Query|_]) ->
             20
     end,
     #coap_content{payload= <<"fibonacci(", (integer_to_binary(Num))/binary, ") = ", (integer_to_binary(fib(Num)))/binary>>};
+
+coap_get(_ChId, _Prefix, [<<"helloWorld">>], []) ->
+    #coap_content{payload = <<"Hello World!">>, format = 0};
 
 coap_get(_ChId, _Prefix, _Name, _Query) ->
     {error, 'NotFound'}.
