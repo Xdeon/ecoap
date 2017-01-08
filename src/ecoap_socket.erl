@@ -126,7 +126,7 @@ handle_call(get_all_endpoints, _From, State=#state{endpoints=EndPoints}) ->
 	{reply, maps:values(EndPoints), State};
 handle_call(_Request, _From, State) ->
 	error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
-	{reply, ignored, State}.
+	{noreply, State}.
 
 handle_cast(shutdown, State) ->
 	{stop, normal, State};
@@ -157,12 +157,12 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, en
 			%io:fwrite("client recv unexpected packet~n"),
 			{noreply, State}
 	end;
-handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{endpoints=EndPoints, endpoint_refs=EndPointsRefs}) ->
- 	case maps:find(Ref, EndPointsRefs) of
- 		error ->	
- 			{noreply, State};
+handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{endpoint_refs=EndPointsRefs}) ->
+ 	case find_endpoint_ref(Ref, EndPointsRefs) of
  		{ok, EpID} ->
- 			{noreply, State#state{endpoints=maps:remove(EpID, EndPoints), endpoint_refs=maps:remove(Ref, EndPointsRefs)}}
+ 			{noreply, erase_endpoint(EpID, Ref, State)};
+ 		error ->	
+ 			{noreply, State}
  	end;
 
 % handle_info({udp_passive, Socket}, State=#state{sock=Socket}) ->
@@ -184,12 +184,33 @@ terminate(_Reason, #state{sock=Socket}) ->
 code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
-%% Internal   
+%% Internal  
+
 find_endpoint(EpID, EndPoints) ->
 	maps:find(EpID, EndPoints).
+
+find_endpoint_ref(Ref, EndPointsRefs) ->
+	maps:find(Ref, EndPointsRefs).
 
 store_endpoint(EpID, EpPid, State=#state{endpoints=EndPoints, endpoint_refs=EndPointsRefs}) ->
 	Ref = erlang:monitor(process, EpPid),
 	State#state{endpoints=maps:put(EpID, EpPid, EndPoints), endpoint_refs=maps:put(Ref, EpID, EndPointsRefs)}.
 
+erase_endpoint(EpID, Ref, State=#state{endpoints=EndPoints, endpoint_refs=EndPointsRefs}) ->
+	State#state{endpoints=maps:remove(EpID, EndPoints), endpoint_refs=maps:remove(Ref, EndPointsRefs)}.
 
+-ifdef(TEST).
+
+-include_lib("eunit/include/eunit.hrl").
+
+store_endpoint_test_() ->
+	EpID = {{127,0,0,1}, 5683},
+	State = store_endpoint(EpID, self(), #state{endpoints=maps:new(), endpoint_refs=maps:new()}),
+	[Ref] = maps:keys(State#state.endpoint_refs),
+	State1 = erase_endpoint(EpID, Ref, State),
+	[?_assertEqual({ok, self()}, find_endpoint(EpID, State#state.endpoints)),
+	?_assertEqual({ok, EpID}, find_endpoint_ref(Ref, State#state.endpoint_refs)),
+    ?_assertEqual(error, find_endpoint(EpID, State1#state.endpoints)),
+    ?_assertEqual(error, find_endpoint_ref(Ref, State1#state.endpoint_refs))].
+
+-endif.

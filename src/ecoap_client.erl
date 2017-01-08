@@ -202,7 +202,7 @@ handle_call({send_request, EpID, {Method, Options, Content}, ClientPid}, From, S
 	{noreply, State#state{req_refs=store_ref(Ref, Req, ReqRefs)}};
 
 handle_call(_Request, _From, State) ->
-	{reply, ignored, State}.
+	{noreply, State}.
 
 handle_cast({send_request, EpID, {Method, Options, Content}, ClientRef, ClientPid}, State=#state{sock_pid=SockPid, req_refs=ReqRefs}) ->
 	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),

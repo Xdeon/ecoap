@@ -115,7 +115,7 @@ init([HdlSupPid, Socket, EpID, Mode]) ->
 
 handle_call(_Request, _From, State) ->
     error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
-	{reply, ignored, State}.
+	{noreply, State}.
 
 % outgoing CON(0) or NON(1) request
 handle_cast({send_request, Message, Receiver}, State) ->

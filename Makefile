@@ -6,4 +6,8 @@ PROJECT_ENV = [{port, 5683}]
 
 LOCAL_DEPS = crypto
 
+EUNIT_OPTS = verbose
+
 include erlang.mk
+
+app:: rebar.config

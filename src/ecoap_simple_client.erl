@@ -104,7 +104,7 @@ handle_call({send_request, EpID, {Method, Options, Content}}, From, State) ->
 	{noreply, State#state{sock_pid=SockPid, endpoint_pid=EndpointPid, ref=Ref, req=Req, from=From}};
 
 handle_call(_Request, _From, State) ->
-	{reply, ignored, State}.
+	{noreply, State}.
 
 handle_cast(shutdown, State) ->
 	{stop, normal, State};

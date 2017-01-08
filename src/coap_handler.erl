@@ -61,7 +61,7 @@ init([EndpointPid, ID={_, Uri, Query}]) ->
 
 handle_call(_Request, _From, State) ->
     error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
-	{reply, ignored, State}.
+	{noreply, State}.
 
 handle_cast({obs_notify, _Resource}, State=#state{observer=undefined}) ->
     % ignore unexpected notification
