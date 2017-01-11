@@ -35,10 +35,12 @@ unregister_handler(Prefix) ->
 
 -spec get_links() -> list().
 get_links() ->
-    lists:usort(get_links(ets:tab2list(?HANDLER_TAB))).
+    % lists:usort(get_links(ets:tab2list(?HANDLER_TAB))).
+    lists:usort(get_links(?HANDLER_TAB)).
 
 -spec match_handler([binary()]) -> {[binary()], module(), _} | undefined.
-match_handler(Uri) -> match_handler(Uri, ets:tab2list(?HANDLER_TAB)).
+% match_handler(Uri) -> match_handler(Uri, ets:tab2list(?HANDLER_TAB)).
+match_handler(Uri) -> match_handler(Uri, ?HANDLER_TAB).
 
 -spec clear_registry() -> true.
 clear_registry() -> ets:delete_all_objects(?HANDLER_TAB).
@@ -60,15 +62,32 @@ clear_registry() -> ets:delete_all_objects(?HANDLER_TAB).
 % match_prefix(_Prefix, _Uri) ->
 %     false.
 
+% TODO: more optimization for matching en entry
 match_handler(Uri, Reg) ->
-    lists:foldl(
-        fun(Elem={Prefix, _, _}, Found) ->
-            case lists:prefix(Prefix, Uri) of
-                true -> one_with_longer_uri(Elem, Found);
-                false -> Found
-            end
-        end,
-        undefined, Reg).
+    % avoid traversing the table when URI could directly match an entry
+    % however if this is not the case, an extra lookup is needed before searching the entire table
+    case ets:lookup(Reg, Uri) of
+        [Elem] -> Elem;
+        [] ->
+            ets:foldl(
+                fun(Elem={Prefix, _, _}, Found) ->
+                    case lists:prefix(Prefix, Uri) of
+                        true -> one_with_longer_uri(Elem, Found);
+                        false -> Found
+                    end
+                end,
+                undefined, Reg)
+    end.
+
+% match_handler(Uri, Reg) ->
+%     lists:foldl(
+%         fun(Elem={Prefix, _, _}, Found) ->
+%             case lists:prefix(Prefix, Uri) of
+%                 true -> one_with_longer_uri(Elem, Found);
+%                 false -> Found
+%             end
+%         end,
+%         undefined, Reg).
 
 % select an entry with a longest prefix
 % this allows user to have one handler for "foo" and another for "foo/bar"
@@ -78,9 +97,14 @@ one_with_longer_uri(_Elem1, Elem2) -> Elem2.
 
 % ask each handler to provide a link list
 get_links(Reg) ->
-    lists:foldl(
+    ets:foldl(
         fun({Prefix, Module, Args}, Acc) -> lists:append(Acc, get_links(Prefix, Module, Args)) end,
         [], Reg).
+
+% get_links(Reg) ->
+%     lists:foldl(
+%         fun({Prefix, Module, Args}, Acc) -> lists:append(Acc, get_links(Prefix, Module, Args)) end,
+%         [], Reg).
 
 get_links(Prefix, Module, Args) ->
     case catch apply(Module, coap_discover, [Prefix, Args]) of
