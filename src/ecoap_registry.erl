@@ -3,7 +3,7 @@
 
 %% API.
 -export([start_link/0, get_links/0, register_handler/3, unregister_handler/1, match_handler/1, clear_registry/0]).
--compile([export_all]).
+% -compile([export_all]).
 
 %% gen_server.
 -export([init/1]).

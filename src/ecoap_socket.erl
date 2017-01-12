@@ -69,33 +69,24 @@ get_all_endpoints(Pid) ->
 init([InPort]) ->
 	% process_flag(trap_exit, true),
 	% {ok, Deduplication} = application:get_env(deduplication),
-	case gen_udp:open(InPort, [binary, {active, true}, {reuseaddr, true}, {recbuf, 1024*1024}, {sndbuf, 1024*1024}]) of
-		{ok, Socket} ->
-			% We set software buffer to maximum of sndbuf & recbuf of the socket 
-			% to avoid unnecessary copying
-			% {ok, [{sndbuf, SndBufSize}]} = inet:getopts(Socket, [sndbuf]),
-			% {ok, [{recbuf, RecBufSize}]} = inet:getopts(Socket, [recbuf]),
-			% ok = inet:setopts(Socket, [{recbuf, RecBufSize * 200}]),
-			% ok = inet:setopts(Socket, [{sndbuf, RecBufSize * 200}]),
-			% ok = inet:setopts(Socket, [{buffer, max(SndBufSize, RecBufSize)}]),
-			{ok, #state{sock=Socket, endpoints=maps:new(), endpoint_refs=maps:new()}};
-		{error, Reason} ->
-			{stop, Reason}
-	end.
+	{ok, Socket} = gen_udp:open(InPort, [binary, {active, true}, {reuseaddr, true}, {recbuf, 1024*1024}, {sndbuf, 1024*1024}]),
+	% We set software buffer to maximum of sndbuf & recbuf of the socket 
+	% to avoid unnecessary copying
+	% {ok, [{sndbuf, SndBufSize}]} = inet:getopts(Socket, [sndbuf]),
+	% {ok, [{recbuf, RecBufSize}]} = inet:getopts(Socket, [recbuf]),
+	% ok = inet:setopts(Socket, [{recbuf, RecBufSize * 200}]),
+	% ok = inet:setopts(Socket, [{sndbuf, RecBufSize * 200}]),
+	% ok = inet:setopts(Socket, [{buffer, max(SndBufSize, RecBufSize)}]),
+	{ok, #state{sock=Socket, endpoints=maps:new(), endpoint_refs=maps:new()}}.
 
 init(SupPid, InPort) ->
-	case init([InPort]) of
-		{ok, State} ->
-			error_logger:info_msg("coap listen on *:~p~n", [InPort]),
-			register(?MODULE, self()),
-			ok = proc_lib:init_ack({ok, self()}),
-			{ok, Pid} = supervisor:start_child(SupPid, ?SPEC({endpoint_sup, start_link, []})),
-		    link(Pid),
-		    gen_server:enter_loop(?MODULE, [], State#state{endpoint_pool=Pid}, {local, ?MODULE});
-		{stop, Reason} ->
-			ok = proc_lib:init_ack({error, Reason}),
-			{error, Reason}
-	end.
+	{ok, State} = init([InPort]),
+	error_logger:info_msg("coap listen on *:~p~n", [InPort]),
+	register(?MODULE, self()),
+	ok = proc_lib:init_ack({ok, self()}),
+	{ok, Pid} = supervisor:start_child(SupPid, ?SPEC({endpoint_sup, start_link, []})),
+    link(Pid),
+    gen_server:enter_loop(?MODULE, [], State#state{endpoint_pool=Pid}, {local, ?MODULE}).
 
 % get an endpoint when being as a client
 handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoints=EndPoints, endpoint_pool=undefined}) ->
@@ -122,6 +113,7 @@ handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoints=End
 		            {reply, Error, State}
 		    end
     end;
+% only for debug use
 handle_call(get_all_endpoints, _From, State=#state{endpoints=EndPoints}) ->
 	{reply, maps:values(EndPoints), State};
 handle_call(_Request, _From, State) ->
