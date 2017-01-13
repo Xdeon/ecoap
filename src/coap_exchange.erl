@@ -246,7 +246,7 @@ out_con({out, Message}, TransArgs=#{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, 
     BinMessage = coap_message:encode(Message),
     ok = inet_udp:send(Socket, PeerIP, PeerPortNo, BinMessage),
     % Socket ! {datagram, {PeerIP, PeerPortNo}, BinMessage},
-    _ = rand:seed(exs1024),
+    % _ = rand:seed(exs1024),
     Timeout = ?ACK_TIMEOUT+rand:uniform(?ACK_RANDOM_FACTOR),
     next_state(await_pack, TransArgs, State#exchange{msgbin=BinMessage, retry_time=Timeout, retry_count=0}, Timeout).
 
