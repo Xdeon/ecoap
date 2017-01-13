@@ -79,22 +79,22 @@ content_type_to_int(Value) when is_integer(Value) ->
 
 -include_lib("eunit/include/eunit.hrl").
 
-codec_test_() -> [
-    ?_assertEqual("<link>;ct=0;sz=5", encode([{rootless, [<<"link">>], [{ct, <<"text/plain">>}, {sz, 5}]}])),
+codec_test() -> 
+    ?assertEqual("<link>;ct=0;sz=5", encode([{rootless, [<<"link">>], [{ct, <<"text/plain">>}, {sz, 5}]}])),
     test_decode("<link>", [{rootless, [<<"link">>], []}]),
     test_decode("</link1>;par=\"val\",<link2>;par=\"val\";par2=\"val2\"",
         [{absolute, [<<"link1">>], [{par, <<"val">>}]}, {rootless, [<<"link2">>], [{par, <<"val">>}, {par2, <<"val2">>}]}]),
-    test_decode("/link", error)].
+    test_decode("/link", error).
 
 test_decode(String, error) ->
     Struct2 = decode(String),
-    ?_assertMatch({error, _}, Struct2);
+    ?assertMatch({error, _}, Struct2);
 
 test_decode(String, Struct) ->
     Struct2 = decode(String),
-    [?_assertEqual(Struct, Struct2),
+    ?assertEqual(Struct, Struct2),
     % try reverse encoding of the decoded structure
-    ?_assertEqual(String, encode(Struct2))].
+    ?assertEqual(String, encode(Struct2)).
 
 -endif.
 % end of file

@@ -98,63 +98,63 @@ decode_option_list(Tail) ->
 % option parsing is based on Patrick's CoAP Message Parsing in Erlang
 % https://gist.github.com/azdle/b2d477ff183b8bbb0aa0
 
-% decode_option_list(<<>>, _LastNum, OptionList) ->
-%     {OptionList, <<>>};
-% decode_option_list(<<16#FF, Payload/bytes>>, _LastNum, OptionList) ->
-%     {OptionList, Payload};
-% decode_option_list(<<Delta:4, Len:4, Tail/bytes>>, LastNum, OptionList) ->
-%     {Tail1, OptNum} = if
-%         Delta =< 12 ->
-%             {Tail, LastNum + Delta};
-%         Delta == 13 ->
-%             <<ExtOptNum, NewTail1/bytes>> = Tail,
-%             {NewTail1, LastNum + ExtOptNum + 13};
-%         Delta == 14 ->
-%             <<ExtOptNum:16, NewTail1/bytes>> = Tail,
-%             {NewTail1, LastNum + ExtOptNum + 269}
-%     end,
-%     {Tail2, OptLen} = if
-%         Len < 13 ->
-%             {Tail1, Len};
-%         Len == 13 ->
-%             <<ExtOptLen, NewTail2/bytes>> = Tail1,
-%             {NewTail2, ExtOptLen + 13};
-%         Len == 14 ->
-%             <<ExtOptLen:16, NewTail2/bytes>> = Tail1,
-%             {NewTail2, ExtOptLen + 269}
-%     end,
-%     case Tail2 of
-%         <<OptVal:OptLen/bytes, NextOpt/bytes>> ->
-%             decode_option_list(NextOpt, OptNum, append_option(decode_option({OptNum, OptVal}), OptionList));
-%         <<>> ->
-%             decode_option_list(<<>>, OptNum, append_option(decode_option({OptNum, <<>>}), OptionList))
-%     end.
+decode_option_list(<<>>, _LastNum, OptionList) ->
+    {OptionList, <<>>};
+decode_option_list(<<16#FF, Payload/bytes>>, _LastNum, OptionList) ->
+    {OptionList, Payload};
+decode_option_list(<<Delta:4, Len:4, Tail/bytes>>, LastNum, OptionList) ->
+    {Tail1, OptNum} = if
+        Delta =< 12 ->
+            {Tail, LastNum + Delta};
+        Delta == 13 ->
+            <<ExtOptNum, NewTail1/bytes>> = Tail,
+            {NewTail1, LastNum + ExtOptNum + 13};
+        Delta == 14 ->
+            <<ExtOptNum:16, NewTail1/bytes>> = Tail,
+            {NewTail1, LastNum + ExtOptNum + 269}
+    end,
+    {Tail2, OptLen} = if
+        Len < 13 ->
+            {Tail1, Len};
+        Len == 13 ->
+            <<ExtOptLen, NewTail2/bytes>> = Tail1,
+            {NewTail2, ExtOptLen + 13};
+        Len == 14 ->
+            <<ExtOptLen:16, NewTail2/bytes>> = Tail1,
+            {NewTail2, ExtOptLen + 269}
+    end,
+    case Tail2 of
+        <<OptVal:OptLen/bytes, NextOpt/bytes>> ->
+            decode_option_list(NextOpt, OptNum, append_option(decode_option({OptNum, OptVal}), OptionList));
+        <<>> ->
+            decode_option_list(<<>>, OptNum, append_option(decode_option({OptNum, <<>>}), OptionList))
+    end.
 
-decode_option_list(<<>>, _, Options) ->
-    {Options, <<>>};
-decode_option_list(<<16#FF, Payload/binary>>, _, Options) ->
-    {Options, Payload};
-decode_option_list(<<Delta:4, OptLen:4, Bin/binary>>, OptNum, Options) when Delta =< 12 ->
-    parse_option({OptLen, Bin}, OptNum + Delta, Options);
-decode_option_list(<<13:4, OptLen:4, Delta:8, Bin/binary>>, OptNum, Options) ->
-    parse_option({OptLen, Bin}, OptNum + Delta + 13, Options);
-decode_option_list(<<14:4, OptLen:4, Delta:16/big-integer, Bin/binary>>, OptNum, Options) ->
-    parse_option({OptLen, Bin}, OptNum + Delta + 269, Options).
+% decode_option_list(<<>>, _, Options) ->
+%     {Options, <<>>};
+% decode_option_list(<<16#FF, Payload/binary>>, _, Options) ->
+%     {Options, Payload};
+% decode_option_list(<<Delta:4, OptLen:4, Bin/binary>>, OptNum, Options) when Delta =< 12 ->
+%     parse_option({OptLen, Bin}, OptNum + Delta, Options);
+% decode_option_list(<<13:4, OptLen:4, Delta:8, Bin/binary>>, OptNum, Options) ->
+%     parse_option({OptLen, Bin}, OptNum + Delta + 13, Options);
+% decode_option_list(<<14:4, OptLen:4, Delta:16/big-integer, Bin/binary>>, OptNum, Options) ->
+%     parse_option({OptLen, Bin}, OptNum + Delta + 269, Options).
 
-parse_option({OptLen, Bin}, OptNum, Options) when OptLen =< 12 ->
-    parse_next({OptLen, Bin}, OptNum, Options);
-parse_option({13, <<Len:8, Bin/binary>>}, OptNum, Options) ->
-    OptLen = Len + 13,
-    parse_next({OptLen, Bin}, OptNum, Options);
-parse_option({14, <<Len:16/big-integer, Bin/binary>>}, OptNum, Options) ->
-    OptLen = Len + 269,
-    parse_next({OptLen, Bin}, OptNum, Options).
+% parse_option({OptLen, Bin}, OptNum, Options) when OptLen =< 12 ->
+%     parse_next({OptLen, Bin}, OptNum, Options);
+% parse_option({13, <<Len:8, Bin/binary>>}, OptNum, Options) ->
+%     OptLen = Len + 13,
+%     parse_next({OptLen, Bin}, OptNum, Options);
+% parse_option({14, <<Len:16/big-integer, Bin/binary>>}, OptNum, Options) ->
+%     OptLen = Len + 269,
+%     parse_next({OptLen, Bin}, OptNum, Options).
 
-parse_next({_OptLen, <<>>}, OptNum, Options) ->
-    decode_option_list(<<>>, OptNum, append_option(decode_option({OptNum, <<>>}), Options));
-parse_next({OptLen, Bin}, OptNum, Options) ->
-    <<OptVal:OptLen/binary, Left/binary>> = Bin,
-    decode_option_list(Left, OptNum, append_option(decode_option({OptNum, OptVal}), Options)).
+% parse_next({_OptLen, <<>>}, OptNum, Options) ->
+%     decode_option_list(<<>>, OptNum, append_option(decode_option({OptNum, <<>>}), Options));
+% parse_next({OptLen, Bin}, OptNum, Options) ->
+%     <<OptVal:OptLen/binary, Left/binary>> = Bin,
+%     decode_option_list(Left, OptNum, append_option(decode_option({OptNum, OptVal}), Options)).
 
 % put options of the same id into one list
 append_option({SameOptId, OptVal2}, [{SameOptId, OptVal1} | OptionList]) ->
@@ -332,31 +332,3 @@ is_repeatable_option(_Else) -> false.
 
 % option_encode_unsigned({Opt, undefined}) -> [];
 % option_encode_unsigned({Opt, Num}) -> {Opt, binary:encode_unsigned(Num)}.
-
--ifdef(TEST).
-
--include_lib("eunit/include/eunit.hrl").
-
-parse_test_() ->
-	MsgBin = <<64,1,45,91,183,115,101,110,115,111,114,115,4,116,101,109,112,193,2>>,
-    Msg = decode(MsgBin),
-    MsgBin2 = encode(Msg),
-    ?_assertEqual(MsgBin, MsgBin2).
-
-% note that the options below must be sorted by the option numbers
-codec_test_()-> [
-    test_codec(#coap_message{type='RST', id=0, options=[]}),
-    test_codec(#coap_message{type='CON', code='GET', id=100,
-        options=[{'Block1', {0,true,128}}, {'Observe', 1}]}),
-    test_codec(#coap_message{type='NON', code='PUT', id=200, token= <<"token">>,
-        options=[{'Uri-Path',[<<".well-known">>, <<"core">>]}]}),
-    test_codec(#coap_message{type='NON', code={ok, 'Content'}, id=300, token= <<"token">>,
-        payload= <<"<url>">>, options=[{'Content-Format', <<"application/link-format">>}, {'Uri-Path',[<<".well-known">>, <<"core">>]}]})
-    ].
-
-test_codec(Message) ->
-    Message2 = encode(Message),
-    Message1 = decode(Message2),
-    ?_assertEqual(Message, Message1).
-
--endif.

@@ -195,14 +195,14 @@ erase_endpoint(EpID, Ref, State=#state{endpoints=EndPoints, endpoint_refs=EndPoi
 
 -include_lib("eunit/include/eunit.hrl").
 
-store_endpoint_test_() ->
+store_endpoint_test() ->
 	EpID = {{127,0,0,1}, 5683},
 	State = store_endpoint(EpID, self(), #state{endpoints=maps:new(), endpoint_refs=maps:new()}),
 	[Ref] = maps:keys(State#state.endpoint_refs),
 	State1 = erase_endpoint(EpID, Ref, State),
-	[?_assertEqual({ok, self()}, find_endpoint(EpID, State#state.endpoints)),
-	?_assertEqual({ok, EpID}, find_endpoint_ref(Ref, State#state.endpoint_refs)),
-    ?_assertEqual(error, find_endpoint(EpID, State1#state.endpoints)),
-    ?_assertEqual(error, find_endpoint_ref(Ref, State1#state.endpoint_refs))].
+	?assertEqual({ok, self()}, find_endpoint(EpID, State#state.endpoints)),
+	?assertEqual({ok, EpID}, find_endpoint_ref(Ref, State#state.endpoint_refs)),
+    ?assertEqual(error, find_endpoint(EpID, State1#state.endpoints)),
+    ?assertEqual(error, find_endpoint_ref(Ref, State1#state.endpoint_refs)).
 
 -endif.
