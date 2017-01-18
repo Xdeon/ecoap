@@ -1,6 +1,6 @@
 -module(resource_directory).
 
--export([coap_discover/2, coap_get/4, coap_post/4, coap_put/4, coap_delete/3,
+-export([coap_discover/2, coap_get/5, coap_post/4, coap_put/4, coap_delete/3,
     coap_observe/4, coap_unobserve/1, handle_info/2, coap_ack/2]).
 
 -behaviour(coap_resource).
@@ -10,12 +10,12 @@
 coap_discover(_Prefix, _Args) ->
     [].
 
-coap_get(_EpID, _Prefix, [], Query) ->
+coap_get(_EpID, _Prefix, [], Query, _Accept) ->
     Links = core_link:encode(filter(ecoap_registry:get_links(), Query)),
     #coap_content{etag = binary:part(crypto:hash(sha, Links), {0,4}),
                   format = <<"application/link-format">>,
                   payload = list_to_binary(Links)};
-coap_get(_EpID, _Prefix, _Else, _Query) ->
+coap_get(_EpID, _Prefix, _Else, _Query, _Accept) ->
     {error, 'NotFound'}.
 
 coap_post(_EpID, _Prefix, _Suffix, _Content) -> {error, 'MethodNotAllowed'}.

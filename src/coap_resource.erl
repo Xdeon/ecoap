@@ -21,11 +21,12 @@
 	Uri :: coap_uri().
 
 % GET handler
--callback coap_get(EpID, Prefix, Name, Query) -> Content | Error when
+-callback coap_get(EpID, Prefix, Name, Query, Accept) -> Content | Error when
 	EpID :: coap_endpoint_id(),
 	Prefix :: [binary()],
 	Name :: [binary()],
 	Query :: [binary()],
+	Accept :: binary() | non_neg_integer(),
 	Content :: coap_content(),
 	Error :: coap_error().
 
