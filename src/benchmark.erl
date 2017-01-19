@@ -11,7 +11,8 @@ start() ->
     {ok, _} = application:ensure_all_started(ecoap),
     ok = ecoap_registry:register_handler([<<"benchmark">>], ?MODULE, undefined),
     ok = ecoap_registry:register_handler([<<"fibonacci">>], ?MODULE, undefined),
-    ok = ecoap_registry:register_handler([<<"helloWorld">>], ?MODULE, undefined).
+    ok = ecoap_registry:register_handler([<<"helloWorld">>], ?MODULE, undefined),
+    ok = ecoap_registry:register_handler([<<"shutdown">>], ?MODULE, undefined).
 
 stop() ->
     application:stop(ecoap).
@@ -34,9 +35,14 @@ coap_get(_EpID, [<<"fibonacci">>], _Name, [Query|_], _Accept) ->
     #coap_content{payload= <<"fibonacci(", (integer_to_binary(Num))/binary, ") = ", (integer_to_binary(fib(Num)))/binary>>};
 coap_get(_EpID, [<<"helloWorld">>], _Name, _Query, _Accept) ->
     #coap_content{payload = <<"Hello World!">>, format = 0};
+coap_get(_EpID, [<<"shutdown">>], _Name, _Query, _Accept) ->
+    #coap_content{payload = <<"Send a POST request to this resource to shutdown the server">>};
 coap_get(_EpID, _Prefix, _Name, _Query, _Accept) ->
     {error, 'NotFound'}.
 
+coap_post(_EpID, [<<"shutdown">>], _Name, _Content) ->
+    _ = spawn(fun() -> io:format("Shutting down everything in 1 second~n"), timer:sleep(1000), benchmark:stop() end),
+    {ok, 'Changed', #coap_content{payload = <<"Shutting down">>}};
 coap_post(_EpID, _Prefix, _Name, _Content) ->
     {error, 'MethodNotAllowed'}.
 
