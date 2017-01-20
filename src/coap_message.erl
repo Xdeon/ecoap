@@ -112,6 +112,7 @@ decode_option_list(<<Delta:4, Len:4, Tail/bytes>>, LastNum, OptionList) ->
         Delta == 14 ->
             <<ExtOptNum:16, NewTail1/bytes>> = Tail,
             {NewTail1, LastNum + ExtOptNum + 269}
+        % true -> throw({error, "Format Error"})
     end,
     {Tail2, OptLen} = if
         Len < 13 ->
@@ -122,12 +123,14 @@ decode_option_list(<<Delta:4, Len:4, Tail/bytes>>, LastNum, OptionList) ->
         Len == 14 ->
             <<ExtOptLen:16, NewTail2/bytes>> = Tail1,
             {NewTail2, ExtOptLen + 269}
+        % true -> throw({error, "Format Error"})
     end,
     case Tail2 of
         <<OptVal:OptLen/bytes, NextOpt/bytes>> ->
             decode_option_list(NextOpt, OptNum, append_option(decode_option({OptNum, OptVal}), OptionList));
         <<>> ->
             decode_option_list(<<>>, OptNum, append_option(decode_option({OptNum, <<>>}), OptionList))
+        % _ -> throw({error, "Format Error"})
     end.
 
 % decode_option_list(<<>>, _, Options) ->
