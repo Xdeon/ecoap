@@ -77,7 +77,8 @@ ping(Pid, Uri) ->
 % If some error happened in server side and a reset/error code is received during observing, 
 % the response is sent to the caller process as message in form of {async_response, ClientRef, Pid, Res} where Res is {error, _}.
 
-% If the ecoap_client process crashed or is not responsive, the function returns {error, noproc}/{error, timeout}.
+% If the ecoap_client process crashed during the calll or is not responsive in EXCHANGE_LIFETIME (247s), 
+% the call fails with reason noproc/timeout.
 
 -spec observe(pid(), list()) -> observe_response().
 observe(Pid, Uri) ->
@@ -103,9 +104,9 @@ observe(Pid, Uri, Options) ->
 			erlang:demonitor(MonitorRef, [flush]),
 			{ClientRef, N, Res};
 		{'DOWN', MonitorRef, process, _Pid, _Reason} ->
-			{error, noproc}
+			exit(noproc)
 	after ?EXCHANGE_LIFETIME ->
-		{error, timeout}
+		exit(timeout)
 	end.
 
 % Cancel an observe relation to a specific resource
@@ -113,13 +114,14 @@ observe(Pid, Uri, Options) ->
 % If unobserve resource succeed, the function returns the response as if it was from a plain GET request;
 % If no matching observe relation exists, the function returns {error, no_observe}, 
 % note observe relation is matched against URI and accept content-format;
-% If the ecoap_client process crashed or is not responsive, the function returns {error, no_proc}/{error, timeout}.
+% If the ecoap_client process crashed during the calll or is not responsive in EXCHANGE_LIFETIME (247s), 
+% the call fails with reason noproc/timeout.
 
--spec unobserve(pid(), list()) -> response().
+-spec unobserve(pid(), list()) -> response() | {error, no_observe}.
 unobserve(Pid, Uri) ->
 	unobserve(Pid, Uri, []).
 
--spec unobserve(pid(), list(), [tuple()]) -> response().
+-spec unobserve(pid(), list(), [tuple()]) -> response() | {error, no_observe}.
 unobserve(Pid, Uri, Options) ->
 	{EpID, Req} = assemble_request('GET', Uri, append_option({'Observe', 1}, Options), <<>>),
 	Accpet = coap_message_utils:get_option('Accpet', Options),
@@ -134,9 +136,9 @@ unobserve(Pid, Uri, Options) ->
 			erlang:demonitor(MonitorRef, [flush]),
 			{error, no_observe};
 		{'DOWN', MonitorRef, process, _Pid, _Reason} -> 
-			{error, noproc}
+			exit(noproc)
 	after ?EXCHANGE_LIFETIME ->
-		{error, timeout}
+		exit(timeout)
 	end.
 
 %% Note that options defined in Content will overwrite the same ones defined in Options
