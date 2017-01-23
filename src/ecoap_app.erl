@@ -8,7 +8,8 @@
 
 start(_Type, _Args) ->
 	{ok, InPort} = application:get_env(port),
-	ecoap_sup:start_link(InPort).
+	{ok, Opts} = application:get_env(socket_opts),
+	ecoap_sup:start_link(InPort, Opts).
 
 stop(_State) ->
 	ok.

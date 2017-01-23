@@ -2,16 +2,18 @@
 -behaviour(gen_server).
 
 %% API.
--export([start_link/0, start_link/2, get_endpoint/2, get_all_endpoints/1, close/1]).
+-export([start_link/0, start_link/3, get_endpoint/2, get_all_endpoints/1, close/1]).
 
 %% gen_server.
 -export([init/1]).
--export([init/2]).
+-export([init/3]).
 -export([handle_call/3]).
 -export([handle_cast/2]).
 -export([handle_info/2]).
 -export([terminate/2]).
 -export([code_change/3]).
+
+-compile([export_all]).
 
 -define(SPEC(MFA),
     {endpoint_sup_sup,
@@ -20,6 +22,9 @@
     infinity,
     supervisor,
     [endpoint_sup_sup]}).
+
+-define(DEFAULT_SOCK_OPTS,
+	[binary, {active, true}, {reuseaddr, true}]).
 
 -record(state, {
 	sock = undefined :: inet:socket(),
@@ -42,7 +47,7 @@
 %% client
 -spec start_link() -> {ok, pid()} | {error, term()}.
 start_link() ->
-	gen_server:start_link(?MODULE, [0], []).
+	gen_server:start_link(?MODULE, [0, []], []).
 
 %% client
 -spec close(pid()) -> ok.
@@ -50,9 +55,9 @@ close(Pid) ->
 	gen_server:cast(Pid, shutdown).
 
 %% server
--spec start_link(pid(), inet:port_number()) -> {ok, pid()} | {error, term()}.
-start_link(SupPid, InPort) when is_pid(SupPid) ->
-	proc_lib:start_link(?MODULE, init, [SupPid, InPort]).
+-spec start_link(pid(), inet:port_number(), [gen_udp:option()]) -> {ok, pid()} | {error, term()}.
+start_link(SupPid, InPort, Opts) when is_pid(SupPid) ->
+	proc_lib:start_link(?MODULE, init, [SupPid, InPort, Opts]).
 
 %% start endpoint manually
 -spec get_endpoint(pid(), coap_endpoint_id()) -> {ok, pid()} | term().
@@ -66,10 +71,10 @@ get_all_endpoints(Pid) ->
 
 %% gen_server.
 
-init([InPort]) ->
+init([InPort, Opts]) ->
 	% process_flag(trap_exit, true),
 	% {ok, Deduplication} = application:get_env(deduplication),
-	{ok, Socket} = gen_udp:open(InPort, [binary, {active, true}, {reuseaddr, true}, {recbuf, 1024*1024}, {sndbuf, 1024*1024}]),
+	{ok, Socket} = gen_udp:open(InPort, merge_opts(?DEFAULT_SOCK_OPTS, Opts)),
 	% We set software buffer to maximum of sndbuf & recbuf of the socket 
 	% to avoid unnecessary copying
 	% {ok, [{sndbuf, SndBufSize}]} = inet:getopts(Socket, [sndbuf]),
@@ -79,8 +84,8 @@ init([InPort]) ->
 	% ok = inet:setopts(Socket, [{buffer, max(SndBufSize, RecBufSize)}]),
 	{ok, #state{sock=Socket, endpoints=maps:new(), endpoint_refs=maps:new()}}.
 
-init(SupPid, InPort) ->
-	{ok, State} = init([InPort]),
+init(SupPid, InPort, Opts) ->
+	{ok, State} = init([InPort, Opts]),
 	error_logger:info_msg("coap listen on *:~p~n", [InPort]),
 	register(?MODULE, self()),
 	ok = proc_lib:init_ack({ok, self()}),
@@ -177,6 +182,17 @@ code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
 %% Internal  
+
+merge_opts(Defaults, Options) ->
+    lists:foldl(
+        fun({Opt, Val}, Acc) ->
+                lists:keystore(Opt, 1, Acc, {Opt, Val});
+            (Opt, Acc) ->
+                case lists:member(Opt, Acc) of
+                    true  -> Acc;
+                    false -> [Opt | Acc]
+                end
+    end, Defaults, Options).
 
 find_endpoint(EpID, EndPoints) ->
 	maps:find(EpID, EndPoints).
