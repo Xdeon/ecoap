@@ -1,15 +1,12 @@
 -module(coap_iana).
 
 -export([decode_type/1, encode_type/1, 
-	code/0, content_formats/0, 
-	decode_enum/2, decode_enum/3, encode_enum/2, encode_enum/3]).
+	decode_code/1, encode_code/1, 
+	decode_content_format/1, encode_content_format/1 
+	]).
 
 -type coap_code_raw() :: {non_neg_integer(), non_neg_integer()}.
 -type content_formats_code() :: non_neg_integer().
--type coap_enum() :: [{coap_code_raw() | content_formats_code(), coap_code() | binary()}, ...].
--type enum_decode_key() :: coap_code_raw() | content_formats_code().
--type enum_encode_key() :: coap_code() | binary().
--type enum_default_val() :: integer() | undefined.
 
 -include("coap_def.hrl").
 
@@ -64,7 +61,105 @@ encode_type('RST') -> 3.
 % | 5.05 | Proxying Not Supported       | [RFC7252] |
 % +------+------------------------------+-----------+
 
--spec code() -> [{coap_code_raw(), coap_code()}, ...].
+-spec decode_code(coap_code_raw()) -> coap_code().
+decode_code({0, 01}) -> 'GET';
+decode_code({0, 02}) -> 'POST';
+decode_code({0, 03}) -> 'PUT';
+decode_code({0, 04}) -> 'DELETE';
+% success is a tuple {ok, ...}
+decode_code({2, 01}) -> {ok, 'Created'};
+decode_code({2, 02}) -> {ok, 'Deleted'};
+decode_code({2, 03}) -> {ok, 'Valid'};
+decode_code({2, 04}) -> {ok, 'Changed'};
+decode_code({2, 05}) -> {ok, 'Content'};
+decode_code({2, 31}) -> {ok, 'Continue'}; % block
+% error is a tuple {error, ...}
+decode_code({4, 00}) -> {error, 'BadRequest'};
+decode_code({4, 01}) -> {error, 'Unauthorized'};
+decode_code({4, 02}) -> {error, 'BadOption'};
+decode_code({4, 03}) -> {error, 'Forbidden'};
+decode_code({4, 04}) -> {error, 'NotFound'};
+decode_code({4, 05}) -> {error, 'MethodNotAllowed'};
+decode_code({4, 06}) -> {error, 'NotAcceptable'};
+decode_code({4, 08}) -> {error, 'RequestEntityIncomplete'}; % block
+decode_code({4, 12}) -> {error, 'PreconditionFailed'};
+decode_code({4, 13}) -> {error, 'RequestEntityTooLarge'};
+decode_code({4, 15}) -> {error, 'UnsupportedContentFormat'};
+decode_code({5, 00}) -> {error, 'InternalServerError'};
+decode_code({5, 01}) -> {error, 'NotImplemented'};
+decode_code({5, 02}) -> {error, 'BadGateway'};
+decode_code({5, 03}) -> {error, 'ServiceUnavailable'};
+decode_code({5, 04}) -> {error, 'GatewayTimeout'};
+decode_code({5, 05}) -> {error, 'ProxyingNotSupported'}.
+
+-spec encode_code(coap_code()) -> coap_code_raw().
+encode_code('GET') -> {0, 01};
+encode_code('POST') -> {0, 02};
+encode_code('PUT') -> {0, 03};
+encode_code('DELETE') -> {0, 04};
+encode_code({ok, 'Created'}) -> {2, 01};
+encode_code({ok, 'Deleted'}) -> {2, 02};
+encode_code({ok, 'Valid'}) -> {2, 03};
+encode_code({ok, 'Changed'}) -> {2, 04};
+encode_code({ok, 'Content'}) -> {2, 05};
+encode_code({ok, 'Continue'}) -> {2, 31};
+encode_code({error, 'BadRequest'}) -> {4, 00};
+encode_code({error, 'Unauthorized'}) -> {4, 01};
+encode_code({error, 'BadOption'}) -> {4, 02};
+encode_code({error, 'Forbidden'}) -> {4, 03};
+encode_code({error, 'NotFound'}) -> {4, 04};
+encode_code({error, 'MethodNotAllowed'}) -> {4, 05};
+encode_code({error, 'NotAcceptable'}) -> {4, 06};
+encode_code({error, 'RequestEntityIncomplete'}) -> {4, 08};
+encode_code({error, 'PreconditionFailed'}) -> {4, 12};
+encode_code({error, 'RequestEntityTooLarge'}) -> {4, 13};
+encode_code({error, 'UnsupportedContentFormat'}) -> {4, 15};
+encode_code({error, 'InternalServerError'}) -> {5, 00};
+encode_code({error, 'NotImplemented'}) -> {5, 01};
+encode_code({error, 'BadGateway'}) -> {5, 02};
+encode_code({error, 'ServiceUnavailable'}) -> {5, 03};
+encode_code({error, 'GatewayTimeout'}) -> {5, 04};
+encode_code({error, 'ProxyingNotSupported'}) -> {5, 05}.
+
+
+%% CoAP Content-Formats Registry
+%%
+%% +--------------------------+----------+----+------------------------+
+%% | Media type               | Encoding | ID | Reference              |
+%% +--------------------------+----------+----+------------------------+
+%% | text/plain;              | -        |  0 | [RFC2046] [RFC3676]    |
+%% | charset=utf-8            |          |    | [RFC5147]              |
+%% | application/link-format  | -        | 40 | [RFC6690]              |
+%% | application/xml          | -        | 41 | [RFC3023]              |
+%% | application/octet-stream | -        | 42 | [RFC2045] [RFC2046]    |
+%% | application/exi          | -        | 47 | [REC-exi-20140211]     |
+%% | application/json         | -        | 50 | [RFC7159]              |
+%% +--------------------------+----------+----+------------------------+
+
+-spec decode_content_format(content_formats_code()) -> binary() | content_formats_code().
+decode_content_format(0) -> <<"text/plain">>;
+decode_content_format(40) -> <<"application/link-format">>;
+decode_content_format(41) -> <<"application/xml">>;
+decode_content_format(42) -> <<"application/octet-stream">>;
+decode_content_format(47) -> <<"application/exi">>;
+decode_content_format(50) -> <<"application/json">>;
+decode_content_format(60) -> <<"application/cbor">>;
+% unknown content-format
+decode_content_format(FormatCode) -> FormatCode.
+
+-spec encode_content_format(binary()) -> content_formats_code() | binary().
+encode_content_format(<<"text/plain">>) -> 0;
+encode_content_format(<<"application/link-format">>) -> 40;
+encode_content_format(<<"application/xml">>) -> 41;
+encode_content_format(<<"application/octet-stream">>) -> 42;
+encode_content_format(<<"application/exi">>) -> 47;
+encode_content_format(<<"application/json">>) -> 50;
+encode_content_format(<<"application/cbor">>) -> 60;
+encode_content_format(Format) -> Format.
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
 code() ->
 	[
 		{{0, 01}, 'GET'},
@@ -98,21 +193,6 @@ code() ->
 	    {{5, 05}, {error, 'ProxyingNotSupported'}}
 	].
 
-%% CoAP Content-Formats Registry
-%%
-%% +--------------------------+----------+----+------------------------+
-%% | Media type               | Encoding | ID | Reference              |
-%% +--------------------------+----------+----+------------------------+
-%% | text/plain;              | -        |  0 | [RFC2046] [RFC3676]    |
-%% | charset=utf-8            |          |    | [RFC5147]              |
-%% | application/link-format  | -        | 40 | [RFC6690]              |
-%% | application/xml          | -        | 41 | [RFC3023]              |
-%% | application/octet-stream | -        | 42 | [RFC2045] [RFC2046]    |
-%% | application/exi          | -        | 47 | [REC-exi-20140211]     |
-%% | application/json         | -        | 50 | [RFC7159]              |
-%% +--------------------------+----------+----+------------------------+
-
--spec content_formats() -> [{content_formats_code(), binary()}, ...].
 content_formats() ->
     [
 	    {0, <<"text/plain">>},
@@ -124,24 +204,35 @@ content_formats() ->
 	    {60, <<"application/cbor">>}
     ].
 
--spec decode_enum(coap_enum(), enum_decode_key()) -> enum_encode_key() | enum_default_val().
 decode_enum(TupleList, Key) ->
 	decode_enum(TupleList, Key, undefined).
 
--spec decode_enum(coap_enum(), enum_decode_key(), enum_default_val()) -> enum_encode_key() | enum_default_val().
 decode_enum(TupleList, Key, Default) ->
 	case lists:keyfind(Key, 1, TupleList) of
 		{_, Val} -> Val;
 		false -> Default
 	end.
 
--spec encode_enum(coap_enum(), enum_encode_key()) -> enum_decode_key() | enum_default_val().
 encode_enum(TupleList, Key) ->
 	encode_enum(TupleList, Key, undefined).
 
--spec encode_enum(coap_enum(), enum_encode_key(), enum_default_val()) -> enum_decode_key() | enum_default_val().
 encode_enum(TupleList, Key, Default) ->
 	case lists:keyfind(Key, 2, TupleList) of
 		{Code, _} -> Code;
 		false -> Default
 	end.
+
+enum_codec_test() ->
+	lists:foreach(
+		fun({Raw, Code}) -> ?assertEqual(decode_enum(code(), Raw), decode_code(Raw)) end, code()
+		),
+	lists:foreach(
+		fun({Raw, Code}) -> ?assertEqual(encode_enum(code(), Code), encode_code(Code)) end, code()
+		),
+	lists:foreach(
+		fun({Raw, Code}) -> ?assertEqual(decode_enum(content_formats(), Raw), decode_content_format(Raw)) end, content_formats()
+		),
+	lists:foreach(
+		fun({Raw, Code}) -> ?assertEqual(encode_enum(content_formats(), Code), encode_content_format(Code)) end, content_formats()
+		).
+-endif.

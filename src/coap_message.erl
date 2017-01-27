@@ -4,9 +4,8 @@
 
 -export([decode/1, encode/1]).
 
--import(coap_iana, [content_formats/0, code/0]).
 -import(coap_iana, [decode_type/1, encode_type/1]).
--import(coap_iana, [decode_enum/2, decode_enum/3, encode_enum/2, encode_enum/3]).
+-import(coap_iana, [decode_code/1, decode_content_format/1, encode_code/1, encode_content_format/1]).
 
 -define(VERSION, 1).
 -define(OPTION_IF_MATCH, 1).
@@ -86,7 +85,7 @@ decode(<<?VERSION:2, Type:2, TKL:4, Class:3, DetailedCode:5, MsgId:16, Token:TKL
     {Options, Payload} = decode_option_list(Tail),
     #coap_message{
         type=decode_type(Type),
-        code=decode_enum(code(), {Class, DetailedCode}),
+        code=decode_code({Class, DetailedCode}),
         id=MsgId,
         token=Token,
         options=Options,
@@ -185,12 +184,12 @@ decode_option({?OPTION_LOCATION_PATH, OptVal}) -> {'Location-Path', OptVal};
 decode_option({?OPTION_URI_PATH, OptVal}) -> {'Uri-Path', OptVal};
 decode_option({?OPTION_CONTENT_FORMAT, OptVal}) ->
     Num = binary:decode_unsigned(OptVal),
-    {'Content-Format', decode_enum(content_formats(), Num, Num)};
+    {'Content-Format', decode_content_format(Num)};
 decode_option({?OPTION_MAX_AGE, OptVal}) -> {'Max-Age', binary:decode_unsigned(OptVal)};
 decode_option({?OPTION_URI_QUERY, OptVal}) -> {'Uri-Query', OptVal};
 decode_option({?OPTION_ACCEPT, OptVal}) -> 
     Num = binary:decode_unsigned(OptVal),
-    {'Accept', decode_enum(content_formats(), Num, Num)};
+    {'Accept', decode_content_format(Num)};
     % {'Accept', binary:decode_unsigned(OptVal)};
 decode_option({?OPTION_LOCATION_QUERY, OptVal}) -> {'Location-Query', OptVal};
 decode_option({?OPTION_PROXY_URI, OptVal}) -> {'Proxy-Uri', OptVal};
@@ -222,7 +221,7 @@ encode(#coap_message{type=Type, code=undefined, id=MsgId}) ->
     <<?VERSION:2, (encode_type(Type)):2, 0:4, 0:3, 0:5, MsgId:16>>;
 encode(#coap_message{type=Type, code=Code, id=MsgId, token=Token, options=Options, payload=Payload}) ->
     TKL = byte_size(Token),
-    {Class, DetailedCode} = encode_enum(code(), Code),
+    {Class, DetailedCode} = encode_code(Code),
     Tail = encode_option_list(Options, Payload),
     <<?VERSION:2, (encode_type(Type)):2, TKL:4, Class:3, DetailedCode:5, MsgId:16, Token:TKL/bytes, Tail/bytes>>.
 
@@ -292,14 +291,14 @@ encode_option({'Uri-Path', OptVal}) -> {?OPTION_URI_PATH, OptVal};
 encode_option({'Content-Format', OptVal}) when is_integer(OptVal) ->
     {?OPTION_CONTENT_FORMAT, binary:encode_unsigned(OptVal)};
 encode_option({'Content-Format', OptVal}) ->
-    Num = encode_enum(content_formats(), OptVal),
+    Num = encode_content_format(OptVal),
     {?OPTION_CONTENT_FORMAT, binary:encode_unsigned(Num)};
 encode_option({'Max-Age', OptVal}) -> {?OPTION_MAX_AGE, binary:encode_unsigned(OptVal)};
 encode_option({'Uri-Query', OptVal}) -> {?OPTION_URI_QUERY, OptVal};
 encode_option({'Accept', OptVal}) when is_integer(OptVal) -> 
     {?OPTION_ACCEPT, binary:encode_unsigned(OptVal)};
 encode_option({'Accept', OptVal}) -> 
-    Num = encode_enum(content_formats(), OptVal),
+    Num = encode_content_format(OptVal),
     {?OPTION_ACCEPT, binary:encode_unsigned(Num)};
 encode_option({'Location-Query', OptVal}) -> {?OPTION_LOCATION_QUERY, OptVal};
 encode_option({'Proxy-Uri', OptVal}) -> {?OPTION_PROXY_URI, OptVal};

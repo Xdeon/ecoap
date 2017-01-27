@@ -31,7 +31,6 @@
 	endpoints = undefined :: coap_endpoints(),
 	endpoint_refs = undefined :: coap_endpoint_refs(),
 	endpoint_pool = undefined :: undefined | pid()
-	% deduplication = undefined :: boolean()
 }).
 
 -opaque state() :: #state{}.
