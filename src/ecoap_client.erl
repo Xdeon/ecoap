@@ -5,6 +5,7 @@
 -export([start_link/0]).
 -export([ping/2, request/3, request/4, request/5, request_async/3, request_async/4, request_async/5, close/1]).
 -export([observe/2, observe/3, unobserve/2, unobserve/3]).
+% -export([remove_observe_ref/2]).
 
 %% gen_server.
 -export([init/1]).
@@ -240,8 +241,8 @@ handle_cast({cancel_observe, Key, EpID, {Method, Options, _Content}, ClientRef, 
 			{noreply, State#state{obs_regs=delete_ref(Key, ObsRegs), req_refs=store_ref(Ref2, Req, delete_ref(Ref, ReqRefs))}}
 	end;
 
-handle_cast({remove_observe_ref, Key}, State=#state{obs_regs=ObsRegs}) ->
-	{noreply, State#state{obs_regs=delete_ref(Key, ObsRegs)}};
+handle_cast({remove_observe_ref, Key}, State=#state{obs_regs=ObsRegs, req_refs=ReqRefs}) ->
+	{noreply, State#state{obs_regs=delete_ref(Key, ObsRegs), req_refs=delete_ref(find_ref(Key, ObsRegs), ReqRefs)}};
 
 handle_cast(shutdown, State) ->
 	{stop, normal, State};
