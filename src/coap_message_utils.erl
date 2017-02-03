@@ -2,7 +2,7 @@
 
 -export([msg_id/1, request/2, request/3, request/4, ack/1, response/1, response/2, response/3]).
 
--export([set_opt/3, set_type/2, set_code/2, set_payload/2, set_content/2, set_content/3, 
+-export([set_option/3, set_type/2, set_code/2, set_payload/2, set_content/2, set_content/3, 
          get_content/1, get_option/2, get_option/3, has_option/2, remove_option/2]).
 
 -define(MAX_BLOCK_SIZE, 1024).
@@ -93,16 +93,17 @@ set_code(Code, Msg) ->
         code=Code
     }.
 
--spec set_opt(coap_option(), any(), coap_message()) -> coap_message().
+-spec set_option(coap_option(), any(), coap_message()) -> coap_message().
 % omit option for its default value
-set_opt(_, undefined, Msg) -> Msg;
-set_opt('Max-Age', ?DEFAULT_MAX_AGE, Msg) -> Msg;
-set_opt('ETag', ETag, Msg) -> set_option('ETag', [ETag], Msg);
-set_opt(Option, Value, Msg) -> set_option(Option, Value, Msg).
+set_option(_, undefined, Msg) -> Msg;
+set_option('Max-Age', ?DEFAULT_MAX_AGE, Msg) -> Msg;
+set_option('ETag', ETag, Msg) -> set_option1('ETag', [ETag], Msg);
+set_option(Option, Value, Msg) -> set_option1(Option, Value, Msg).
 
-set_option(Option, Value, Msg=#coap_message{options=Options}) ->
+set_option1(Option, Value, Msg=#coap_message{options=Options}) ->
     Msg#coap_message{
-        options=lists:keystore(Option, 1, Options, {Option, Value})
+        % options=lists:keystore(Option, 1, Options, {Option, Value})
+        options=[{Option, Value}|Options]
     }.
 
 -spec set_payload(coap_content()|binary()|list(), coap_message()) -> coap_message().
@@ -136,18 +137,18 @@ set_content(Content, Msg) ->
 % segmentation not requested and not required
 set_content(#coap_content{etag=ETag, max_age=MaxAge, format=Format, payload=Payload}, undefined, Msg)
         when byte_size(Payload) =< ?MAX_BLOCK_SIZE ->
-    set_opt('ETag', ETag,
-        set_opt('Max-Age', MaxAge,
-            set_opt('Content-Format', Format,
+    set_option('ETag', ETag,
+        set_option('Max-Age', MaxAge,
+            set_option('Content-Format', Format,
                 set_payload(Payload, Msg))));
 % segmentation not requested, but required (late negotiation)
 set_content(Content, undefined, Msg) ->
     set_content(Content, {0, true, ?MAX_BLOCK_SIZE}, Msg);
 % segmentation requested (early negotiation)
 set_content(#coap_content{etag=ETag, max_age=MaxAge, format=Format, payload=Payload}, Block, Msg) ->
-    set_opt('ETag', ETag,
-        set_opt('Max-Age', MaxAge,
-            set_opt('Content-Format', Format,
+    set_option('ETag', ETag,
+        set_option('Max-Age', MaxAge,
+            set_option('Content-Format', Format,
                 set_payload_block(Payload, Block, Msg)))).
 
 -spec set_payload_block(binary(), block_opt(), coap_message()) -> coap_message().
@@ -158,10 +159,10 @@ set_payload_block(Content, Block, Msg=#coap_message{}) ->
 
 -spec set_payload_block(binary(), 'Block1'|'Block2', block_opt(), coap_message()) -> coap_message().
 set_payload_block(Content, BlockId, {Num, _, Size}, Msg) when byte_size(Content) > (Num+1)*Size ->
-    set_opt(BlockId, {Num, true, Size},
+    set_option(BlockId, {Num, true, Size},
         set_payload(part(Content, Num*Size, Size), Msg));
 set_payload_block(Content, BlockId, {Num, _, Size}, Msg) ->
-    set_opt(BlockId, {Num, false, Size},
+    set_option(BlockId, {Num, false, Size},
         set_payload(part(Content, Num*Size, byte_size(Content)-Num*Size), Msg)).
 
 % In case peer requested a non-existing block we just respond with an empty payload instead of crash
