@@ -29,21 +29,19 @@
 
 -include("coap_def.hrl").
 
-%% CoAP Message Format
-%%
-%%  0                   1                   2                   3
-%%  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-%% +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-%% |Ver| T |  TKL  |      Code     |          Message ID           |
-%% +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-%% |   Token (if any, TKL bytes) ...                               |
-%% +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-%% |   Options (if any) ...                                        |
-%% +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-%% |1 1 1 1 1 1 1 1|    Payload (if any) ...                       |
-%% +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-%%
-%%
+% CoAP Message Format
+%
+%  0                   1                   2                   3
+%  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+% +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+% |Ver| T |  TKL  |      Code     |          Message ID           |
+% +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+% |   Token (if any, TKL bytes) ...                               |
+% +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+% |   Options (if any) ...                                        |
+% +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+% |1 1 1 1 1 1 1 1|    Payload (if any) ...                       |
+% +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 % CoAP Option Value
 %
@@ -72,6 +70,29 @@
 % |    140 | (Reserved)       | [RFC7252] |
 % +--------+------------------+-----------+
 
+% +-----+---+---+---+---+----------------+--------+--------+----------+
+% | No. | C | U | N | R | Name           | Format | Length | Default  |
+% +-----+---+---+---+---+----------------+--------+--------+----------+
+% |   1 | x |   |   | x | If-Match       | opaque | 0-8    | (none)   |
+% |   3 | x | x | - |   | Uri-Host       | string | 1-255  | (see     |
+% |     |   |   |   |   |                |        |        | below)   |
+% |   4 |   |   |   | x | ETag           | opaque | 1-8    | (none)   |
+% |   5 | x |   |   |   | If-None-Match  | empty  | 0      | (none)   |
+% |   7 | x | x | - |   | Uri-Port       | uint   | 0-2    | (see     |
+% |     |   |   |   |   |                |        |        | below)   |
+% |   8 |   |   |   | x | Location-Path  | string | 0-255  | (none)   |
+% |  11 | x | x | - | x | Uri-Path       | string | 0-255  | (none)   |
+% |  12 |   |   |   |   | Content-Format | uint   | 0-2    | (none)   |
+% |  14 |   | x | - |   | Max-Age        | uint   | 0-4    | 60       |
+% |  15 | x | x | - | x | Uri-Query      | string | 0-255  | (none)   |
+% |  17 | x |   |   |   | Accept         | uint   | 0-2    | (none)   |
+% |  20 |   |   |   | x | Location-Query | string | 0-255  | (none)   |
+% |  35 | x | x | - |   | Proxy-Uri      | string | 1-1034 | (none)   |
+% |  39 | x | x | - |   | Proxy-Scheme   | string | 1-255  | (none)   |
+% |  60 |   |   | x |   | Size1          | uint   | 0-4    | (none)   |
+% +-----+---+---+---+---+----------------+--------+--------+----------+
+%          C=Critical, U=Unsafe, N=NoCacheKey, R=Repeatable
+
 %%--------------------------------------------------------------------
 %% Decode CoAP Message
 %%--------------------------------------------------------------------
@@ -92,7 +113,7 @@ decode(<<?VERSION:2, Type:2, TKL:4, Class:3, DetailedCode:5, MsgId:16, Token:TKL
         payload=Payload}.
 
 decode_option_list(Tail) ->
-    decode_option_list(Tail, 0, []).
+    decode_option_list(Tail, 0, #{}).
 
 % option parsing is based on Patrick's CoAP Message Parsing in Erlang
 % https://gist.github.com/azdle/b2d477ff183b8bbb0aa0
@@ -159,22 +180,51 @@ decode_option_list(<<Delta:4, Len:4, Tail/bytes>>, LastNum, OptionList) ->
 %     decode_option_list(Left, OptNum, append_option(decode_option({OptNum, OptVal}), Options)).
 
 % put options of the same id into one list
-append_option({SameOptId, OptVal2}, [{SameOptId, OptVal1} | OptionList]) ->
-    case is_repeatable_option(SameOptId) of
-        true ->
-            % we must keep the order
-            [{SameOptId, lists:append(OptVal1, [OptVal2])} | OptionList];
-        false ->
-            throw({error, atom_to_list(SameOptId)++" is not repeatable"})
-    end;
-append_option({OptId2, OptVal2}, OptionList) ->
-    case is_repeatable_option(OptId2) of
-        true -> [{OptId2, [OptVal2]} | OptionList];
-        false -> [{OptId2, OptVal2} | OptionList]
+% append_option({SameOptId, OptVal2}, OptionList0=[{SameOptId, OptVal1} | OptionList]) ->
+%     case is_repeatable_option(SameOptId) of
+%         true ->
+%             % we must keep the order
+%             [{SameOptId, lists:append(OptVal1, [OptVal2])} | OptionList];
+%         false ->
+%             case is_critical_option(SameOptId) of
+%                 true -> throw({error, atom_to_list(SameOptId)++" is not repeatable"});
+%                 false -> OptionList0
+%             end
+%     end;
+% append_option({OptId2, OptVal2}, OptionList) ->
+%     case is_repeatable_option(OptId2) of
+%         true -> [{OptId2, [OptVal2]} | OptionList];
+%         false -> [{OptId2, OptVal2} | OptionList]
+%     end.
+
+append_option({OptId, OptVal}, OptionMap) ->
+    case is_repeatable_option(OptId) of
+        true -> maps:update_with(OptId, fun(OptVal0) -> lists:append(OptVal0, [OptVal]) end, [OptVal], OptionMap);
+        false -> maps:put(OptId, OptVal, OptionMap)
     end.
 
+% TODO: Shall we follow the specification strictly and react to unrecognized options (including non-repeatable ones)?
+% append_option({OptId, OptVal}, OptionMap) ->
+%     case maps:is_key(OptId, OptionMap) of
+%         true -> 
+%             case is_repeatable_option(OptId) of
+%                 true ->
+%                     maps:update_with(OptId, fun(OptVal0) -> lists:append(OptVal0, [OptVal]) end, OptionMap);
+%                 false ->    
+%                     case is_critical_option(OptId) of
+%                         true -> throw({error, atom_to_list(OptId)++" is not repeatable"});
+%                         false -> OptionMap
+%                     end
+%             end;
+%         false ->
+%             case is_repeatable_option(OptId) of
+%                 true -> maps:put(OptId, [OptVal], OptionMap);
+%                 false -> maps:put(OptId, OptVal, OptionMap)
+%             end
+%     end.
+
 % RFC 7252
--spec decode_option({non_neg_integer(), _}) -> {coap_option(), _}.
+-spec decode_option({non_neg_integer(), _}) -> {coap_option()|non_neg_integer(), _}.
 decode_option({?OPTION_IF_MATCH, OptVal}) -> {'If-Match', OptVal};
 decode_option({?OPTION_URI_HOST, OptVal}) -> {'Uri-Host', OptVal};
 decode_option({?OPTION_ETAG, OptVal}) -> {'ETag', OptVal};
@@ -231,7 +281,7 @@ encode_option_list(Options, Payload) ->
     <<(encode_option_list1(Options))/bytes, 16#FF, Payload/bytes>>.
 
 encode_option_list1(Options) ->
-    Options1 = encode_options(Options, []),
+    Options1 = encode_options(maps:to_list(Options), []),
     % sort before encoding so we can calculate the deltas
     % the sort is stable; it maintains relative order of values with equal keys
     encode_option_list(lists:keysort(1, Options1), 0, <<>>).
@@ -280,7 +330,7 @@ encode_option_list([], _LastNum, Acc) ->
     Acc.
 
 % RFC 7252
--spec encode_option({coap_option(), _}) -> {non_neg_integer(), _}.
+-spec encode_option({coap_option()|non_neg_integer(), _}) -> {non_neg_integer(), _}.
 encode_option({'If-Match', OptVal}) -> {?OPTION_IF_MATCH, OptVal};
 encode_option({'Uri-Host', OptVal}) -> {?OPTION_URI_HOST, OptVal};
 encode_option({'ETag', OptVal}) -> {?OPTION_ETAG, OptVal};
@@ -331,6 +381,22 @@ is_repeatable_option('Uri-Path') -> true;
 is_repeatable_option('Uri-Query') -> true;
 is_repeatable_option('Location-Query') -> true;
 is_repeatable_option(_Else) -> false.
+
+% is_critical_option('If-Match') -> true;
+% is_critical_option('Uri-Host') -> true;
+% is_critical_option('If-None-Match') -> true;
+% is_critical_option('Uri-Port') -> true;
+% is_critical_option('Uri-Path') -> true;
+% is_critical_option('Uri-Query') -> true;
+% is_critical_option('Accept') -> true;
+% is_critical_option('Proxy-Uri') -> true;
+% is_critical_option('Proxy-Scheme') -> true;
+% is_critical_option(OptNum) when is_integer(OptNum) -> 
+%     case OptNum band 1 of
+%         1 -> true;
+%         0 -> false
+%     end;
+% is_critical_option(_Else) -> false.
 
 % option_encode_unsigned({Opt, undefined}) -> [];
 % option_encode_unsigned({Opt, Num}) -> {Opt, binary:encode_unsigned(Num)}.

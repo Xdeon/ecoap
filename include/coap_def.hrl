@@ -5,7 +5,7 @@
 	code = undefined :: undefined | coap_code(), 
 	id = undefined :: undefined | 0..65535, 
 	token = <<>> :: binary(),
-	options = [] :: list(tuple()), 
+	options = #{} :: map(),
 	payload = <<>> :: binary()
 }).
 

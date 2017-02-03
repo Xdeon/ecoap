@@ -13,13 +13,13 @@
 
 -spec request(coap_type(), coap_method()) -> coap_message().
 request(Type, Code) ->
-    request(Type, Code, <<>>, []).
+    request(Type, Code, <<>>, #{}).
 
 -spec request(coap_type(), coap_method(), coap_content()|binary()) -> coap_message().
 request(Type, Code, Payload) ->
-    request(Type, Code, Payload, []).
+    request(Type, Code, Payload, #{}).
 
--spec request(coap_type(), coap_method(), coap_content()|binary(), [tuple()]) -> coap_message().
+-spec request(coap_type(), coap_method(), coap_content()|binary(), map()) -> coap_message().
 request(Type, Code, Payload, Options) when is_binary(Payload) ->
     #coap_message{type=Type, code=Code, payload=Payload, options=Options};
 request(Type, Code, Content=#coap_content{}, Options) ->
@@ -62,24 +62,21 @@ response(Code, Payload, Request) ->
 msg_id(<<_:16, MsgId:16, _Tail/bytes>>) -> MsgId;
 msg_id(#coap_message{id=MsgId}) -> MsgId.
 
--spec get_option(coap_option(), [tuple()]) -> term().
-get_option(Option, OptionList) ->
-    get_option(Option, OptionList, undefined).
+-spec get_option(coap_option(), map()) -> term().
+get_option(Option, OptionMap) ->
+    get_option(Option, OptionMap, undefined).
 
--spec get_option(coap_option(), [tuple()], term()) -> term().
-get_option(Option, OptionList, Default) ->
-    case lists:keyfind(Option, 1, OptionList) of
-        {_, Value} -> Value;
-        _ -> Default
-    end.
+-spec get_option(coap_option(), map(), term()) -> term().
+get_option(Option, OptionMap, Default) ->
+    maps:get(Option, OptionMap, Default).
 
--spec has_option(coap_option(), [tuple()]) -> boolean().
-has_option(Option, OptionList) ->
-    lists:keymember(Option, 1, OptionList).
+-spec has_option(coap_option(), map()) -> boolean().
+has_option(Option, OptionMap) ->
+    maps:is_key(Option, OptionMap).
 
--spec remove_option(coap_option(), [tuple()]) -> [tuple()].
-remove_option(Option, OptionList) ->
-    lists:keydelete(Option, 1, OptionList).
+-spec remove_option(coap_option(), map()) -> map().
+remove_option(Option, OptionMap) ->
+    maps:remove(Option, OptionMap).
 
 -spec set_type(coap_type(), coap_message()) -> coap_message().
 set_type(Type, Msg) ->
@@ -102,8 +99,7 @@ set_option(Option, Value, Msg) -> set_option1(Option, Value, Msg).
 
 set_option1(Option, Value, Msg=#coap_message{options=Options}) ->
     Msg#coap_message{
-        % options=lists:keystore(Option, 1, Options, {Option, Value})
-        options=[{Option, Value}|Options]
+        options=maps:put(Option, Value, Options)
     }.
 
 -spec set_payload(coap_content()|binary()|list(), coap_message()) -> coap_message().

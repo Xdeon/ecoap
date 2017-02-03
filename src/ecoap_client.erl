@@ -23,7 +23,7 @@
 
 -record(req, {
 	method = undefined :: undefined | coap_method(),
-	options = [] :: list(tuple()),
+	options = #{} :: map(),
 	% token is only used for observe/unobserve
 	token = <<>> :: binary(),
 	content = undefined :: undefined | coap_content(),
@@ -83,9 +83,9 @@ ping(Pid, Uri) ->
 
 -spec observe(pid(), list()) -> observe_response().
 observe(Pid, Uri) ->
-	observe(Pid, Uri, []).
+	observe(Pid, Uri, #{}).
 
--spec observe(pid(), list(), [tuple()]) -> observe_response().
+-spec observe(pid(), list(), map()) -> observe_response().
 observe(Pid, Uri, Options) ->
 	{EpID, Req} = assemble_request('GET', Uri, append_option({'Observe', 0}, Options), <<>>),
 	Accpet = coap_message_utils:get_option('Accpet', Options),
@@ -120,9 +120,9 @@ observe(Pid, Uri, Options) ->
 
 -spec unobserve(pid(), list()) -> response() | {error, no_observe}.
 unobserve(Pid, Uri) ->
-	unobserve(Pid, Uri, []).
+	unobserve(Pid, Uri, #{}).
 
--spec unobserve(pid(), list(), [tuple()]) -> response() | {error, no_observe}.
+-spec unobserve(pid(), list(), map()) -> response() | {error, no_observe}.
 unobserve(Pid, Uri, Options) ->
 	{EpID, Req} = assemble_request('GET', Uri, append_option({'Observe', 1}, Options), <<>>),
 	Accpet = coap_message_utils:get_option('Accpet', Options),
@@ -147,26 +147,26 @@ unobserve(Pid, Uri, Options) ->
 
 -spec request(pid(), coap_method(), list()) -> response().
 request(Pid, Method, Uri) ->
-	request(Pid, Method, Uri, #coap_content{}, []).
+	request(Pid, Method, Uri, #coap_content{}, #{}).
 
 -spec request(pid(), coap_method(), list(), request_content()) -> response().
 request(Pid, Method, Uri, Content) -> 
-	request(Pid, Method, Uri, Content, []).
+	request(Pid, Method, Uri, Content, #{}).
 
--spec request(pid(), coap_method(), list(), request_content(), [tuple()]) -> response().
+-spec request(pid(), coap_method(), list(), request_content(), map()) -> response().
 request(Pid, Method, Uri, Content, Options) ->
 	{EpID, Req} = assemble_request(Method, Uri, Options, Content),
 	send_request(Pid, EpID, Req, self()).
 
 -spec request_async(pid(), coap_method(), list()) -> {ok, reference()}.
 request_async(Pid, Method, Uri) ->
-	request_async(Pid, Method, Uri, #coap_content{}, []).
+	request_async(Pid, Method, Uri, #coap_content{}, #{}).
 
 -spec request_async(pid(), coap_method(), list(), request_content()) -> {ok, reference()}.
 request_async(Pid, Method, Uri, Content) -> 
-	request_async(Pid, Method, Uri, Content, []).
+	request_async(Pid, Method, Uri, Content, #{}).
 
--spec request_async(pid(), coap_method(), list(), request_content(), [tuple()]) -> {ok, reference()}.
+-spec request_async(pid(), coap_method(), list(), request_content(), map()) -> {ok, reference()}.
 request_async(Pid, Method, Uri, Content, Options) ->
 	{EpID, Req} = assemble_request(Method, Uri, Options, Content),
 	send_request_async(Pid, EpID, Req, self()).
@@ -410,7 +410,7 @@ send_notify(ClientPid, ClientRef, Obseq, Res) ->
     ok.
 	
 append_option({Option, Value}, Options) ->
-	lists:keystore(Option, 1, Options, {Option, Value}).
+	maps:put(Option, Value, Options).
 
 find_ref(Ref, Refs) ->
 	case maps:find(Ref, Refs) of

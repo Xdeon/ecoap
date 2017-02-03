@@ -34,7 +34,7 @@
 
 -record(req, {
 	method = undefined :: coap_method(),
-	options = undefined :: [tuple()],
+	options = undefined :: map(),
 	content = undefined :: coap_content(),
 	fragment = <<>> :: binary()
 }).
@@ -71,13 +71,13 @@ ping(Uri) ->
 
 -spec request(coap_method(), list()) -> response().
 request(Method, Uri) ->
-	request(Method, Uri, #coap_content{}, []).
+	request(Method, Uri, #coap_content{}, #{}).
 
 -spec request(coap_method(), list(), request_content()) -> response().
 request(Method, Uri, Content) ->
-	request(Method, Uri, Content, []).	
+	request(Method, Uri, Content, #{}).	
 
--spec request(coap_method(), list(), request_content(), [tuple()]) -> response().
+-spec request(coap_method(), list(), request_content(), map()) -> response().
 request(Method, Uri, Content, Options) ->
 	{ok, Pid} = start_link(),
 	{EpID, Req} = assemble_request(Method, Uri, Options, Content),
@@ -196,7 +196,7 @@ convert_content(Content) when is_binary(Content) -> #coap_content{payload=Conten
 convert_content(Content) when is_list(Content) -> #coap_content{payload=list_to_binary(Content)}.
 
 append_option({Option, Value}, Options) ->
-	lists:keystore(Option, 1, Options, {Option, Value}).
+	maps:put(Option, Value, Options).
 
 resolve_uri(Uri) ->
     {ok, {_Scheme, _UserInfo, Host, PortNo, Path, Query}} =

@@ -222,17 +222,12 @@ encode_enum(TupleList, Key, Default) ->
 		false -> Default
 	end.
 
-enum_codec_test() ->
-	lists:foreach(
-		fun({Raw, Code}) -> ?assertEqual(decode_enum(code(), Raw), decode_code(Raw)) end, code()
-		),
-	lists:foreach(
-		fun({Raw, Code}) -> ?assertEqual(encode_enum(code(), Code), encode_code(Code)) end, code()
-		),
-	lists:foreach(
-		fun({Raw, Code}) -> ?assertEqual(decode_enum(content_formats(), Raw), decode_content_format(Raw)) end, content_formats()
-		),
-	lists:foreach(
-		fun({Raw, Code}) -> ?assertEqual(encode_enum(content_formats(), Code), encode_content_format(Code)) end, content_formats()
-		).
+enum_codec_test_() ->
+	[
+	[?_assertEqual(decode_enum(code(), Raw), decode_code(Raw)) || {Raw, _} <- code()],
+	[?_assertEqual(encode_enum(code(), Code), encode_code(Code)) || {_, Code} <- code()],
+	[?_assertEqual(decode_enum(content_formats(), Raw), decode_content_format(Raw)) || {Raw, _} <-content_formats()],
+	[?_assertEqual(encode_enum(content_formats(), Code), encode_content_format(Code)) || {_, Code} <- content_formats()]
+	].
+
 -endif.
