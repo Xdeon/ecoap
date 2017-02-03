@@ -90,10 +90,8 @@ observe(Pid, Uri, Options) ->
 	{EpID, Req} = assemble_request('GET', Uri, append_option({'Observe', 0}, Options), <<>>),
 	Accpet = coap_message_utils:get_option('Accpet', Options),
 	Key = {Uri, Accpet},
-	% We use another reference instead of the monitor reference here because it will still be used after this call finshes
-	ClientRef = make_ref(),
 	MonitorRef = erlang:monitor(process, Pid),
-	gen_server:cast(Pid, {start_observe, Key, EpID, Req, ClientRef, self()}),
+	{ok, ClientRef} = gen_server:call(Pid, {start_observe, Key, EpID, Req, self()}),
 	receive 
 		% Server does not support observing the resource or an error happened
 		{async_response, ClientRef, Pid, Res} -> 
@@ -127,19 +125,18 @@ unobserve(Pid, Uri, Options) ->
 	{EpID, Req} = assemble_request('GET', Uri, append_option({'Observe', 1}, Options), <<>>),
 	Accpet = coap_message_utils:get_option('Accpet', Options),
 	MonitorRef = erlang:monitor(process, Pid),
-	gen_server:cast(Pid, {cancel_observe, {Uri, Accpet}, EpID, Req, MonitorRef, self()}),
-	receive 
-		{async_response, MonitorRef, Pid, Res} -> 
-			erlang:demonitor(MonitorRef, [flush]),
-			Res;
-		% We are trying to unobserve something we did not start observing
-		{error, no_observe} -> 
-			erlang:demonitor(MonitorRef, [flush]),
-			{error, no_observe};
-		{'DOWN', MonitorRef, process, _Pid, _Reason} -> 
-			exit(noproc)
-	after ?EXCHANGE_LIFETIME ->
-		exit(timeout)
+	case gen_server:call(Pid, {cancel_observe, {Uri, Accpet}, EpID, Req, self()}) of
+		{ok, ClientRef} ->
+			receive 
+				{async_response, ClientRef, Pid, Res} -> 
+					erlang:demonitor(MonitorRef, [flush]),
+					Res;
+				{'DOWN', MonitorRef, process, _Pid, _Reason} -> 
+					exit(noproc)
+			after ?EXCHANGE_LIFETIME ->
+				exit(timeout)
+			end;
+		Else -> Else
 	end.
 
 %% Note that options defined in Content will overwrite the same ones defined in Options
@@ -180,9 +177,7 @@ send_request(Pid, EpID, Req, ClientPid) ->
 	gen_server:call(Pid, {send_request, EpID, Req, ClientPid}, ?EXCHANGE_LIFETIME).
 
 send_request_async(Pid, EpID, Req, ClientPid) -> 
-	ClientRef = make_ref(),
-	gen_server:cast(Pid, {send_request, EpID, Req, ClientRef, ClientPid}),
-	{ok, ClientRef}.
+	gen_server:call(Pid, {send_request_async, EpID, Req, ClientPid}).
 
 remove_observe_ref(Pid, Key) ->
 	gen_server:cast(Pid, {remove_observe_ref, Key}).
@@ -204,16 +199,13 @@ handle_call({send_request, EpID, {Method, Options, Content}, ClientPid}, From, S
 	Req = #req{method=Method, options=Options, content=Content, from=From, client_pid=ClientPid},
 	{noreply, State#state{req_refs=store_ref(Ref, Req, ReqRefs)}};
 
-handle_call(_Request, _From, State) ->
-	{noreply, State}.
-
-handle_cast({send_request, EpID, {Method, Options, Content}, ClientRef, ClientPid}, State=#state{sock_pid=SockPid, req_refs=ReqRefs}) ->
+handle_call({send_request_async, EpID, {Method, Options, Content}, ClientPid}, _From, State=#state{sock_pid=SockPid, req_refs=ReqRefs}) ->
 	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
 	{ok, Ref} = request_block(EndpointPid, Method, Options, Content),
-	Req = #req{method=Method, options=Options, content=Content, client_ref=ClientRef, client_pid=ClientPid},
-	{noreply, State#state{req_refs=store_ref(Ref, Req, ReqRefs)}};
+	Req = #req{method=Method, options=Options, content=Content, client_ref=Ref, client_pid=ClientPid},
+	{reply, {ok, Ref}, State#state{req_refs=store_ref(Ref, Req, ReqRefs)}};
 
-handle_cast({start_observe, Key, EpID, {Method, Options, _Content}, ClientRef, ClientPid}, 
+handle_call({start_observe, Key, EpID, {Method, Options, _Content}, ClientPid}, _From,
 	State=#state{sock_pid=SockPid, req_refs=ReqRefs, obs_regs=ObsRegs}) ->
 	OldRef = find_ref(Key, ObsRegs),
 	Token = case find_ref(OldRef, ReqRefs) of
@@ -224,22 +216,25 @@ handle_cast({start_observe, Key, EpID, {Method, Options, _Content}, ClientRef, C
 	{ok, Ref} = coap_endpoint:send_request_with_token(EndpointPid,  
 					coap_message_utils:request('CON', Method, <<>>, Options), Token),
 	Options2 = coap_message_utils:remove_option('Observe', Options),
-	Req = #req{method=Method, options=Options2, token=Token, client_ref=ClientRef, client_pid=ClientPid, obs_key=Key},
-	{noreply, State#state{obs_regs=store_ref(Key, Ref, ObsRegs), req_refs=store_ref(Ref, Req, delete_ref(OldRef, ReqRefs))}};
+	Req = #req{method=Method, options=Options2, token=Token, client_ref=Ref, client_pid=ClientPid, obs_key=Key},
+	{reply, {ok, Ref}, State#state{obs_regs=store_ref(Key, Ref, ObsRegs), req_refs=store_ref(Ref, Req, delete_ref(OldRef, ReqRefs))}};
 
-handle_cast({cancel_observe, Key, EpID, {Method, Options, _Content}, ClientRef, ClientPid}, 
+handle_call({cancel_observe, Key, EpID, {Method, Options, _Content}, ClientPid}, _From,
 	State=#state{sock_pid=SockPid, req_refs=ReqRefs, obs_regs=ObsRegs}) ->
 	case find_ref(Key, ObsRegs) of
-		undefined ->  ClientPid ! {error, no_observe}, {noreply, State};
+		undefined ->  {reply, {error, no_observe}, State};
 		Ref -> 
 			#req{token=Token, obs_key=Key} = find_ref(Ref, ReqRefs),
 			{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
 			{ok, Ref2} = coap_endpoint:send_request_with_token(EndpointPid,  
 					coap_message_utils:request('CON', Method, <<>>, Options), Token),
 			Options2 = coap_message_utils:remove_option('Observe', Options),
-			Req = #req{method=Method, options=Options2, token=Token, client_ref=ClientRef, client_pid=ClientPid},
-			{noreply, State#state{obs_regs=delete_ref(Key, ObsRegs), req_refs=store_ref(Ref2, Req, delete_ref(Ref, ReqRefs))}}
+			Req = #req{method=Method, options=Options2, token=Token, client_ref=Ref2, client_pid=ClientPid},
+			{reply, {ok, Ref2}, State#state{obs_regs=delete_ref(Key, ObsRegs), req_refs=store_ref(Ref2, Req, delete_ref(Ref, ReqRefs))}}
 	end;
+
+handle_call(_Request, _From, State) ->
+	{noreply, State}.
 
 handle_cast({remove_observe_ref, Key}, State=#state{obs_regs=ObsRegs, req_refs=ReqRefs}) ->
 	{noreply, State#state{obs_regs=delete_ref(Key, ObsRegs), req_refs=delete_ref(find_ref(Key, ObsRegs), ReqRefs)}};

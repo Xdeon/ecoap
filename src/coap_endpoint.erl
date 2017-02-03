@@ -3,7 +3,7 @@
 
 %% API.
 -export([start_link/4, start_link/2, close/1, 
-    ping/1, send/2, send_message/3, send_request/3, send_request_with_token/3, send_response/3]).
+    ping/1, send/2, send_message/3, send_request/3, send_request_with_token/3, send_response/3, remove_token/2]).
 
 %% gen_server.
 -export([init/1]).
@@ -69,7 +69,7 @@ start_link(Socket, EpID) ->
 close(Pid) ->
 	gen_server:cast(Pid, shutdown).
 
--spec ping(pid()) -> {ok, term()}.
+-spec ping(pid()) -> {ok, reference()}.
 ping(EndpointPid) ->
     send_message(EndpointPid, make_ref(), #coap_message{type='CON'}).
 
@@ -86,20 +86,24 @@ send_request_with_token(EndpointPid, Message=#coap_message{code=Code}, Token) wh
     gen_server:cast(EndpointPid, {send_request_with_token, Message, Token, {self(), Ref}}),
     {ok, Ref}.
 
--spec send_request(pid(), term(), coap_message()) -> {ok, term()}.
+-spec send_request(pid(), Ref, coap_message()) -> {ok, Ref}.
 send_request(EndpointPid, Ref, Message) ->
     gen_server:cast(EndpointPid, {send_request, Message, {self(), Ref}}),
     {ok, Ref}.
 
--spec send_message(pid(), term(), coap_message()) -> {ok, term()}.
+-spec send_message(pid(), Ref, coap_message()) -> {ok, Ref}.
 send_message(EndpointPid, Ref, Message) ->
     gen_server:cast(EndpointPid, {send_message, Message, {self(), Ref}}),
     {ok, Ref}.
 
--spec send_response(pid(), term(), coap_message()) -> {ok, term()}.
+-spec send_response(pid(), Ref, coap_message()) -> {ok, Ref}.
 send_response(EndpointPid, Ref, Message) ->
     gen_server:cast(EndpointPid, {send_response, Message, {self(), Ref}}),
     {ok, Ref}.
+
+-spec remove_token(pid(), binary() | reference()) -> ok.
+remove_token(EndpointPid, TokenRef) ->
+    gen_server:cast(EndpointPid, {remove_token, TokenRef}).
 
 %% gen_server.
 
@@ -133,6 +137,11 @@ handle_cast({register_handler, ID, Pid}, State=#state{rescnt=Count, trans_args=T
     io:format("register_handler ~p for ~p~n", [Pid, ID]),
     Ref = erlang:monitor(process, Pid),
     {noreply, State#state{rescnt=Count+1, trans_args=TransArgs#{handler_regs:=maps:put(ID, Pid, Regs)}, handler_refs=maps:put(Ref, ID, Refs)}};
+handle_cast({remove_token, Token}, State=#state{tokens=Tokens}) when is_binary(Token)->
+    {noreply, State#state{tokens=maps:remove(Token, Tokens)}};
+handle_cast({remove_token, TokenRef}, State=#state{tokens=Tokens}) ->
+    Token = maps:fold(fun(Key, {_, Ref}, _) when Ref =:= TokenRef -> Key; (_, _, Acc) -> Acc end, undefined, Tokens),
+    {noreply, State#state{tokens=maps:remove(Token, Tokens)}};
 
 handle_cast(shutdown, State) ->
     {stop, normal, State};
@@ -309,8 +318,8 @@ create_transport(TrId, Receiver, #state{trans=Trans}) ->
         error -> init_transport(TrId, Receiver)
     end.
 
-init_transport(TrId, undefined) ->
-    coap_exchange:init(TrId, undefined);
+% init_transport(TrId, undefined) ->
+%     coap_exchange:init(TrId, undefined);
 init_transport(TrId, Receiver) ->
     coap_exchange:init(TrId, Receiver).
 
