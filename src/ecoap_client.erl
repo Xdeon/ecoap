@@ -3,9 +3,9 @@
 
 %% API.
 -export([start_link/0]).
--export([ping/2, request/3, request/4, request/5, request_async/3, request_async/4, request_async/5, close/1]).
+-export([ping/2, request/3, request/4, request/5, async_request/3, async_request/4, async_request/5, cancel_async_request/2]).
 -export([observe/2, observe/3, unobserve/2, unobserve/3]).
-% -export([remove_observe_ref/2]).
+-export([close/1]).
 
 %% gen_server.
 -export([init/1]).
@@ -33,7 +33,8 @@
 	client_pid = undefined :: pid(),
 	block_obseq = undefined :: undefined | non_neg_integer(),
 	ongoing_block = undefined :: undefined | reference(),
-	obs_key = undefined :: undefined | observe_key()
+	obs_key = undefined :: undefined | observe_key(),
+	ep_id = undefined :: coap_endpoint:coap_endpoint_id()
 }).
 
 -define(EXCHANGE_LIFETIME, 247000).
@@ -155,18 +156,27 @@ request(Pid, Method, Uri, Content, Options) ->
 	{EpID, Req} = assemble_request(Method, Uri, Options, Content),
 	send_request(Pid, EpID, Req, self()).
 
--spec request_async(pid(), coap_method(), list()) -> {ok, reference()}.
-request_async(Pid, Method, Uri) ->
-	request_async(Pid, Method, Uri, #coap_content{}, #{}).
+-spec async_request(pid(), coap_method(), list()) -> {ok, reference()}.
+async_request(Pid, Method, Uri) ->
+	async_request(Pid, Method, Uri, #coap_content{}, #{}).
 
--spec request_async(pid(), coap_method(), list(), request_content()) -> {ok, reference()}.
-request_async(Pid, Method, Uri, Content) -> 
-	request_async(Pid, Method, Uri, Content, #{}).
+-spec async_request(pid(), coap_method(), list(), request_content()) -> {ok, reference()}.
+async_request(Pid, Method, Uri, Content) -> 
+	async_request(Pid, Method, Uri, Content, #{}).
 
--spec request_async(pid(), coap_method(), list(), request_content(), map()) -> {ok, reference()}.
-request_async(Pid, Method, Uri, Content, Options) ->
+-spec async_request(pid(), coap_method(), list(), request_content(), map()) -> {ok, reference()}.
+async_request(Pid, Method, Uri, Content, Options) ->
 	{EpID, Req} = assemble_request(Method, Uri, Options, Content),
 	send_request_async(Pid, EpID, Req, self()).
+
+% Note this function only cancel an async request that has not been responded yet, e.g. a long term seperate response
+% It can also be used to cancel an observe relation reactively, 
+% i.e. cancel it by removing token info and let next notification be rejected
+% It can not be used to cancel a blockwise transfer if at least one block has transferred successfully because 
+% each block transfer is a completely new message exchange
+-spec cancel_async_request(pid(), reference()) -> ok | {error, no_request}.
+cancel_async_request(Pid, Ref) ->
+	gen_server:call(Pid, {cancel_async_request, Ref}).
 
 assemble_request(Method, Uri, Options, Content) ->
 	{EpID, Path, Query} = resolve_uri(Uri),
@@ -191,19 +201,28 @@ init([]) ->
 handle_call({send_request, EpID, ping, ClientPid}, From, State=#state{sock_pid=SockPid, req_refs=ReqRefs}) ->
 	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
 	{ok, Ref} = coap_endpoint:ping(EndpointPid),
-	{noreply, State#state{req_refs=store_ref(Ref, #req{from=From, client_pid=ClientPid}, ReqRefs)}};
+	{noreply, State#state{req_refs=store_ref(Ref, #req{from=From, client_pid=ClientPid, ep_id=EpID}, ReqRefs)}};
 
 handle_call({send_request, EpID, {Method, Options, Content}, ClientPid}, From, State=#state{sock_pid=SockPid, req_refs=ReqRefs}) ->
 	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
 	{ok, Ref} = request_block(EndpointPid, Method, Options, Content),
-	Req = #req{method=Method, options=Options, content=Content, from=From, client_pid=ClientPid},
+	Req = #req{method=Method, options=Options, content=Content, from=From, client_pid=ClientPid, ep_id=EpID},
 	{noreply, State#state{req_refs=store_ref(Ref, Req, ReqRefs)}};
 
 handle_call({send_request_async, EpID, {Method, Options, Content}, ClientPid}, _From, State=#state{sock_pid=SockPid, req_refs=ReqRefs}) ->
 	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
 	{ok, Ref} = request_block(EndpointPid, Method, Options, Content),
-	Req = #req{method=Method, options=Options, content=Content, client_ref=Ref, client_pid=ClientPid},
+	Req = #req{method=Method, options=Options, content=Content, client_ref=Ref, client_pid=ClientPid, ep_id=EpID},
 	{reply, {ok, Ref}, State#state{req_refs=store_ref(Ref, Req, ReqRefs)}};
+
+handle_call({cancel_async_request, Ref}, _From, State=#state{sock_pid=SockPid, req_refs=ReqRefs, obs_regs=ObsRegs}) ->
+	case find_ref(Ref, ReqRefs) of
+		undefined -> {reply, {error, no_request}, State};
+		#req{ep_id=EpID, obs_key=Key} ->
+			{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
+			ok = coap_endpoint:remove_token(EndpointPid, Ref),
+			{reply, ok, State#state{req_refs=delete_ref(Ref, ReqRefs), obs_regs=delete_ref(Key, ObsRegs)}}
+	end;
 
 handle_call({start_observe, Key, EpID, {Method, Options, _Content}, ClientPid}, _From,
 	State=#state{sock_pid=SockPid, req_refs=ReqRefs, obs_regs=ObsRegs}) ->
@@ -216,7 +235,7 @@ handle_call({start_observe, Key, EpID, {Method, Options, _Content}, ClientPid}, 
 	{ok, Ref} = coap_endpoint:send_request_with_token(EndpointPid,  
 					coap_message_utils:request('CON', Method, <<>>, Options), Token),
 	Options2 = coap_message_utils:remove_option('Observe', Options),
-	Req = #req{method=Method, options=Options2, token=Token, client_ref=Ref, client_pid=ClientPid, obs_key=Key},
+	Req = #req{method=Method, options=Options2, token=Token, client_ref=Ref, client_pid=ClientPid, obs_key=Key, ep_id=EpID},
 	{reply, {ok, Ref}, State#state{obs_regs=store_ref(Key, Ref, ObsRegs), req_refs=store_ref(Ref, Req, delete_ref(OldRef, ReqRefs))}};
 
 handle_call({cancel_observe, Key, EpID, {Method, Options, _Content}, ClientPid}, _From,
@@ -229,7 +248,7 @@ handle_call({cancel_observe, Key, EpID, {Method, Options, _Content}, ClientPid},
 			{ok, Ref2} = coap_endpoint:send_request_with_token(EndpointPid,  
 					coap_message_utils:request('CON', Method, <<>>, Options), Token),
 			Options2 = coap_message_utils:remove_option('Observe', Options),
-			Req = #req{method=Method, options=Options2, token=Token, client_ref=Ref2, client_pid=ClientPid},
+			Req = #req{method=Method, options=Options2, token=Token, client_ref=Ref2, client_pid=ClientPid, ep_id=EpID},
 			{reply, {ok, Ref2}, State#state{obs_regs=delete_ref(Key, ObsRegs), req_refs=store_ref(Ref2, Req, delete_ref(Ref, ReqRefs))}}
 	end;
 

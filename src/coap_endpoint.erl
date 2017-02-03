@@ -34,11 +34,12 @@
                         endpoint_pid => pid(), 
                         handler_sup => pid(),
                         handler_regs => #{tuple() => pid()}}.
--type coap_endpoint_id() :: ecoap_socket:coap_endpoint_id().
+-type coap_endpoint_id() :: {inet:ip_address(), inet:port_number()}.
 -type trid() :: {in | out, non_neg_integer()}.
 -type receiver() :: {pid(), reference()}.
 -opaque state() :: #state{}.
 
+-export_type([coap_endpoint_id/0]).
 -export_type([state/0]).
 -export_type([trid/0]).
 -export_type([receiver/0]).

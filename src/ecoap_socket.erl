@@ -34,12 +34,10 @@
 }).
 
 -opaque state() :: #state{}.
--type coap_endpoint_id() :: {inet:ip_address(), inet:port_number()}.
--type coap_endpoints() :: #{coap_endpoint_id() => pid()}.
--type coap_endpoint_refs() :: #{reference() => coap_endpoint_id()}.
+-type coap_endpoints() :: #{coap_endpoint:coap_endpoint_id() => pid()}.
+-type coap_endpoint_refs() :: #{reference() => coap_endpoint:coap_endpoint_id()}.
 
 -export_type([state/0]).
--export_type([coap_endpoint_id/0]).
 
 %% API.
 
@@ -59,7 +57,7 @@ start_link(SupPid, InPort, Opts) when is_pid(SupPid) ->
 	proc_lib:start_link(?MODULE, init, [SupPid, InPort, Opts]).
 
 %% start endpoint manually
--spec get_endpoint(pid(), coap_endpoint_id()) -> {ok, pid()} | term().
+-spec get_endpoint(pid(), coap_endpoint:coap_endpoint_id()) -> {ok, pid()} | term().
 get_endpoint(Pid, {PeerIP, PeerPortNo}) ->
     gen_server:call(Pid, {get_endpoint, {PeerIP, PeerPortNo}}).
 
