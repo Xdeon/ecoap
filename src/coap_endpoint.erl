@@ -140,6 +140,7 @@ handle_cast({register_handler, ID, Pid}, State=#state{rescnt=Count, trans_args=T
     io:format("register_handler ~p for ~p~n", [Pid, ID]),
     Ref = erlang:monitor(process, Pid),
     {noreply, State#state{rescnt=Count+1, trans_args=TransArgs#{handler_regs:=maps:put(ID, Pid, Regs)}, handler_refs=maps:put(Ref, ID, Refs)}};
+% remove token manually
 handle_cast({remove_token, Token}, State=#state{tokens=Tokens}) when is_binary(Token)->
     {noreply, State#state{tokens=maps:remove(Token, Tokens)}};
 handle_cast({remove_token, TokenRef}, State=#state{tokens=Tokens}) ->

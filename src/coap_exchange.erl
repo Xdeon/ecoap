@@ -129,6 +129,9 @@ sent_non({in, BinMessage}, TransArgs, State)->
             next_state(got_rst, State);
         % ignore other response
         #coap_message{} -> 
+            next_state(sent_non, State);
+        % encounter format error, ignore the message
+        {error, _Error} ->
             next_state(sent_non, State)
     end.
 
@@ -169,7 +172,7 @@ await_aack({timeout, await_aack}, #{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, 
     io:fwrite("~p <- ack [application didn't respond]~n", [self()]),
     ok = inet_udp:send(Socket, PeerIP, PeerPortNo, BinAck),
     % Socket ! {datagram, {PeerIP, PeerPortNo}, BinAck},
-    next_state(pack_sent,State);
+    next_state(pack_sent, State);
 
 await_aack({out, Ack}, TransArgs, State) ->
     % set correct type for a piggybacked response
@@ -244,21 +247,24 @@ out_con({out, Message}, TransArgs=#{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, 
 
 % peer ack
 -spec await_pack({in, binary()} | {timeout, await_pack}, trans_args(), exchange()) -> exchange().
-await_pack({in, BinAck}, TransArgs, State=#exchange{msgbin=BinMessage}) ->
+await_pack({in, BinAck}, TransArgs, State) ->
     case catch coap_message:decode(BinAck) of
     	% this is an empty ack for separate response
         #coap_message{type='ACK', code=undefined} = Ack ->
-            handle_ack(Ack, TransArgs, State);
+            handle_ack(Ack, TransArgs, State),
+            undefined;
         #coap_message{type='RST'} = Ack ->
-            handle_error(Ack, 'RST', TransArgs, State);
+            handle_error(Ack, 'RST', TransArgs, State),
+            undefined;
         #coap_message{} = Ack ->
-        	handle_response(Ack, TransArgs, State);
-        {error, Error} ->
-            % inform the receiver
-            handle_error(coap_message:decode(BinMessage), Error, TransArgs, State)
-    end,  
+        	handle_response(Ack, TransArgs, State),
+            undefined;
+        % encounter format error, ignore the message
+        % shall we inform the receiver
+        {error, _Error} ->
+            next_state(await_pack, State)            
+    end;
     % next_state(aack_sent, State);
-    undefined;
 await_pack({timeout, await_pack}, TransArgs=#{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, State=#exchange{msgbin=BinMessage, retry_time=Timeout, retry_count=Count}) when Count < ?MAX_RETRANSMIT ->
     % BinMessage = coap_message:encode(Message),
     %io:fwrite("resend msg for ~p time~n", [Count]),
@@ -358,9 +364,9 @@ next_state(Stage, State=#exchange{stage=Stage1, timer=Timer}) ->
         % when going to another stage, the timer is cancelled
         Stage /= Stage1 ->
             _ = erlang:cancel_timer(Timer),
-            ok;
+            State#exchange{stage=Stage, timer=undefined};
         % when staying in current phase, the timer continues
         true ->
-            ok
-    end,
-    State#exchange{stage=Stage, timer=undefined}.
+            State
+    end.
+
