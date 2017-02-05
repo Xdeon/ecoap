@@ -38,6 +38,7 @@
 }).
 
 -define(EXCHANGE_LIFETIME, 247000).
+-define(TOKEN_LENGTH, 4). % shall be at least 32 random bits
 
 -include("coap_def.hrl").
 
@@ -228,12 +229,13 @@ handle_call({start_observe, Key, EpID, {Method, Options, _Content}, ClientPid}, 
 	State=#state{sock_pid=SockPid, req_refs=ReqRefs, obs_regs=ObsRegs}) ->
 	OldRef = find_ref(Key, ObsRegs),
 	Token = case find_ref(OldRef, ReqRefs) of
-				undefined -> crypto:strong_rand_bytes(4);
+				undefined -> coap_endpoint:generate_token(?TOKEN_LENGTH);
 				#req{token=OldToken} -> OldToken
 			end,
 	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
-	{ok, Ref} = coap_endpoint:send_request_with_token(EndpointPid,  
-					coap_message_utils:request('CON', Method, <<>>, Options), Token),
+	{ok, Ref} = coap_endpoint:send(EndpointPid,  
+					coap_message_utils:set_token(Token,
+						coap_message_utils:request('CON', Method, <<>>, Options))),	
 	Options2 = coap_message_utils:remove_option('Observe', Options),
 	Req = #req{method=Method, options=Options2, token=Token, client_ref=Ref, client_pid=ClientPid, obs_key=Key, ep_id=EpID},
 	{reply, {ok, Ref}, State#state{obs_regs=store_ref(Key, Ref, ObsRegs), req_refs=store_ref(Ref, Req, delete_ref(OldRef, ReqRefs))}};
@@ -245,8 +247,9 @@ handle_call({cancel_observe, Key, EpID, {Method, Options, _Content}, ClientPid},
 		Ref -> 
 			#req{token=Token, obs_key=Key} = find_ref(Ref, ReqRefs),
 			{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
-			{ok, Ref2} = coap_endpoint:send_request_with_token(EndpointPid,  
-					coap_message_utils:request('CON', Method, <<>>, Options), Token),
+			{ok, Ref2} = coap_endpoint:send(EndpointPid,  
+							coap_message_utils:set_token(Token, 
+								coap_message_utils:request('CON', Method, <<>>, Options))),
 			Options2 = coap_message_utils:remove_option('Observe', Options),
 			Req = #req{method=Method, options=Options2, token=Token, client_ref=Ref2, client_pid=ClientPid, ep_id=EpID},
 			{reply, {ok, Ref2}, State#state{obs_regs=delete_ref(Key, ObsRegs), req_refs=store_ref(Ref2, Req, delete_ref(Ref, ReqRefs))}}

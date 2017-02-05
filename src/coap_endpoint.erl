@@ -3,7 +3,8 @@
 
 %% API.
 -export([start_link/4, start_link/2, close/1, 
-    ping/1, send/2, send_message/3, send_request/3, send_request_with_token/3, send_response/3, remove_token/2]).
+    ping/1, send/2, send_message/3, send_request/3, send_response/3, remove_token/2]).
+-export([generate_token/1]).
 
 %% gen_server.
 -export([init/1]).
@@ -17,6 +18,7 @@
 -define(VERSION, 1).
 -define(MAX_MESSAGE_ID, 65535). % 16-bit number
 -define(SCAN_INTERVAL, 30000).
+-define(TOKEN_LENGTH, 4). % shall be at least 32 random bits
 
 -record(state, {
     trans_args = undefined :: trans_args(),
@@ -77,17 +79,16 @@ ping(EndpointPid) ->
 -spec send(pid(), coap_message()) -> {ok, reference()}.
 send(EndpointPid, Message=#coap_message{type=Type, code=Code}) when is_tuple(Code); Type=='ACK'; Type=='RST' ->
     send_response(EndpointPid, make_ref(), Message);
-
 send(EndpointPid, Message=#coap_message{}) ->
     send_request(EndpointPid, make_ref(), Message).
 
--spec send_request_with_token(pid(), coap_message(), binary()) -> {ok, reference()}.
-send_request_with_token(EndpointPid, Message=#coap_message{code=Code}, Token) when is_atom(Code) ->
-    Ref = make_ref(),
-    gen_server:cast(EndpointPid, {send_request_with_token, Message, Token, {self(), Ref}}),
-    {ok, Ref}.
-
 -spec send_request(pid(), Ref, coap_message()) -> {ok, Ref}.
+% when no token is assigned then generate one
+send_request(EndpointPid, Ref, Message=#coap_message{token= <<>>}) ->
+    Token = generate_token(?TOKEN_LENGTH), % shall be at least 32 random bits
+    gen_server:cast(EndpointPid, {send_request, Message#coap_message{token=Token}, {self(), Ref}}),
+    {ok, Ref};
+% use user defined token
 send_request(EndpointPid, Ref, Message) ->
     gen_server:cast(EndpointPid, {send_request, Message, {self(), Ref}}),
     {ok, Ref}.
@@ -105,6 +106,10 @@ send_response(EndpointPid, Ref, Message) ->
 -spec remove_token(pid(), binary() | reference()) -> ok.
 remove_token(EndpointPid, TokenRef) ->
     gen_server:cast(EndpointPid, {remove_token, TokenRef}).
+
+-spec generate_token(non_neg_integer()) -> binary().
+generate_token(TKL) ->
+    crypto:strong_rand_bytes(TKL).
 
 %% gen_server.
 
@@ -124,10 +129,7 @@ handle_call(_Request, _From, State) ->
 
 % outgoing CON(0) or NON(1) request
 handle_cast({send_request, Message, Receiver}, State) ->
-    Token = crypto:strong_rand_bytes(4), % shall be at least 32 random bits
-    make_new_request(Message, Token, Receiver, State);
-handle_cast({send_request_with_token, Message, Token, Receiver}, State) ->
-    make_new_request(Message, Token, Receiver, State);
+    make_new_request(Message, Receiver, State);
 % outgoing CON(0) or NON(1)
 handle_cast({send_message, Message, Receiver}, State) ->
     make_new_message(Message, Receiver, State);
@@ -251,7 +253,6 @@ handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{rescnt=Count, tr
             io:format("reg_handler_completed~n"),
             %% end
             {noreply, State#state{rescnt=Count-1, trans_args=TransArgs#{handler_regs:=maps:remove(ID, Regs)}, handler_refs=maps:remove(Ref, Refs)}};
-            % purge_state(State#state{rescnt=Count-1, handler_refs=maps:remove(Ref, Refs)})
         error -> 
             {noreply, State}
     end;
@@ -266,7 +267,7 @@ code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
 %% Internal
-make_new_request(Message, Token, Receiver, State=#state{tokens=Tokens}) ->
+make_new_request(Message=#coap_message{token=Token}, Receiver, State=#state{tokens=Tokens}) ->
     Tokens2 = maps:put(Token, Receiver, Tokens),
     make_new_message(Message#coap_message{token=Token}, Receiver, State#state{tokens=Tokens2}).
 

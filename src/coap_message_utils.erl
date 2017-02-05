@@ -2,7 +2,7 @@
 
 -export([msg_id/1, request/2, request/3, request/4, ack/1, response/1, response/2, response/3]).
 
--export([set_option/3, set_type/2, set_code/2, set_payload/2, set_content/2, set_content/3, 
+-export([set_option/3, set_type/2, set_code/2, set_token/2, set_payload/2, set_content/2, set_content/3, 
          get_content/1, get_option/2, get_option/3, has_option/2, remove_option/2]).
 
 -define(MAX_BLOCK_SIZE, 1024).
@@ -88,6 +88,12 @@ set_type(Type, Msg) ->
 set_code(Code, Msg) ->
     Msg#coap_message{
         code=Code
+    }.
+
+-spec set_token(binary(), coap_message()) -> coap_message().
+set_token(Token, Msg) ->
+    Msg#coap_message{
+        token=Token
     }.
 
 -spec set_option(coap_option(), any(), coap_message()) -> coap_message().
