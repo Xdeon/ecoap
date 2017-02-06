@@ -199,11 +199,12 @@ decode_option_list(<<Delta:4, Len:4, Tail/bytes>>, LastNum, OptionList) ->
 
 append_option({OptId, OptVal}, OptionMap) ->
     case is_repeatable_option(OptId) of
+        % each supernumerary option occurrence that appears subsequently in the message will replace existing one
         true -> maps:update_with(OptId, fun(OptVal0) -> lists:append(OptVal0, [OptVal]) end, [OptVal], OptionMap);
         false -> maps:put(OptId, OptVal, OptionMap)
     end.
 
-% TODO: Shall we follow the specification strictly and react to unrecognized options (including non-repeatable ones)?
+% TODO: Shall we follow the specification strictly and react to unrecognized options (including repeated non-repeatable ones)?
 % append_option({OptId, OptVal}, OptionMap) ->
 %     case maps:is_key(OptId, OptionMap) of
 %         true -> 
