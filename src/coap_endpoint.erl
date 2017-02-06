@@ -17,7 +17,7 @@
 
 -define(VERSION, 1).
 -define(MAX_MESSAGE_ID, 65535). % 16-bit number
--define(SCAN_INTERVAL, 30000).
+-define(SCAN_INTERVAL, 10000). % scan every 10s
 -define(TOKEN_LENGTH, 4). % shall be at least 32 random bits
 
 -record(state, {
