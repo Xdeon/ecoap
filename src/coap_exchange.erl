@@ -1,7 +1,7 @@
 -module(coap_exchange).
 
 -export([init/2, received/3, send/3, timeout/3, awaits_response/1, not_expired/1]).
--export([idle/3, got_non/3, sent_non/3, got_rst/3, await_aack/3, pack_sent/3, await_pack/3]).
+-export([idle/3, got_non/3, sent_non/3, got_rst/3, await_aack/3, pack_sent/3, await_pack/3, aack_sent/3]).
 
 -define(ACK_TIMEOUT, 2000).
 -define(ACK_RANDOM_FACTOR, 1000). % ACK_TIMEOUT*0.5
@@ -253,18 +253,20 @@ await_pack({in, BinAck}, TransArgs, State) ->
         #coap_message{type='ACK', code=undefined} = Ack ->
             handle_ack(Ack, TransArgs, State),
             undefined;
+            % next_state(aack_sent, State);
         #coap_message{type='RST'} = Ack ->
             handle_error(Ack, 'RST', TransArgs, State),
             undefined;
+            % next_state(aack_sent, State);
         #coap_message{} = Ack ->
         	handle_response(Ack, TransArgs, State),
             undefined;
+            % next_state(aack_sent, State);
         % encounter format error, ignore the message
-        % shall we inform the receiver
+        % shall we inform the receiver?
         {error, _Error} ->
             next_state(await_pack, State)            
     end;
-    % next_state(aack_sent, State);
 await_pack({timeout, await_pack}, TransArgs=#{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, State=#exchange{msgbin=BinMessage, retry_time=Timeout, retry_count=Count}) when Count < ?MAX_RETRANSMIT ->
     % BinMessage = coap_message:encode(Message),
     %io:fwrite("resend msg for ~p time~n", [Count]),
@@ -277,14 +279,14 @@ await_pack({timeout, await_pack}, TransArgs, State=#exchange{trid={out, _MsgId},
     % next_state(aack_sent, State).
     undefined.
 
-% -spec aack_sent({in, binary()} | {timeout, await_pack}, trans_args(), exchange()) -> exchange().
-% aack_sent({in, _Ack}, _TransArgs, State) ->
-%     % ignore ack retransmission
-%     next_state(aack_sent, State);
-% aack_sent({timeout, await_pack}, _TransArgs, State) ->
-% 	% in case the timeout msg was sent before we cancel the timer
-% 	% ignore the msg
-% 	next_state(aack_sent, State).
+-spec aack_sent({in, binary()} | {timeout, await_pack}, trans_args(), exchange()) -> exchange().
+aack_sent({in, _Ack}, _TransArgs, State) ->
+    % ignore ack retransmission
+    next_state(aack_sent, State);
+aack_sent({timeout, await_pack}, _TransArgs, State) ->
+	% in case the timeout msg was sent before we cancel the timer
+	% ignore the msg
+	next_state(aack_sent, State).
 
 % utility functions
 

@@ -180,7 +180,7 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, _TKL:4, 0:3, _CodeDe
         coap_exchange:received(BinMessage, TransArgs, create_transport(TrId, undefined, State)));
 % incoming CON(0) or NON(1) response
 handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgId:16, Token:TKL/bytes, _/bytes>>},
-        State=#state{trans=Trans, tokens=Tokens, trans_args=TransArgs=#{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}}) ->
+    State=#state{trans=Trans, tokens=Tokens, trans_args=TransArgs=#{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}}) ->
 	TrId = {in, MsgId},
     % debug
 	%io:format("incoming CON/NON response, TrId:~p~n", [TrId]),
@@ -204,24 +204,30 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgI
                     {noreply, State}
             end
     end;
-% incoming ACK(2) or RST(3) to a request or response
-handle_info({datagram, BinMessage = <<?VERSION:2, _:2, _TKL:4, _Code:8, MsgId:16, _/bytes>>},
-        State=#state{trans=Trans, trans_args=TransArgs}) ->
+% incoming empty ACK(2) or RST(3) to an outgoing request or response
+handle_info({datagram, BinMessage = <<?VERSION:2, _:2, 0:4, _Code:8, MsgId:16>>}, 
+    State=#state{trans=Trans, trans_args=TransArgs}) ->
     TrId = {out, MsgId},
-    % debug
-    %io:format("incoming ACK/RST to a req/res, TrId:~p~n", [TrId]),
-    %io:format("MsgBin: ~p~n", [BinMessage]),
-    % end of debug
-    update_state(State, TrId,
-        case maps:find(TrId, Trans) of
-            error -> 
-                %% Code added by wilbur
-                %io:format("No matching state for TrId: ~p~n", [TrId]),
-                %% end
-                undefined; % ignore unexpected responses; ignore ack retransmission because the exchange has been removed
-            {ok, TrState} -> coap_exchange:received(BinMessage, TransArgs, TrState)
-
-        end);
+    case maps:find(TrId, Trans) of
+        {ok, TrState} -> update_state(State, TrId, coap_exchange:received(BinMessage, TransArgs, TrState));
+        error -> {noreply, State}
+    end;
+% incoming ACK(2) to an outgoing request
+handle_info({datagram, BinMessage = <<?VERSION:2, 2:2, TKL:4, _Code:8, MsgId:16, Token:TKL/bytes, _/bytes>>},
+    State=#state{trans=Trans, tokens=Tokens, trans_args=TransArgs}) ->
+    TrId = {out, MsgId},
+    case maps:find(TrId, Trans) of
+        {ok, TrState} ->
+            case maps:is_key(Token, Tokens) of
+                true ->
+                    update_state(State, TrId, coap_exchange:received(BinMessage, TransArgs, TrState));
+                false ->
+                    {noreply, State}
+            end;
+        error ->
+            % ignore unexpected responses; ignore ack retransmission because the exchange has been removed
+            {noreply, State}
+    end;
 % silently ignore other versions
 handle_info({datagram, <<Ver:2, _/bytes>>}, State) when Ver /= ?VERSION ->
     % %io:format("unknown CoAP version~n"),
@@ -236,11 +242,10 @@ handle_info({timeout, TrId, Event}, State=#state{trans=Trans, trans_args=TransAr
     %% code added by wilbur
     % %io:format("timeout, TrId:~p Event:~p~n", [TrId, Event]),
     %% end
-    update_state(State, TrId,
-        case maps:find(TrId, Trans) of
-            error -> undefined; % ignore unexpected responses
-            {ok, TrState} -> coap_exchange:timeout(Event, TransArgs, TrState)
-        end);
+    case maps:find(TrId, Trans) of
+        {ok, TrState} -> update_state(State, TrId, coap_exchange:timeout(Event, TransArgs, TrState));
+        error -> {noreply, State} % ignore unexpected responses
+    end;
 handle_info({request_complete, Token}, State=#state{tokens=Tokens}) ->
     %io:format("request_complete~n"),
     Tokens2 = maps:remove(Token, Tokens),
