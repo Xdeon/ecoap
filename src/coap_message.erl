@@ -282,22 +282,32 @@ encode_option_list(Options, Payload) ->
     <<(encode_option_list1(Options))/bytes, 16#FF, Payload/bytes>>.
 
 encode_option_list1(Options) ->
-    Options1 = encode_options(maps:to_list(Options), []),
+    Options1 = encode_options(Options, []),
     % sort before encoding so we can calculate the deltas
     % the sort is stable; it maintains relative order of values with equal keys
     encode_option_list(lists:keysort(1, Options1), 0, <<>>).
 
-encode_options([{_OptId, undefined} | OptionList], Acc) ->
-    encode_options(OptionList, Acc);
-encode_options([{OptId, OptVal} | OptionList], Acc) ->
-    case is_repeatable_option(OptId) of
-        true ->
-            encode_options(OptionList, split_and_encode_option({OptId, OptVal}, Acc));
-        false ->
-            encode_options(OptionList, [encode_option({OptId, OptVal}) | Acc])
-    end;
-encode_options([], Acc) ->
-    Acc.
+% encode_options([{_OptId, undefined} | OptionList], Acc) ->
+%     encode_options(OptionList, Acc);
+% encode_options([{OptId, OptVal} | OptionList], Acc) ->
+%     case is_repeatable_option(OptId) of
+%         true ->
+%             encode_options(OptionList, split_and_encode_option({OptId, OptVal}, Acc));
+%         false ->
+%             encode_options(OptionList, [encode_option({OptId, OptVal}) | Acc])
+%     end;
+% encode_options([], Acc) ->
+%     Acc.
+
+encode_options(OptionMap, AccIn) ->
+    maps:fold(fun(_OptId, undefined, Acc) ->
+                    Acc;
+            (OptId, OptVal, Acc) ->
+                case is_repeatable_option(OptId) of
+                    true -> split_and_encode_option({OptId, OptVal}, Acc);
+                    false -> [encode_option({OptId, OptVal}) | Acc]
+                end
+        end, AccIn, OptionMap).
 
 split_and_encode_option({OptId, [undefined | OptVals]}, Acc) ->
     split_and_encode_option({OptId, OptVals}, Acc);
