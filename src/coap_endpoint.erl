@@ -270,7 +270,7 @@ code_change(_OldVsn, State, _Extra) ->
 %% Internal
 make_new_request(Message=#coap_message{token=Token}, Receiver, State=#state{tokens=Tokens}) ->
     Tokens2 = maps:put(Token, Receiver, Tokens),
-    make_new_message(Message#coap_message{token=Token}, Receiver, State#state{tokens=Tokens2}).
+    make_new_message(Message, Receiver, State#state{tokens=Tokens2}).
 
 make_new_message(Message, Receiver, State=#state{nextmid=MsgId}) ->
     make_message({out, MsgId}, Message#coap_message{id=MsgId}, Receiver, State#state{nextmid=next_mid(MsgId)}).
