@@ -11,7 +11,7 @@ start() ->
     ok = application:start(mnesia),
     {atomic, ok} = mnesia:create_table(resources, []),
     {ok, _} = application:ensure_all_started(ecoap),
-    ok = ecoap_registry:register_handler([<<"storage">>], ?MODULE, undefined).
+    ok = ecoap_registry:register_handler([], ?MODULE, undefined).
 
 stop() ->
     ok = application:stop(ecoap),
@@ -22,8 +22,6 @@ coap_discover(Prefix, _Args) ->
     io:format("discover ~p~n", [Prefix]),
     [{absolute, Prefix++Name, []} || Name <- mnesia:dirty_all_keys(resources)].
 
-coap_get(_EpID, Prefix, [], _Query, _Accept) ->
-    #coap_content{payload = <<"welcome to my ", (list_to_binary(Prefix))/binary>>};
 coap_get(_EpID, Prefix, Name, Query, _Accept) ->
     io:format("get ~p ~p ~p~n", [Prefix, Name, Query]),
     case mnesia:dirty_read(resources, Name) of
