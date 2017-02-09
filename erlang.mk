@@ -16,7 +16,7 @@
 
 ERLANG_MK_FILENAME := $(realpath $(lastword $(MAKEFILE_LIST)))
 
-ERLANG_MK_VERSION = 2016.12.08-2-g1361da6
+ERLANG_MK_VERSION = 2016.01.12-1-ge0ebd0a
 
 # Make 3.81 and 3.82 are deprecated.
 
@@ -4813,6 +4813,8 @@ COMPILE_FIRST_PATHS = $(addprefix src/,$(addsuffix .erl,$(COMPILE_FIRST)))
 ERLC_EXCLUDE ?=
 ERLC_EXCLUDE_PATHS = $(addprefix src/,$(addsuffix .erl,$(ERLC_EXCLUDE)))
 
+ERLC_ASN1_OPTS ?=
+
 ERLC_MIB_OPTS ?=
 COMPILE_MIB_FIRST ?=
 COMPILE_MIB_FIRST_PATHS = $(addprefix mibs/,$(addsuffix .mib,$(COMPILE_MIB_FIRST)))
@@ -4905,7 +4907,7 @@ ERL_FILES += $(addprefix src/,$(patsubst %.asn1,%.erl,$(notdir $(ASN1_FILES))))
 
 define compile_asn1
 	$(verbose) mkdir -p include/
-	$(asn1_verbose) erlc -v -I include/ -o asn1/ +noobj $(1)
+	$(asn1_verbose) erlc -v -I include/ -o asn1/ +noobj $(ERLC_ASN1_OPTS) $(1)
 	$(verbose) mv asn1/*.erl src/
 	$(verbose) mv asn1/*.hrl include/
 	$(verbose) mv asn1/*.asn1db include/
@@ -6484,6 +6486,20 @@ build-shell-deps: $(ALL_SHELL_DEPS_DIRS)
 
 shell: build-shell-deps
 	$(gen_verbose) $(SHELL_ERL) -pa $(SHELL_PATHS) $(SHELL_OPTS)
+
+# Copyright (c) 2017, Jean-Sébastien Pédron <jean-sebastien@rabbitmq.com>
+# This file is contributed to erlang.mk and subject to the terms of the ISC License.
+
+.PHONY: show-ERL_LIBS show-ERLC_OPTS show-TEST_ERLC_OPTS
+
+show-ERL_LIBS:
+	@echo $(ERL_LIBS)
+
+show-ERLC_OPTS:
+	@$(foreach opt,$(ERLC_OPTS) -pa ebin -I include,echo "$(opt)";)
+
+show-TEST_ERLC_OPTS:
+	@$(foreach opt,$(TEST_ERLC_OPTS) -pa ebin -I include,echo "$(opt)";)
 
 # Copyright (c) 2015-2016, Loïc Hoguin <essen@ninenines.eu>
 # This file is part of erlang.mk and subject to the terms of the ISC License.
