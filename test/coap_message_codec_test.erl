@@ -52,10 +52,12 @@ case7_test_()->
 test_codec(Message) ->
     Message2 = coap_message:encode(Message),
     Message1 = coap_message:decode(Message2),
-    ?_assertEqual(Message, Message1).
+    [?_assertEqual(Message, Message1)].
 
 test_codec(Raw, Msg) ->
     Message = coap_message:decode(Raw),
     MsgBin = coap_message:encode(Message),
-    [?_assertEqual(Msg, Message),
-    ?_assertEqual(Raw, MsgBin)].
+    [
+    ?_assertEqual(Msg, Message),
+    ?_assertEqual(Raw, MsgBin)
+    ].

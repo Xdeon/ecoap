@@ -276,23 +276,12 @@ handle_info({coap_response, _EpID, EndpointPid, Ref, Message}, State) ->
 	handle_response(Ref, EndpointPid, Message, State);
 
 % handle separate response acknowledgement
-handle_info({coap_ack, _EpID, _EndpointPid, Ref}, State=#state{req_refs=ReqRefs}) ->
-	case find_ref(Ref, ReqRefs) of
-		undefined -> {noreply, State};
-		#req{client_ref=ClientRef, from=From, client_pid=ClientPid} = Req ->
-			ok = send_response(From, ClientPid, ClientRef, {separate, Ref}),
-			{noreply, State#state{req_refs=store_ref(Ref, Req#req{from=undefined, client_ref=Ref}, ReqRefs)}}
-	end;
+handle_info({coap_ack, _EpID, _EndpointPid, Ref}, State) ->
+	handle_ack(Ref, State);
 
 % handle RST and timeout
-handle_info({coap_error, _EpID, _EndpointPid, Ref, Error}, State=#state{req_refs=ReqRefs, obs_regs=ObsRegs}) ->
-	case find_ref(Ref, ReqRefs) of
-		undefined -> {noreply, State};
-		#req{client_ref=ClientRef, from=From, client_pid=ClientPid, obs_key=Key} ->
-		    ok = send_response(From, ClientPid, ClientRef, {error, Error}),
-			% Make sure we remove any observe relation related to the error
-			{noreply, State#state{req_refs=delete_ref(Ref, ReqRefs), obs_regs=delete_ref(Key, ObsRegs)}}
-	end;
+handle_info({coap_error, _EpID, _EndpointPid, Ref, Error}, State) ->
+	handle_error(Ref, Error, State);
 
 handle_info(_Info, State) ->
 	{noreply, State}.
@@ -411,15 +400,32 @@ handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options
 		    end
     end;
 
-handle_response(Ref, _EndpointPid, Message=#coap_message{code={error, Code}}, 
-	State = #state{req_refs=ReqRefs, obs_regs=ObsRegs}) ->
+handle_response(Ref, _EndpointPid, Message=#coap_message{code={error, _Code}}, State) ->
+	handle_error(Ref, Message, State).
+
+handle_error(Ref, Error, State=#state{req_refs=ReqRefs, obs_regs=ObsRegs}) ->
 	case find_ref(Ref, ReqRefs) of
 		undefined -> {noreply, State};
 		#req{client_ref=ClientRef, from=From, client_pid=ClientPid, obs_key=Key} ->
-			Res = return_response({error, Code}, Message),
-			ok = send_response(From, ClientPid, ClientRef, Res),
-			% Make sure we remove any observe relation related to the error
-			{noreply, State#state{req_refs=delete_ref(Ref, ReqRefs), obs_regs=delete_ref(Key, ObsRegs)}}
+			Res = case Error of
+					#coap_message{code={error, Code}} -> return_response({error, Code}, Error);
+					_ -> {error, Error}
+			end,
+		    ok = send_response(From, ClientPid, ClientRef, Res),
+			% Make sure we remove any observe relation and info of request related to the error
+			% Note: Though it is enough to remove req info just using Ref as key, since for any ordinary message exchange
+			% info of last req is always cleaned. Howerver one exception is observe as info of origin observe req is kept until
+			% it get cancelled. Therefore when receiving an error during an observe notification blockwise transfer, we need to clean 
+			% both info of last req (referenced by Ref) and info of origin observe req (referenced by ClientRef).
+			{noreply, State#state{req_refs=delete_ref(Ref, delete_ref(ClientRef, ReqRefs)), obs_regs=delete_ref(Key, ObsRegs)}}
+	end.
+
+handle_ack(Ref, State=#state{req_refs=ReqRefs}) ->
+	case find_ref(Ref, ReqRefs) of
+		undefined -> {noreply, State};
+		#req{client_ref=ClientRef, from=From, client_pid=ClientPid} = Req ->
+			ok = send_response(From, ClientPid, ClientRef, {separate, Ref}),
+			{noreply, State#state{req_refs=store_ref(Ref, Req#req{from=undefined, client_ref=Ref}, ReqRefs)}}
 	end.
 
 send_notify(ClientPid, ClientRef, Obseq, Res) ->
