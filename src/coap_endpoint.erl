@@ -47,7 +47,7 @@
 -export_type([receiver/0]).
 -export_type([trans_args/0]).
 
--include("coap_def.hrl").
+-include_lib("ecoap_common/include/coap_def.hrl").
 
 % TODO:
 % Should we make trid as another field in trans_arg instead of putting trid in each exchange record?

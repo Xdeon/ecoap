@@ -4,7 +4,7 @@
 -export([coap_discover/2, coap_get/5, coap_post/4, coap_put/4, coap_delete/3, coap_observe/4, coap_unobserve/1, handle_info/2, coap_ack/2]).
 
 -include_lib("eunit/include/eunit.hrl").
--include_lib("ecoap/include/coap_def.hrl").
+-include_lib("ecoap_common/include/coap_def.hrl").
 
 coap_discover(_Prefix, _Args) -> [].
 

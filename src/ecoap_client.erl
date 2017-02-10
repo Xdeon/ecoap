@@ -40,7 +40,7 @@
 -define(EXCHANGE_LIFETIME, 247000).
 -define(TOKEN_LENGTH, 4). % shall be at least 32 random bits
 
--include("coap_def.hrl").
+-include_lib("ecoap_common/include/coap_def.hrl").
 
 -type from() :: {pid(), term()}.
 -type req() :: #req{}.

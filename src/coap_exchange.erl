@@ -32,7 +32,7 @@
 
 -export_type([exchange/0]).
 
--include("coap_def.hrl").
+-include_lib("ecoap_common/include/coap_def.hrl").
 
 % -record(state, {phase, sock, cid, channel, tid, resp, receiver, msg, timer, retry_time, retry_count}).
 -spec not_expired(exchange()) -> boolean().

@@ -3,7 +3,7 @@
 -export([start/0, stop/0]).
 -export([fib/1]).
 
--include("coap_def.hrl").
+-include_lib("ecoap_common/include/coap_def.hrl").
 -behaviour(coap_resource).
 
 start() ->

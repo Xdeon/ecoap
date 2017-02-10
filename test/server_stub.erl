@@ -1,7 +1,7 @@
 -module(server_stub).
 -behaviour(gen_server).
 
--include_lib("ecoap/include/coap_def.hrl").
+-include_lib("ecoap_common/include/coap_def.hrl").
 
 %% API.
 -export([start_link/1]).

@@ -11,7 +11,6 @@
 -module(core_link).
 
 -export([decode/1, encode/1]).
--import(coap_iana, [decode_content_format/1, encode_content_format/1, decode_code/1, encode_code/1]).
 
 -type coap_uri() :: {'absolute', [binary()], [coap_uri_param()]}.
 -type coap_uri_param() :: {atom(), binary()}.
@@ -67,7 +66,7 @@ encode_link_param({sz, Value}) -> ";sz=" ++ integer_to_list(Value);
 encode_link_param({Other, Value}) when is_binary(Value) -> ";"++atom_to_list(Other)++"=\"" ++ binary_to_list(Value) ++ "\"".
 
 content_type_to_int(Value) when is_binary(Value) ->
-    case encode_content_format(Value) of
+    case coap_iana:encode_content_format(Value) of
         Num when is_integer(Num) -> integer_to_list(Num);
         _ -> "\"" ++ binary_to_list(Value) ++ "\""
     end;

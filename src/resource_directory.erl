@@ -5,7 +5,7 @@
 
 -behaviour(coap_resource).
 
--include("coap_def.hrl").
+-include_lib("ecoap_common/include/coap_def.hrl").
 
 coap_discover(_Prefix, _Args) ->
     [].

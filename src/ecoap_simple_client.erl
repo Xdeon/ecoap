@@ -46,7 +46,7 @@
 
 -define(EXCHANGE_LIFETIME, 247000).
 
--include("coap_def.hrl").
+-include_lib("ecoap_common/include/coap_def.hrl").
 
 %% API.
 

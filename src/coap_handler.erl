@@ -30,7 +30,7 @@
 	obstate = undefined :: any(), 
 	timer = undefined :: undefined | reference()}).
 
--include("coap_def.hrl").
+-include_lib("ecoap_common/include/coap_def.hrl").
 
 %% API.
 
