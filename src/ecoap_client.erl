@@ -287,7 +287,7 @@ handle_info(_Info, State) ->
 	{noreply, State}.
 
 terminate(_Reason, #state{sock_pid=SockPid}) ->
-	_ = [coap_endpoint:close(Pid) || Pid <- ecoap_socket:get_all_endpoints(SockPid)],
+	[coap_endpoint:close(Pid) || Pid <- ecoap_socket:get_all_endpoints(SockPid)],
 	ok = ecoap_socket:close(SockPid),
 	ok.
 
