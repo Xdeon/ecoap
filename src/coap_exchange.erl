@@ -25,7 +25,7 @@
     retry_count = undefined :: undefined | non_neg_integer()
     }).
 
--type exchange() :: undefined | #exchange{}.
+-opaque exchange() :: undefined | #exchange{}.
 -type receiver() :: undefined | coap_endpoint:receiver().
 -type trid() :: coap_endpoint:trid().
 -type trans_args() :: coap_endpoint:trans_args().
