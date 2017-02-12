@@ -38,11 +38,11 @@
 start_link(EndpointPid, ID) ->
 	gen_server:start_link(?MODULE, [EndpointPid, ID], []).
 
--spec notify([binary()], coap_content() | coap_error()) -> ok | [ok].
+-spec notify([binary()], coap_content() | coap_error()) -> ok.
 notify(Uri, Resource) ->
     case pg2:get_members({coap_observer, Uri}) of
         {error, _} -> ok;
-        List -> [gen_server:cast(Pid, {obs_notify, Resource}) || Pid <- List]
+        List -> [gen_server:cast(Pid, {obs_notify, Resource}) || Pid <- List], ok
     end.
 
 %% gen_server.
@@ -97,6 +97,7 @@ handle_info(Info, State=#state{module=Module, observer=Observer, obstate=ObState
         {notify, Ref, Resource=#coap_content{}, ObState2} ->
             return_resource(Ref, Observer, {ok, 'Content'}, Resource, State#state{obstate=ObState2});
         {notify, Ref, {error, Code}, ObState2} ->
+            % should we cancel observe here and terminate, if an observer relation exists?
             return_response(Ref, Observer, {error, Code}, <<>>, State#state{obstate=ObState2});
         {noreply, ObState2} ->
             {noreply, State#state{obstate=ObState2}};

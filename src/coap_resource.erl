@@ -71,7 +71,7 @@
 % handler for messages sent to the responder process
 % used to generate notifications
 -callback handle_info(Info, Obstate) -> 
-	{notify, Ref, Content|Error, NewObstate} | {noreply, NewObstate} | {stop, NewObstate} when
+	{notify, Ref, Content | Error, NewObstate} | {noreply, NewObstate} | {stop, NewObstate} when
 	Info :: any(),
 	Obstate :: any(),
 	Ref :: any(),
