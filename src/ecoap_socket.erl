@@ -24,7 +24,7 @@
     [endpoint_sup_sup]}).
 
 -define(DEFAULT_SOCK_OPTS,
-	[binary, {active, true}, {reuseaddr, true}]).
+	[binary, {active, 100}, {reuseaddr, true}]).
 
 -record(state, {
 	sock = undefined :: inet:socket(),
@@ -158,10 +158,9 @@ handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{endpoint_refs=En
  		error ->	
  			{noreply, State}
  	end;
-
-% handle_info({udp_passive, Socket}, State=#state{sock=Socket}) ->
-% 	ok = inet:setopts(Socket, [{active, 100}]),
-% 	{noreply, State};
+handle_info({udp_passive, Socket}, State=#state{sock=Socket}) ->
+	ok = inet:setopts(Socket, [{active, 100}]),
+	{noreply, State};
 
 % handle_info({datagram, {PeerIP, PeerPortNo}, Data}, State=#state{sock=Socket}) ->
 % 	 ok = gen_udp:send(Socket, PeerIP, PeerPortNo, Data),
