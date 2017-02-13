@@ -12,7 +12,7 @@ dep_ecoap_common = git https://Xdeon@bitbucket.org/Xdeon/ecoap_common.git master
 
 EUNIT_OPTS = verbose
 
-# ERLC_OPTS += -D NODEDUP
+# ERLC_OPTS = -Dnodedup
 
 include erlang.mk
 

@@ -18,7 +18,7 @@
 -define(VERSION, 1).
 -define(MAX_MESSAGE_ID, 65535). % 16-bit number
 
--ifdef(NODEDUP).
+-ifdef(nodedup).
 -define(SCAN_INTERVAL, 86400000). % last for 24hr when nodedup flag is set
 -else.
 -define(SCAN_INTERVAL, 10000). % scan every 10s
