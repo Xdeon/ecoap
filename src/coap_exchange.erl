@@ -172,8 +172,7 @@ await_aack({timeout, await_aack}, #{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, 
     io:fwrite("~p <- ack [application didn't respond]~n", [self()]),
     ok = inet_udp:send(Socket, PeerIP, PeerPortNo, BinAck),
     % Socket ! {datagram, {PeerIP, PeerPortNo}, BinAck},
-    % even nodedup flag is set we keep this state because this may trigger a separate response 
-    next_state(pack_sent, State);
+    check_next_state(pack_sent, State);
 
 await_aack({out, Ack}, TransArgs, State) ->
     % set correct type for a piggybacked response
