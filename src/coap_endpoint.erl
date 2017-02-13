@@ -17,7 +17,13 @@
 
 -define(VERSION, 1).
 -define(MAX_MESSAGE_ID, 65535). % 16-bit number
+
+-ifdef(NODEDUP).
+-define(SCAN_INTERVAL, 86400000). % last for 24hr when nodedup flag is set
+-else.
 -define(SCAN_INTERVAL, 10000). % scan every 10s
+-endif.
+
 -define(TOKEN_LENGTH, 4). % shall be at least 32 random bits
 
 -record(state, {

@@ -98,10 +98,10 @@ in_non({in, BinMessage}, TransArgs, State) ->
     case catch coap_message:decode(BinMessage) of
         #coap_message{code = Method} = Message when is_atom(Method) ->
             handle_request(Message, TransArgs, State),
-            next_state(got_non, State);
+            check_next_state(got_non, State);
         #coap_message{} = Message ->
             handle_response(Message, TransArgs, State),
-            next_state(got_non, State);
+            check_next_state(got_non, State);
         % shall we send reset?
         {error, _Error} -> undefined
     end.
@@ -118,7 +118,7 @@ out_non({out, Message}, #{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, State) ->
     BinMessage = coap_message:encode(Message),
     ok = inet_udp:send(Socket, PeerIP, PeerPortNo, BinMessage),
     % Socket ! {datagram, {PeerIP, PeerPortNo}, BinMessage},
-    next_state(sent_non, State).
+    check_next_state(sent_non, State).
 
 % we may get reset
 -spec sent_non({in, binary()}, trans_args(), exchange()) -> exchange().
@@ -172,6 +172,7 @@ await_aack({timeout, await_aack}, #{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, 
     io:fwrite("~p <- ack [application didn't respond]~n", [self()]),
     ok = inet_udp:send(Socket, PeerIP, PeerPortNo, BinAck),
     % Socket ! {datagram, {PeerIP, PeerPortNo}, BinAck},
+    % even nodedup flag is set we keep this state because this may trigger a separate response 
     next_state(pack_sent, State);
 
 await_aack({out, Ack}, TransArgs, State) ->
@@ -188,7 +189,7 @@ go_pack_sent(Ack, #{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, State) ->
     BinAck = coap_message:encode(Ack),
     ok = inet_udp:send(Socket, PeerIP, PeerPortNo, BinAck),
     % Socket ! {datagram, {PeerIP, PeerPortNo}, BinAck},
-    next_state(pack_sent, State#exchange{msgbin=BinAck}).
+    check_next_state(pack_sent, State#exchange{msgbin=BinAck}).
 
 -spec go_rst_sent(coap_message(), trans_args(), exchange()) -> exchange().
 go_rst_sent(RST, #{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, _State) ->
@@ -344,6 +345,13 @@ request_complete(EndpointPid, #coap_message{token=Token, options=Options}) ->
 timeout_after(Time, EndpointPid, TrId, Event) ->
     erlang:send_after(Time, EndpointPid, {timeout, TrId, Event}).
 
+% check deduplication flag to decide whether clean up state
+-ifdef(NODEDUP).
+check_next_state(_, _) -> undefined.
+-else.
+check_next_state(Stage, State) -> next_state(Stage, State).
+-endif.
+
 % start the timer
 next_state(Stage, #{endpoint_pid:=EndpointPid}, State=#exchange{trid=TrId, timer=undefined}, Timeout) ->
     Timer = timeout_after(Timeout, EndpointPid, TrId, Stage),
@@ -354,11 +362,6 @@ next_state(Stage, #{endpoint_pid:=EndpointPid}, State=#exchange{trid=TrId, timer
     Timer2 = timeout_after(Timeout, EndpointPid, TrId, Stage),
     State#exchange{stage=Stage, timer=Timer2}.
 
-% next_state(undefined, _State=#exchange{timer=undefined}) ->
-%     undefined;
-% next_state(undefined, _State=#exchange{timer=Timer}) ->
-%     _ = erlang:cancel_timer(Timer),
-%     undefined;
 next_state(Stage, State=#exchange{timer=undefined}) ->
     State#exchange{stage=Stage};
 next_state(Stage, State=#exchange{stage=Stage1, timer=Timer}) ->

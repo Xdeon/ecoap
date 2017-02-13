@@ -12,6 +12,8 @@ dep_ecoap_common = git https://Xdeon@bitbucket.org/Xdeon/ecoap_common.git master
 
 EUNIT_OPTS = verbose
 
+# ERLC_OPTS += -D NODEDUP
+
 include erlang.mk
 
 app:: rebar.config
