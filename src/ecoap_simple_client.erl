@@ -34,7 +34,7 @@
 
 -record(req, {
 	method = undefined :: coap_method(),
-	options = undefined :: map(),
+	options = undefined :: optionset(),
 	content = undefined :: coap_content(),
 	fragment = <<>> :: binary()
 }).
@@ -77,7 +77,7 @@ request(Method, Uri) ->
 request(Method, Uri, Content) ->
 	request(Method, Uri, Content, #{}).	
 
--spec request(coap_method(), list(), request_content(), map()) -> response().
+-spec request(coap_method(), list(), request_content(), optionset()) -> response().
 request(Method, Uri, Content, Options) ->
 	{ok, Pid} = start_link(),
 	{EpID, Req} = assemble_request(Method, Uri, Options, Content),

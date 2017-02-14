@@ -4,7 +4,7 @@
 %% API.
 -export([start_link/0]).
 -export([ping/2, request/3, request/4, request/5, async_request/3, async_request/4, async_request/5, cancel_async_request/2]).
--export([observe/2, observe/3, unobserve/2, unobserve/3]).
+-export([observe/2, observe/3, unobserve/2]).
 -export([close/1]).
 
 %% gen_server.
@@ -23,7 +23,7 @@
 
 -record(req, {
 	method = undefined :: undefined | coap_method(),
-	options = #{} :: map(),
+	options = #{} :: optionset(),
 	% token is only used for observe/unobserve
 	token = <<>> :: binary(),
 	content = undefined :: undefined | coap_content(),
@@ -37,7 +37,6 @@
 	ep_id = undefined :: coap_endpoint:coap_endpoint_id()
 }).
 
--define(EXCHANGE_LIFETIME, 247000).
 -define(TOKEN_LENGTH, 4). % shall be at least 32 random bits
 
 -include_lib("ecoap_common/include/coap_def.hrl").
@@ -73,21 +72,21 @@ ping(Pid, Uri) ->
 
 % If the observe relation is established sucessfully, this function returns the first notification as {ClientRef, N, Res}
 % where ClientRef is the reference used to identify following notifications, N is the initial observe sequence number and Res is the response content.
-% If the resource is not observable, the function just returns the response content as if it was from a plain GET request.
+% If the resource is not observable, the function just returns the response as if it was from a plain GET request.
+% If the request time out, this function returns {error, timeout}.
 
 % Following notifications will be sent to the caller process as messages in form of {coap_notify, ClientRef, Pid, N, Res}
 % where ClientRef is the reference, Pid is the ecoap_client pid, N is the observe sequence number and Res is the response content.
-% If some error happened in server side and a reset/error code is received during observing, 
+% If some error happened in server side, e.g. a reset/error code is received during observing
 % the response is sent to the caller process as message in form of {async_response, ClientRef, Pid, Res} where Res is {error, _}.
 
-% If the ecoap_client process crashed during the calll or is not responsive in EXCHANGE_LIFETIME (247s), 
-% the call fails with reason noproc/timeout.
+% If the ecoap_client process crashed during the calll, the call fails with reason noproc.
 
 -spec observe(pid(), list()) -> observe_response().
 observe(Pid, Uri) ->
 	observe(Pid, Uri, #{}).
 
--spec observe(pid(), list(), map()) -> observe_response().
+-spec observe(pid(), list(), optionset()) -> observe_response().
 observe(Pid, Uri, Options) ->
 	{EpID, Req} = assemble_request('GET', Uri, coap_message_utils:append_option('Observe', 0, Options), <<>>),
 	Accpet = coap_message_utils:get_option('Accpet', Options),
@@ -106,28 +105,20 @@ observe(Pid, Uri, Options) ->
 			{ClientRef, N, Res};
 		{'DOWN', MonitorRef, process, _Pid, _Reason} ->
 			exit(noproc)
-	after ?EXCHANGE_LIFETIME ->
-		exit(timeout)
 	end.
 
 % Cancel an observe relation to a specific resource
 
 % If unobserve resource succeed, the function returns the response as if it was from a plain GET request;
-% If no matching observe relation exists, the function returns {error, no_observe}, 
+% If the request time out, this function returns {error, timeout}.
+% If no matching observe relation exists, the function returns {error, no_observe}.
 % note observe relation is matched against URI and accept content-format;
-% If the ecoap_client process crashed during the calll or is not responsive in EXCHANGE_LIFETIME (247s), 
-% the call fails with reason noproc/timeout.
+% If the ecoap_client process crashed during the call, the call fails with reason noproc.
 
--spec unobserve(pid(), list()) -> response() | {error, no_observe}.
-unobserve(Pid, Uri) ->
-	unobserve(Pid, Uri, #{}).
-
--spec unobserve(pid(), list(), map()) -> response() | {error, no_observe}.
-unobserve(Pid, Uri, Options) ->
-	{EpID, Req} = assemble_request('GET', Uri, coap_message_utils:append_option('Observe', 1, Options), <<>>),
-	Accpet = coap_message_utils:get_option('Accpet', Options),
+-spec unobserve(pid(), reference()) -> response() | {error, no_observe}.
+unobserve(Pid, Ref) ->
 	MonitorRef = erlang:monitor(process, Pid),
-	case gen_server:call(Pid, {cancel_observe, {Uri, Accpet}, EpID, Req, self()}) of
+	case gen_server:call(Pid, {cancel_observe, Ref}) of
 		{ok, ClientRef} ->
 			receive 
 				{async_response, ClientRef, Pid, Res} -> 
@@ -135,14 +126,13 @@ unobserve(Pid, Uri, Options) ->
 					Res;
 				{'DOWN', MonitorRef, process, _Pid, _Reason} -> 
 					exit(noproc)
-			after ?EXCHANGE_LIFETIME ->
-				exit(timeout)
 			end;
 		Else -> Else
 	end.
 
 %% Note that options defined in Content will overwrite the same ones defined in Options
 %% But if options in Content are with their default value 'undefined' then they will not be used
+%% Also only confirmable requests are supported for now.
 
 -spec request(pid(), coap_method(), list()) -> response().
 request(Pid, Method, Uri) ->
@@ -152,7 +142,7 @@ request(Pid, Method, Uri) ->
 request(Pid, Method, Uri, Content) -> 
 	request(Pid, Method, Uri, Content, #{}).
 
--spec request(pid(), coap_method(), list(), request_content(), map()) -> response().
+-spec request(pid(), coap_method(), list(), request_content(), optionset()) -> response().
 request(Pid, Method, Uri, Content, Options) ->
 	{EpID, Req} = assemble_request(Method, Uri, Options, Content),
 	send_request(Pid, EpID, Req, self()).
@@ -165,7 +155,7 @@ async_request(Pid, Method, Uri) ->
 async_request(Pid, Method, Uri, Content) -> 
 	async_request(Pid, Method, Uri, Content, #{}).
 
--spec async_request(pid(), coap_method(), list(), request_content(), map()) -> {ok, reference()}.
+-spec async_request(pid(), coap_method(), list(), request_content(), optionset()) -> {ok, reference()}.
 async_request(Pid, Method, Uri, Content, Options) ->
 	{EpID, Req} = assemble_request(Method, Uri, Options, Content),
 	send_request_async(Pid, EpID, Req, self()).
@@ -185,7 +175,9 @@ assemble_request(Method, Uri, Options, Content) ->
 	{EpID, {Method, Options2, convert_content(Content)}}.
 
 send_request(Pid, EpID, Req, ClientPid) ->
-	gen_server:call(Pid, {send_request, EpID, Req, ClientPid}, ?EXCHANGE_LIFETIME).
+	% set timeout to infinity because coap_endpoint will always return a response, 
+	% i.e. an ordinary response or {error, timeout} when server does not respond to a confirmable request
+	gen_server:call(Pid, {send_request, EpID, Req, ClientPid}, infinity).
 
 send_request_async(Pid, EpID, Req, ClientPid) -> 
 	gen_server:call(Pid, {send_request_async, EpID, Req, ClientPid}).
@@ -240,12 +232,10 @@ handle_call({start_observe, Key, EpID, {Method, Options, _Content}, ClientPid}, 
 	Req = #req{method=Method, options=Options2, token=Token, client_ref=Ref, client_pid=ClientPid, obs_key=Key, ep_id=EpID},
 	{reply, {ok, Ref}, State#state{obs_regs=store_ref(Key, Ref, ObsRegs), req_refs=store_ref(Ref, Req, delete_ref(OldRef, ReqRefs))}};
 
-handle_call({cancel_observe, Key, EpID, {Method, Options, _Content}, ClientPid}, _From,
-	State=#state{sock_pid=SockPid, req_refs=ReqRefs, obs_regs=ObsRegs}) ->
-	case find_ref(Key, ObsRegs) of
-		undefined ->  {reply, {error, no_observe}, State};
-		Ref -> 
-			#req{token=Token, obs_key=Key} = find_ref(Ref, ReqRefs),
+handle_call({cancel_observe, Ref}, _From, State=#state{sock_pid=SockPid, req_refs=ReqRefs, obs_regs=ObsRegs}) ->
+	case find_ref(Ref, ReqRefs) of
+		undefined -> {reply, {error, no_observe}, State};
+		#req{method=Method, options=Options, token=Token, obs_key=Key, ep_id=EpID, client_pid=ClientPid} ->
 			{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
 			{ok, Ref2} = coap_endpoint:send(EndpointPid,  
 							coap_message_utils:set_token(Token, 
