@@ -44,8 +44,6 @@
 -type request_content() :: coap_content()|binary()|list().
 -type response() :: {ok, atom(), coap_content()}|{error, atom()}|{error, atom(), coap_content()}|{separate, reference()}.
 
--define(EXCHANGE_LIFETIME, 247000).
-
 -include_lib("ecoap_common/include/coap_def.hrl").
 
 %% API.
@@ -134,7 +132,7 @@ code_change(_OldVsn, State, _Extra) ->
 %% Internal
 
 send_request(Pid, EpID, Req) ->
-	gen_server:call(Pid, {send_request, EpID, Req} ,?EXCHANGE_LIFETIME).
+	gen_server:call(Pid, {send_request, EpID, Req}, infinity).
 
 assemble_request(Method, Uri, Options, Content) ->
 	{EpID, Path, Query} = resolve_uri(Uri),
