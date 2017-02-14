@@ -89,7 +89,7 @@ observe(Pid, Uri) ->
 
 -spec observe(pid(), list(), map()) -> observe_response().
 observe(Pid, Uri, Options) ->
-	{EpID, Req} = assemble_request('GET', Uri, append_option({'Observe', 0}, Options), <<>>),
+	{EpID, Req} = assemble_request('GET', Uri, coap_message_utils:append_option('Observe', 0, Options), <<>>),
 	Accpet = coap_message_utils:get_option('Accpet', Options),
 	Key = {Uri, Accpet},
 	MonitorRef = erlang:monitor(process, Pid),
@@ -124,7 +124,7 @@ unobserve(Pid, Uri) ->
 
 -spec unobserve(pid(), list(), map()) -> response() | {error, no_observe}.
 unobserve(Pid, Uri, Options) ->
-	{EpID, Req} = assemble_request('GET', Uri, append_option({'Observe', 1}, Options), <<>>),
+	{EpID, Req} = assemble_request('GET', Uri, coap_message_utils:append_option('Observe', 1, Options), <<>>),
 	Accpet = coap_message_utils:get_option('Accpet', Options),
 	MonitorRef = erlang:monitor(process, Pid),
 	case gen_server:call(Pid, {cancel_observe, {Uri, Accpet}, EpID, Req, self()}) of
@@ -181,7 +181,7 @@ cancel_async_request(Pid, Ref) ->
 
 assemble_request(Method, Uri, Options, Content) ->
 	{EpID, Path, Query} = resolve_uri(Uri),
-	Options2 = append_option({'Uri-Query', Query}, append_option({'Uri-Path', Path}, Options)),
+	Options2 = coap_message_utils:append_option('Uri-Query', Query, coap_message_utils:append_option('Uri-Path', Path, Options)),
 	{EpID, {Method, Options2, convert_content(Content)}}.
 
 send_request(Pid, EpID, Req, ClientPid) ->
@@ -365,7 +365,7 @@ handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options
 		            % more blocks follow, ask for more
 		            % no payload for requests with Block2 with NUM != 0
 		            {ok, Ref2} = coap_endpoint:send(EndpointPid,
-		            	coap_message_utils:request('CON', Method, <<>>, append_option({'Block2', {Num+1, false, Size}}, Options2))),
+		            	coap_message_utils:request('CON', Method, <<>>, coap_message_utils:append_option('Block2', {Num+1, false, Size}, Options2))),
 		            NewFragment = <<Fragment/binary, Data/binary>>,
 		            case coap_message_utils:get_option('Observe', Options1) of
 		            	undefined ->
@@ -431,9 +431,6 @@ handle_ack(Ref, State=#state{req_refs=ReqRefs}) ->
 send_notify(ClientPid, ClientRef, Obseq, Res) ->
     ClientPid ! {coap_notify, ClientRef, self(), Obseq, Res},
     ok.
-	
-append_option({Option, Value}, Options) ->
-	maps:put(Option, Value, Options).
 
 find_ref(Ref, Refs) ->
 	case maps:find(Ref, Refs) of

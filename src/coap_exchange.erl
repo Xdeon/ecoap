@@ -25,7 +25,7 @@
     retry_count = undefined :: undefined | non_neg_integer()
     }).
 
--opaque exchange() :: undefined | #exchange{}.
+-type exchange() :: undefined | #exchange{}.
 -type receiver() :: undefined | coap_endpoint:receiver().
 -type trid() :: coap_endpoint:trid().
 -type trans_args() :: coap_endpoint:trans_args().
@@ -190,7 +190,7 @@ go_pack_sent(Ack, #{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, State) ->
     % Socket ! {datagram, {PeerIP, PeerPortNo}, BinAck},
     check_next_state(pack_sent, State#exchange{msgbin=BinAck}).
 
--spec go_rst_sent(coap_message(), trans_args(), exchange()) -> exchange().
+-spec go_rst_sent(coap_message(), trans_args(), exchange()) -> undefined.
 go_rst_sent(RST, #{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}, _State) ->
     BinRST = coap_message:encode(RST),
     ok = inet_udp:send(Socket, PeerIP, PeerPortNo, BinRST),
