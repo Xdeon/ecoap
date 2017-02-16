@@ -1,15 +1,24 @@
+# General
 .eunit
 deps
-*.d
 *.o
 *.beam
 *.plt
 erl_crash.dump
 ebin/
-rel/example_project
 .concrete/DEV_MODE
+
+# rebar/rebar3
 .rebar
-.erlang.mk
+rebar.lock
+_build/
+
+# erlang.mk
+.erlang.mk/
+*.d
+_rel/
+
+# Project specific
 src/core_link_parser.erl
 src/core_link_scanner.erl
 
