@@ -69,11 +69,11 @@ ping(Uri) ->
 
 -spec request(coap_method(), list()) -> response().
 request(Method, Uri) ->
-	request(Method, Uri, #coap_content{}, #{}).
+	request(Method, Uri, #coap_content{}, []).
 
 -spec request(coap_method(), list(), request_content()) -> response().
 request(Method, Uri, Content) ->
-	request(Method, Uri, Content, #{}).	
+	request(Method, Uri, Content, []).	
 
 -spec request(coap_method(), list(), request_content(), optionset()) -> response().
 request(Method, Uri, Content, Options) ->
