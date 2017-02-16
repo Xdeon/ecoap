@@ -70,15 +70,8 @@ get_all_endpoints(Pid) ->
 
 init([InPort, Opts]) ->
 	% process_flag(trap_exit, true),
-	% {ok, Deduplication} = application:get_env(deduplication),
 	{ok, Socket} = gen_udp:open(InPort, merge_opts(?DEFAULT_SOCK_OPTS, Opts)),
-	% We set software buffer to maximum of sndbuf & recbuf of the socket 
-	% to avoid unnecessary copying
-	% {ok, [{sndbuf, SndBufSize}]} = inet:getopts(Socket, [sndbuf]),
-	% {ok, [{recbuf, RecBufSize}]} = inet:getopts(Socket, [recbuf]),
-	% ok = inet:setopts(Socket, [{recbuf, RecBufSize * 200}]),
-	% ok = inet:setopts(Socket, [{sndbuf, RecBufSize * 200}]),
-	% ok = inet:setopts(Socket, [{buffer, max(SndBufSize, RecBufSize)}]),
+	io:format("socket setting: ~p~n", [inet:getopts(Socket, [recbuf, sndbuf, buffer])]),
 	{ok, #state{sock=Socket, endpoints=maps:new(), endpoint_refs=maps:new()}}.
 
 init(SupPid, InPort, Opts) ->
