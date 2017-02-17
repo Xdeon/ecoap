@@ -7,5 +7,11 @@ basic_test_() ->
 		?_assertEqual({ok, 'Content', #coap_content{max_age = undefined, format = <<"text/plain">>, payload = <<"world">>}}, 
 			ecoap_simple_client:request('GET', "coap://coap.me:5683/hello")),
 		?_assertEqual({error, 'InternalServerError', #coap_content{max_age = undefined, format = <<"text/plain">>, payload = <<"Oops: broken">>}}, 
-			ecoap_simple_client:request('GET', "coap://coap.me:5683/broken"))
+			ecoap_simple_client:request('GET', "coap://coap.me:5683/broken")),
+		?_assertEqual({ok, 'Created', #coap_content{max_age = undefined, options = [{'Location-Path', [<<"large-create">>]}]}},
+            ecoap_simple_client:request('POST', "coap://coap.me:5683/large-create", <<"Test">>)),
+        ?_assertEqual({ok, 'Changed', #coap_content{max_age = undefined}}, 
+            ecoap_simple_client:request('PUT', "coap://coap.me:5683/large-update", <<"Test">>)),
+        ?_assertEqual({ok, 'Deleted', #coap_content{max_age = undefined, format = <<"text/plain">>, payload = <<"DELETE OK">>}}, 
+            ecoap_simple_client:request('DELETE', "coap://coap.me:5683/sink"))
 	].

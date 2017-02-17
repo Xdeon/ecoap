@@ -1,5 +1,5 @@
 -module(test_resource).
--export([coap_discover/2, coap_get/5, coap_post/4, coap_put/4, coap_delete/3, coap_observe/4, coap_unobserve/1, handle_info/2, coap_ack/2]).
+-export([coap_discover/2, coap_get/5, coap_post/4, coap_put/4, coap_delete/4, coap_observe/5, coap_unobserve/2, handle_info/2, coap_ack/2]).
 -export([start/0, stop/0]).
 
 -include_lib("ecoap_common/include/coap_def.hrl").
@@ -22,7 +22,7 @@ coap_discover(Prefix, _Args) ->
     io:format("discover ~p~n", [Prefix]),
     [{absolute, Prefix++Name, []} || Name <- mnesia:dirty_all_keys(resources)].
 
-coap_get(_EpID, Prefix, Name, Query, _Accept) ->
+coap_get(_EpID, Prefix, Name, Query, _Options) ->
     io:format("get ~p ~p ~p~n", [Prefix, Name, Query]),
     case mnesia:dirty_read(resources, Name) of
         [{resources, Name, Resource}] -> Resource;
@@ -32,6 +32,7 @@ coap_get(_EpID, Prefix, Name, Query, _Accept) ->
 coap_post(_EpID, Prefix, Name, Content) ->
     io:format("post ~p ~p ~p~n", [Prefix, Name, Content]),
     {error, 'MethodNotAllowed'}.
+    % {ok, 'Created', #coap_content{options=[{'Location-Path', Prefix++Name}]}}.
 
 coap_put(_EpID, Prefix, Name, Content) ->
     io:format("put ~p ~p ~p~n", [Prefix, Name, Content]),
@@ -39,18 +40,18 @@ coap_put(_EpID, Prefix, Name, Content) ->
     _ = coap_handler:notify(Prefix++Name, Content),
     ok.
 
-coap_delete(_EpID, Prefix, Name) ->
+coap_delete(_EpID, Prefix, Name, _Options) ->
     io:format("delete ~p ~p~n", [Prefix, Name]),
     mnesia:dirty_delete(resources, Name),
     _ = coap_handler:notify(Prefix++Name, {error, 'NotFound'}),
     ok.
 
-coap_observe(_EpID, Prefix, Name, _Ack) ->
+coap_observe(_EpID, Prefix, Name, _Ack, _Options) ->
     io:format("observe ~p ~p~n", [Prefix, Name]),
     {ok, {state, Prefix, Name}}.
     % {error, 'MethodNotAllowed'}.
 
-coap_unobserve({state, Prefix, Name}) ->
+coap_unobserve({state, Prefix, Name}, _Options) ->
     io:format("unobserve ~p ~p~n", [Prefix, Name]),
     ok.
 
