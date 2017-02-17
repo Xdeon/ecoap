@@ -41,8 +41,8 @@
 
 -type from() :: {pid(), term()}.
 -type req() :: #req{}.
--type request_content() :: coap_content()|binary()|list().
--type response() :: {ok, atom(), coap_content()}|{error, atom()}|{error, atom(), coap_content()}|{separate, reference()}.
+-type request_content() :: coap_content() | binary() | list().
+-type response() :: {ok, success_code(), coap_content()} | {error, error_code()} | {error, error_code(), coap_content()} | {separate, reference()}.
 
 -include_lib("ecoap_common/include/coap_def.hrl").
 
