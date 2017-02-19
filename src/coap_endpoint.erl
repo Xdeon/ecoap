@@ -38,16 +38,14 @@
 }).
 
 -type trans_args() :: #{sock => inet:socket(), 
-                        ep_id => coap_endpoint_id(), 
+                        ep_id => ecoap_socket:coap_endpoint_id(), 
                         endpoint_pid => pid(), 
                         handler_sup => pid(),
                         handler_regs => #{tuple() => pid()}}.
--type coap_endpoint_id() :: {inet:ip_address(), inet:port_number()}.
 -type trid() :: {in | out, non_neg_integer()}.
 -type receiver() :: {pid(), reference()}.
 -opaque state() :: #state{}.
 
--export_type([coap_endpoint_id/0]).
 -export_type([state/0]).
 -export_type([trid/0]).
 -export_type([receiver/0]).
@@ -66,11 +64,11 @@
 %     % gen_server:start_link(?MODULE, [HdlSupPid, Socket, EpID], []).
 %     start_link(HdlSupPid, Socket, EpID, server).
 
--spec start_link(pid(), inet:socket(), coap_endpoint_id(), client|server) -> {ok, pid()}.
+-spec start_link(pid(), inet:socket(), ecoap_socket:coap_endpoint_id(), client|server) -> {ok, pid()}.
 start_link(HdlSupPid, Socket, EpID, Mode) ->
     gen_server:start_link(?MODULE, [HdlSupPid, Socket, EpID, Mode], []).
 
--spec start_link(inet:socket(), coap_endpoint_id()) -> {ok, pid()}.
+-spec start_link(inet:socket(), ecoap_socket:coap_endpoint_id()) -> {ok, pid()}.
 start_link(Socket, EpID) ->
     gen_server:start_link(?MODULE, [Socket, EpID], []).
 
@@ -186,7 +184,7 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, _TKL:4, 0:3, _CodeDe
         coap_exchange:received(BinMessage, TransArgs, create_transport(TrId, undefined, State)));
 % incoming CON(0) or NON(1) response
 handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgId:16, Token:TKL/bytes, _/bytes>>},
-    State=#state{trans=Trans, tokens=Tokens, trans_args=TransArgs=#{sock:=Socket, ep_id:={PeerIP, PeerPortNo}}}) ->
+    State=#state{trans=Trans, tokens=Tokens, trans_args=TransArgs=#{sock:=Socket, ep_id:=EpID}}) ->
 	TrId = {in, MsgId},
     % debug
 	%io:format("incoming CON/NON response, TrId:~p~n", [TrId]),
@@ -204,9 +202,9 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgI
                         coap_exchange:received(BinMessage, TransArgs, init_transport(TrId, Receiver)));
                 error ->
                     % token was not recognized
-                    BinReset = coap_message:encode(#coap_message{type='RST', id=MsgId}),
+                    BinRST = coap_message:encode(coap_message_utils:rst(MsgId)),
                     %io:format("<- reset~n"),
-                    ok = gen_udp:send(Socket, PeerIP, PeerPortNo, BinReset),
+                    ok = ecoap_socket:send_datagram(Socket, EpID, BinRST),
                     {noreply, State}
             end
     end;

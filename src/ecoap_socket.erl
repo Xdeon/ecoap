@@ -2,7 +2,8 @@
 -behaviour(gen_server).
 
 %% API.
--export([start_link/0, start_link/3, get_endpoint/2, get_all_endpoints/1, close/1]).
+-export([start_link/0, start_link/3, close/1]).
+-export([get_endpoint/2, get_all_endpoints/1, send_datagram/3]).
 
 %% gen_server.
 -export([init/1]).
@@ -34,10 +35,12 @@
 }).
 
 -opaque state() :: #state{}.
--type coap_endpoints() :: #{coap_endpoint:coap_endpoint_id() => pid()}.
--type coap_endpoint_refs() :: #{reference() => coap_endpoint:coap_endpoint_id()}.
+-type coap_endpoint_id() :: {inet:ip_address(), inet:port_number()}.
+-type coap_endpoints() :: #{coap_endpoint_id() => pid()}.
+-type coap_endpoint_refs() :: #{reference() => coap_endpoint_id()}.
 
 -export_type([state/0]).
+-export_type([coap_endpoint_id/0]).
 
 %% API.
 
@@ -57,7 +60,7 @@ start_link(SupPid, InPort, Opts) when is_pid(SupPid) ->
 	proc_lib:start_link(?MODULE, init, [SupPid, InPort, Opts]).
 
 %% start endpoint manually
--spec get_endpoint(pid(), coap_endpoint:coap_endpoint_id()) -> {ok, pid()} | term().
+-spec get_endpoint(pid(), coap_endpoint_id()) -> {ok, pid()} | term().
 get_endpoint(Pid, {PeerIP, PeerPortNo}) ->
     gen_server:call(Pid, {get_endpoint, {PeerIP, PeerPortNo}}).
 
@@ -65,6 +68,11 @@ get_endpoint(Pid, {PeerIP, PeerPortNo}) ->
 -spec get_all_endpoints(pid()) -> [pid()].
 get_all_endpoints(Pid) ->
 	gen_server:call(Pid, get_all_endpoints).
+
+%% let other process which hold socket reference send datagram directly
+-spec send_datagram(inet:socket(), coap_endpoint_id(), binary()) -> ok.
+send_datagram(Socket, {PeerIP, PeerPortNo}, Datagram) ->
+	 inet_udp:send(Socket, PeerIP, PeerPortNo, Datagram).
 
 %% gen_server.
 
