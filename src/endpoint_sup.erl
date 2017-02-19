@@ -1,12 +1,12 @@
 -module(endpoint_sup).
 -behaviour(supervisor).
 
--export([start_link/3]).
+-export([start_link/2]).
 -export([init/1]).
 
 %% Only applies to one time use supervision tree...
 
-start_link(Socket, EpID, Mode) ->
+start_link(Socket, EpID) ->
     {ok, SupPid} = supervisor:start_link(?MODULE, []),
     {ok, HdlSupPid} = supervisor:start_child(SupPid, 
       	#{id => coap_handler_sup,
@@ -17,7 +17,7 @@ start_link(Socket, EpID, Mode) ->
           modules => [coap_handler_sup]}),
     {ok, EpPid} = supervisor:start_child(SupPid,
         #{id => coap_endpoint,
-         start => {coap_endpoint, start_link, [HdlSupPid, Socket, EpID, Mode]},
+         start => {coap_endpoint, start_link, [HdlSupPid, Socket, EpID]},
          restart => permanent, 
          shutdown => 5000, 
          type => worker, 
