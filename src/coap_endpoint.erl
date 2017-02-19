@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 %% API.
--export([start_link/4, start_link/2, close/1, 
+-export([start_link/3, start_link/2, close/1, 
     ping/1, send/2, send_message/3, send_request/3, send_response/3, remove_token/2]).
 -export([generate_token/1]).
 
@@ -64,13 +64,13 @@
 %     % gen_server:start_link(?MODULE, [HdlSupPid, Socket, EpID], []).
 %     start_link(HdlSupPid, Socket, EpID, server).
 
--spec start_link(pid(), inet:socket(), ecoap_socket:coap_endpoint_id(), client|server) -> {ok, pid()}.
-start_link(HdlSupPid, Socket, EpID, Mode) ->
-    gen_server:start_link(?MODULE, [HdlSupPid, Socket, EpID, Mode], []).
+-spec start_link(pid(), inet:socket(), ecoap_socket:coap_endpoint_id()) -> {ok, pid()}.
+start_link(HdlSupPid, Socket, EpID) ->
+    gen_server:start_link(?MODULE, [HdlSupPid, Socket, EpID], []).
 
 -spec start_link(inet:socket(), ecoap_socket:coap_endpoint_id()) -> {ok, pid()}.
 start_link(Socket, EpID) ->
-    gen_server:start_link(?MODULE, [Socket, EpID], []).
+    gen_server:start_link(?MODULE, [undefined, Socket, EpID], []).
 
 -spec close(pid()) -> ok.
 close(Pid) ->
@@ -117,15 +117,15 @@ generate_token(TKL) ->
 
 %% gen_server.
 
-init([Socket, EpID]) ->
+init([undefined, Socket, EpID]) ->
     TRef = erlang:start_timer(?SCAN_INTERVAL, self(), scan),
     TransArgs = #{sock=>Socket, ep_id=>EpID, endpoint_pid=>self()},
     {ok, #state{tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs, mode=client}};
     
-init([HdlSupPid, Socket, EpID, Mode]) ->
+init([HdlSupPid, Socket, EpID]) ->
     TRef = erlang:start_timer(?SCAN_INTERVAL, self(), scan),
-    TransArgs = #{sock=>Socket, ep_id=>EpID, endpoint_pid=>self(), handler_sup=>HdlSupPid, handler_regs=>#{}},
-    {ok, #state{tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs, handler_refs=maps:new(), mode=Mode}}.
+    TransArgs = #{sock=>Socket, ep_id=>EpID, endpoint_pid=>self(), handler_sup=>HdlSupPid, handler_regs=>maps:new()},
+    {ok, #state{tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs, handler_refs=maps:new(), mode=server}}.
 
 handle_call(_Request, _From, State) ->
     error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),

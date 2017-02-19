@@ -109,7 +109,7 @@ handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoints=End
 		{ok, EpPid} ->
 			{reply, {ok, EpPid}, State};
 		error ->
-		    case endpoint_sup_sup:start_endpoint(PoolPid, [Socket, EpID, client]) of
+		    case endpoint_sup_sup:start_endpoint(PoolPid, [Socket, EpID]) of
 		        {ok, _, EpPid} ->
 		            {reply, {ok, EpPid}, store_endpoint(EpID, EpPid, State)};
 		        Error ->
@@ -138,7 +138,7 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, en
 			EpPid ! {datagram, Bin},
 			{noreply, State};
 		error when is_pid(PoolPid) -> 
-			case endpoint_sup_sup:start_endpoint(PoolPid, [Socket, EpID, server]) of
+			case endpoint_sup_sup:start_endpoint(PoolPid, [Socket, EpID]) of
 				{ok, _, EpPid} -> 
 					%io:fwrite("start endpoint ~p~n", [EpID]),
 					EpPid ! {datagram, Bin},
