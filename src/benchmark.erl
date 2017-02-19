@@ -71,17 +71,17 @@ coap_ack(_Ref, State) -> {ok, State}.
 % we also need to change PROCESSING_DELAY in coap_exchange.erl to a larger number, e.g. 100s, 
 % to avoid triggering separate response
 
-% fib(0) -> 0;
-% fib(1) -> 1;
-% fib(N) -> fib(N - 1) + fib(N - 2).
+fib(0) -> 0;
+fib(1) -> 1;
+fib(N) -> fib(N - 1) + fib(N - 2).
 
 % fibnacci function below should be used in any real world case, as it is far more efficient than the last one
 % because of erlang's way of modeling numbers, it is easy to request for a quiet large fib number and the result
 % can be automatically transferred in blocks if its size exceeds the required one
 
-fib(N) -> fib_iter(N, 0, 1).
+% fib(N) -> fib_iter(N, 0, 1).
 
-fib_iter(0, Result, _Next) -> 
-    Result;
-fib_iter(Iter, Result, Next) when Iter > 0 ->
-    fib_iter(Iter-1, Next, Result+Next).
+% fib_iter(0, Result, _Next) -> 
+%     Result;
+% fib_iter(Iter, Result, Next) when Iter > 0 ->
+%     fib_iter(Iter-1, Next, Result+Next).
