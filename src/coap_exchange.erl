@@ -12,7 +12,6 @@
 % -define(EXCHANGE_LIFETIME, 247000).
 -define(EXCHANGE_LIFETIME, 1500).
 -define(NON_LIFETIME, 145000).
-% -define(NON_LIFETIME, 100000).
 
 -record(exchange, {
     timestamp = undefined :: non_neg_integer(),
