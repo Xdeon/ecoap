@@ -20,7 +20,7 @@ basic(Pid) ->
 			ecoap_client:request(Pid, 'GET', "coap://coap.me:5683/hello")),
 		?_assertEqual({error, 'InternalServerError', #coap_content{max_age = undefined, format = <<"text/plain">>, payload = <<"Oops: broken">>}}, 
 			ecoap_client:request(Pid, 'GET', "coap://coap.me:5683/broken")),
-        ?_assertEqual({ok, 'Created', #coap_content{max_age = undefined, options = [{'Location-Path', [<<"large-create">>]}]}},
+        ?_assertEqual({ok, 'Created', #coap_content{max_age = undefined, location = [<<"large-create">>]}},
             ecoap_client:request(Pid, 'POST', "coap://coap.me:5683/large-create", <<"Test">>)),
         ?_assertEqual({ok, 'Changed', #coap_content{max_age = undefined}}, 
             ecoap_client:request(Pid, 'PUT', "coap://coap.me:5683/large-update", <<"Test">>)),

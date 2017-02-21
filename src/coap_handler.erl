@@ -232,10 +232,10 @@ handle_method(_EpID, Request, _Resource, State) ->
 
 handle_observe(EpID, Request=#coap_message{options=Options}, Content=#coap_content{},
         State=#state{endpoint_pid=EndpointPid, id=ID, prefix=Prefix, suffix=Suffix, uri=Uri, module=Module, observer=undefined}) ->
-    gen_server:cast(EndpointPid, {register_handler, ID, self()}),
     % the first observe request from this user to this resource
     case invoke_callback(Module, coap_observe, [EpID, Prefix, Suffix, requires_ack(Request), Options]) of
         {ok, ObState} ->
+            gen_server:cast(EndpointPid, {register_handler, ID, self()}),
             pg2:create({coap_observer, Uri}),
             ok = pg2:join({coap_observer, Uri}, self()),
             return_resource(Request, Content, State#state{observer=Request, obstate=ObState});

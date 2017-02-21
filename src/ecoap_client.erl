@@ -351,12 +351,12 @@ request_block(EndpointPid, Type, Method, ROpt, Block1, Content) ->
 
 
 handle_response(Ref, EndpointPid, _Message=#coap_message{code={ok, 'Continue'}, options=Options1}, 
-	State=#state{req_refs=ReqRefs}) ->
+	State=#state{req_refs=ReqRefs, msg_type=Type}) ->
 	case find_ref(Ref, ReqRefs) of
 		undefined -> {noreply, State};
 		#req{method=Method, options=Options2, content=Content} = Req ->
 			{Num, true, Size} = coap_message_utils:get_option('Block1', Options1),
-			{ok, Ref2} = request_block(EndpointPid, Method, Options2, {Num+1, false, Size}, Content),
+			{ok, Ref2} = request_block(EndpointPid, Type, Method, Options2, {Num+1, false, Size}, Content),
 			{noreply, State#state{req_refs=store_ref(Ref2, Req, delete_ref(Ref, ReqRefs))}}
 	end;
 
