@@ -3,9 +3,17 @@
 
 %% API.
 -export([start_link/0]).
--export([ping/2, request/3, request/4, request/5, async_request/3, async_request/4, async_request/5, cancel_async_request/2]).
--export([observe/2, observe/3, unobserve/2]).
 -export([close/1]).
+%% ping the server
+-export([ping/2]).
+%% sync request
+-export([request/3, request/4, request/5]).
+%% async request
+-export([async_request/3, async_request/4, async_request/5, cancel_async_request/2]).
+%% observe
+-export([observe/2, observe/3, unobserve/2]).
+%% utilities
+-export([set_con/1, set_non/1]).
 
 %% gen_server.
 -export([init/1]).
@@ -18,7 +26,8 @@
 -record(state, {
 	sock_pid = undefined :: pid(),
 	req_refs = undefined :: #{reference() => req()},
-	obs_regs = undefined :: #{observe_key() => reference()}
+	obs_regs = undefined :: #{observe_key() => reference()},
+	msg_type = 'CON' :: 'CON' | 'NON'
 }).
 
 -record(req, {
@@ -169,6 +178,12 @@ async_request(Pid, Method, Uri, Content, Options) ->
 cancel_async_request(Pid, Ref) ->
 	gen_server:call(Pid, {cancel_async_request, Ref}).
 
+-spec set_con(pid()) -> ok.
+set_con(Pid) -> gen_server:call(Pid, {set_msg_type, 'CON'}).
+
+-spec set_non(pid()) -> ok.
+set_non(Pid) -> gen_server:call(Pid, {set_msg_type, 'NON'}).
+
 assemble_request(Method, Uri, Options, Content) ->
 	{EpID, Path, Query} = resolve_uri(Uri),
 	Options2 = coap_message_utils:append_option('Uri-Query', Query, coap_message_utils:append_option('Uri-Path', Path, Options)),
@@ -196,15 +211,15 @@ handle_call({send_request, EpID, ping, ClientPid}, From, State=#state{sock_pid=S
 	{ok, Ref} = coap_endpoint:ping(EndpointPid),
 	{noreply, State#state{req_refs=store_ref(Ref, #req{from=From, client_pid=ClientPid, ep_id=EpID}, ReqRefs)}};
 
-handle_call({send_request, EpID, {Method, Options, Content}, ClientPid}, From, State=#state{sock_pid=SockPid, req_refs=ReqRefs}) ->
+handle_call({send_request, EpID, {Method, Options, Content}, ClientPid}, From, State=#state{sock_pid=SockPid, req_refs=ReqRefs, msg_type=Type}) ->
 	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
-	{ok, Ref} = request_block(EndpointPid, Method, Options, Content),
+	{ok, Ref} = request_block(EndpointPid, Type, Method, Options, Content),
 	Req = #req{method=Method, options=Options, content=Content, from=From, client_pid=ClientPid, ep_id=EpID},
 	{noreply, State#state{req_refs=store_ref(Ref, Req, ReqRefs)}};
 
-handle_call({send_request_async, EpID, {Method, Options, Content}, ClientPid}, _From, State=#state{sock_pid=SockPid, req_refs=ReqRefs}) ->
+handle_call({send_request_async, EpID, {Method, Options, Content}, ClientPid}, _From, State=#state{sock_pid=SockPid, req_refs=ReqRefs, msg_type=Type}) ->
 	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
-	{ok, Ref} = request_block(EndpointPid, Method, Options, Content),
+	{ok, Ref} = request_block(EndpointPid, Type, Method, Options, Content),
 	Req = #req{method=Method, options=Options, content=Content, client_ref=Ref, client_pid=ClientPid, ep_id=EpID},
 	{reply, {ok, Ref}, State#state{req_refs=store_ref(Ref, Req, ReqRefs)}};
 
@@ -218,7 +233,7 @@ handle_call({cancel_async_request, Ref}, _From, State=#state{sock_pid=SockPid, r
 	end;
 
 handle_call({start_observe, Key, EpID, {Method, Options, _Content}, ClientPid}, _From,
-	State=#state{sock_pid=SockPid, req_refs=ReqRefs, obs_regs=ObsRegs}) ->
+	State=#state{sock_pid=SockPid, req_refs=ReqRefs, obs_regs=ObsRegs, msg_type=Type}) ->
 	OldRef = find_ref(Key, ObsRegs),
 	Token = case find_ref(OldRef, ReqRefs) of
 				undefined -> coap_endpoint:generate_token(?TOKEN_LENGTH);
@@ -227,23 +242,26 @@ handle_call({start_observe, Key, EpID, {Method, Options, _Content}, ClientPid}, 
 	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
 	{ok, Ref} = coap_endpoint:send(EndpointPid,  
 					coap_message_utils:set_token(Token,
-						coap_message_utils:request('CON', Method, <<>>, Options))),	
+						coap_message_utils:request(Type, Method, <<>>, Options))),	
 	Options2 = coap_message_utils:remove_option('Observe', Options),
 	Req = #req{method=Method, options=Options2, token=Token, client_ref=Ref, client_pid=ClientPid, obs_key=Key, ep_id=EpID},
 	{reply, {ok, Ref}, State#state{obs_regs=store_ref(Key, Ref, ObsRegs), req_refs=store_ref(Ref, Req, delete_ref(OldRef, ReqRefs))}};
 
-handle_call({cancel_observe, Ref}, _From, State=#state{sock_pid=SockPid, req_refs=ReqRefs, obs_regs=ObsRegs}) ->
+handle_call({cancel_observe, Ref}, _From, State=#state{sock_pid=SockPid, req_refs=ReqRefs, obs_regs=ObsRegs, msg_type=Type}) ->
 	case find_ref(Ref, ReqRefs) of
 		undefined -> {reply, {error, no_observe}, State};
 		#req{method=Method, options=Options, token=Token, obs_key=Key, ep_id=EpID, client_pid=ClientPid} ->
 			{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
 			{ok, Ref2} = coap_endpoint:send(EndpointPid,  
 							coap_message_utils:set_token(Token, 
-								coap_message_utils:request('CON', Method, <<>>, Options))),
+								coap_message_utils:request(Type, Method, <<>>, Options))),
 			Options2 = coap_message_utils:remove_option('Observe', Options),
 			Req = #req{method=Method, options=Options2, token=Token, client_ref=Ref2, client_pid=ClientPid, ep_id=EpID},
 			{reply, {ok, Ref2}, State#state{obs_regs=delete_ref(Key, ObsRegs), req_refs=store_ref(Ref2, Req, delete_ref(Ref, ReqRefs))}}
 	end;
+
+handle_call({set_msg_type, Type}, _From, State) ->
+	{reply, ok, State#state{msg_type=Type}};
 
 handle_call(_Request, _From, State) ->
 	{noreply, State}.
@@ -286,12 +304,12 @@ code_change(_OldVsn, State, _Extra) ->
 
 %% Internal
 
-request_block(EndpointPid, Method, ROpt, Content) ->
-    request_block(EndpointPid, Method, ROpt, undefined, Content).
+request_block(EndpointPid, Type, Method, ROpt, Content) ->
+    request_block(EndpointPid, Type, Method, ROpt, undefined, Content).
 
-request_block(EndpointPid, Method, ROpt, Block1, Content) ->
+request_block(EndpointPid, Type, Method, ROpt, Block1, Content) ->
     coap_endpoint:send(EndpointPid, coap_message_utils:set_content(Content, Block1,
-        coap_message_utils:request('CON', Method, <<>>, ROpt))).
+        coap_message_utils:request(Type, Method, <<>>, ROpt))).
 
 % TODO (Solved):
 % what happens if we can not detect an already ongoing blockwise transfer for a notification 
@@ -343,7 +361,7 @@ handle_response(Ref, EndpointPid, _Message=#coap_message{code={ok, 'Continue'}, 
 	end;
 
 handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options=Options1, payload=Data}, 
-	State = #state{req_refs=ReqRefs}) ->
+	State = #state{req_refs=ReqRefs, msg_type=Type}) ->
 	case find_ref(Ref, ReqRefs) of
 		undefined -> 
 			io:format("unknown response: ~p~n", [Message]),
@@ -355,7 +373,7 @@ handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options
 		            % more blocks follow, ask for more
 		            % no payload for requests with Block2 with NUM != 0
 		            {ok, Ref2} = coap_endpoint:send(EndpointPid,
-		            	coap_message_utils:request('CON', Method, <<>>, coap_message_utils:append_option('Block2', {Num+1, false, Size}, Options2))),
+		            	coap_message_utils:request(Type, Method, <<>>, coap_message_utils:append_option('Block2', {Num+1, false, Size}, Options2))),
 		            NewFragment = <<Fragment/binary, Data/binary>>,
 		            case coap_message_utils:get_option('Observe', Options1) of
 		            	undefined ->
