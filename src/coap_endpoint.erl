@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 %% API.
--export([start_link/3, start_link/2, close/1, 
+-export([start_link/4, start_link/3, close/1, 
     ping/1, send/2, send_message/3, send_request/3, send_response/3, remove_token/2]).
 -export([generate_token/1]).
 
@@ -37,7 +37,8 @@
     mode = server :: server | client
 }).
 
--type trans_args() :: #{sock := inet:socket(), 
+-type trans_args() :: #{sock := inet:socket(),
+                        sock_mode := atom(), 
                         ep_id := ecoap_socket:coap_endpoint_id(), 
                         endpoint_pid := pid(), 
                         handler_sup => pid(),
@@ -64,13 +65,13 @@
 %     % gen_server:start_link(?MODULE, [HdlSupPid, Socket, EpID], []).
 %     start_link(HdlSupPid, Socket, EpID, server).
 
--spec start_link(pid(), inet:socket(), ecoap_socket:coap_endpoint_id()) -> {ok, pid()}.
-start_link(HdlSupPid, Socket, EpID) ->
-    gen_server:start_link(?MODULE, [HdlSupPid, Socket, EpID], []).
+-spec start_link(pid(), atom(), inet:socket(), ecoap_socket:coap_endpoint_id()) -> {ok, pid()}.
+start_link(HdlSupPid, SockMode, Socket, EpID) ->
+    gen_server:start_link(?MODULE, [HdlSupPid, SockMode, Socket, EpID], []).
 
--spec start_link(inet:socket(), ecoap_socket:coap_endpoint_id()) -> {ok, pid()}.
-start_link(Socket, EpID) ->
-    gen_server:start_link(?MODULE, [undefined, Socket, EpID], []).
+-spec start_link(atom(), inet:socket(), ecoap_socket:coap_endpoint_id()) -> {ok, pid()}.
+start_link(SockMode, Socket, EpID) ->
+    gen_server:start_link(?MODULE, [undefined, SockMode, Socket, EpID], []).
 
 -spec close(pid()) -> ok.
 close(Pid) ->
@@ -117,14 +118,14 @@ generate_token(TKL) ->
 
 %% gen_server.
 
-init([undefined, Socket, EpID]) ->
+init([undefined, SockMode, Socket, EpID]) ->
     TRef = erlang:start_timer(?SCAN_INTERVAL, self(), scan),
-    TransArgs = #{sock=>Socket, ep_id=>EpID, endpoint_pid=>self()},
+    TransArgs = #{sock=>Socket, sock_mode=>SockMode, ep_id=>EpID, endpoint_pid=>self()},
     {ok, #state{tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs, mode=client}};
     
-init([HdlSupPid, Socket, EpID]) ->
+init([HdlSupPid, SockMode, Socket, EpID]) ->
     TRef = erlang:start_timer(?SCAN_INTERVAL, self(), scan),
-    TransArgs = #{sock=>Socket, ep_id=>EpID, endpoint_pid=>self(), handler_sup=>HdlSupPid, handler_regs=>maps:new()},
+    TransArgs = #{sock=>Socket, sock_mode=>SockMode, ep_id=>EpID, endpoint_pid=>self(), handler_sup=>HdlSupPid, handler_regs=>maps:new()},
     {ok, #state{tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs, handler_refs=maps:new(), mode=server}}.
 
 handle_call(_Request, _From, State) ->
@@ -184,7 +185,7 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, _TKL:4, 0:3, _CodeDe
         coap_exchange:received(BinMessage, TransArgs, create_transport(TrId, undefined, State)));
 % incoming CON(0) or NON(1) response
 handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgId:16, Token:TKL/bytes, _/bytes>>},
-    State=#state{trans=Trans, tokens=Tokens, trans_args=TransArgs=#{sock:=Socket, ep_id:=EpID}}) ->
+    State=#state{trans=Trans, tokens=Tokens, trans_args=TransArgs=#{sock:=Socket, sock_mode:=Mode, ep_id:=EpID}}) ->
 	TrId = {in, MsgId},
     % debug
 	%io:format("incoming CON/NON response, TrId:~p~n", [TrId]),
@@ -204,7 +205,7 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgI
                     % token was not recognized
                     BinRST = coap_message:encode(coap_message_utils:rst(MsgId)),
                     %io:format("<- reset~n"),
-                    ok = ecoap_socket:send_datagram(Socket, EpID, BinRST),
+                    ok = coap_exchange:send_datagram(Mode, Socket, EpID, BinRST),
                     {noreply, State}
             end
     end;
