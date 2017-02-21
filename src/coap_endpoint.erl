@@ -37,9 +37,9 @@
     mode = server :: server | client
 }).
 
--type trans_args() :: #{sock => inet:socket(), 
-                        ep_id => ecoap_socket:coap_endpoint_id(), 
-                        endpoint_pid => pid(), 
+-type trans_args() :: #{sock := inet:socket(), 
+                        ep_id := ecoap_socket:coap_endpoint_id(), 
+                        endpoint_pid := pid(), 
                         handler_sup => pid(),
                         handler_regs => #{tuple() => pid()}}.
 -type trid() :: {in | out, non_neg_integer()}.
