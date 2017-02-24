@@ -11,7 +11,7 @@
 %% async request
 -export([async_request/3, async_request/4, async_request/5, cancel_async_request/2]).
 %% observe
--export([observe/2, observe/3, unobserve/2]).
+-export([observe/2, observe/3, unobserve/2, unobserve/3]).
 %% utilities
 -export([set_con/1, set_non/1]).
 
@@ -124,10 +124,16 @@ observe(Pid, Uri, Options) ->
 % note observe relation is matched against URI and accept content-format;
 % If the ecoap_client process crashed during the call, the call fails with reason noproc.
 
+% TODO: unobserve(Pid, Ref, ETag)
+
 -spec unobserve(pid(), reference()) -> response() | {error, no_observe}.
 unobserve(Pid, Ref) ->
+	unobserve(Pid, Ref, <<>>).
+
+-spec unobserve(pid(), reference(), binary()) -> response() | {error, no_observe}.
+unobserve(Pid, Ref, ETag) ->
 	MonitorRef = erlang:monitor(process, Pid),
-	case gen_server:call(Pid, {cancel_observe, Ref}) of
+	case gen_server:call(Pid, {cancel_observe, Ref, ETag}) of
 		{ok, ClientRef} ->
 			receive 
 				{async_response, ClientRef, Pid, Res} -> 
@@ -247,16 +253,17 @@ handle_call({start_observe, Key, EpID, {Method, Options, _Content}, ClientPid}, 
 	Req = #req{method=Method, options=Options2, token=Token, client_ref=Ref, client_pid=ClientPid, obs_key=Key, ep_id=EpID},
 	{reply, {ok, Ref}, State#state{obs_regs=store_ref(Key, Ref, ObsRegs), req_refs=store_ref(Ref, Req, delete_ref(OldRef, ReqRefs))}};
 
-handle_call({cancel_observe, Ref}, _From, State=#state{sock_pid=SockPid, req_refs=ReqRefs, obs_regs=ObsRegs, msg_type=Type}) ->
+handle_call({cancel_observe, Ref, ETag}, _From, State=#state{sock_pid=SockPid, req_refs=ReqRefs, obs_regs=ObsRegs, msg_type=Type}) ->
 	case find_ref(Ref, ReqRefs) of
 		undefined -> {reply, {error, no_observe}, State};
 		#req{method=Method, options=Options, token=Token, obs_key=Key, ep_id=EpID, client_pid=ClientPid} ->
+			Options2 = coap_message_utils:put_option('ETag', [ETag], Options),
 			{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
 			{ok, Ref2} = coap_endpoint:send(EndpointPid,  
 							coap_message_utils:set_token(Token, 
-								coap_message_utils:request(Type, Method, <<>>, Options))),
-			Options2 = coap_message_utils:remove_option('Observe', Options),
-			Req = #req{method=Method, options=Options2, token=Token, client_ref=Ref2, client_pid=ClientPid, ep_id=EpID},
+								coap_message_utils:request(Type, Method, <<>>, Options2))),
+			Options3 = coap_message_utils:remove_option('Observe', Options2),
+			Req = #req{method=Method, options=Options3, token=Token, client_ref=Ref2, client_pid=ClientPid, ep_id=EpID},
 			{reply, {ok, Ref2}, State#state{obs_regs=delete_ref(Key, ObsRegs), req_refs=store_ref(Ref2, Req, delete_ref(Ref, ReqRefs))}}
 	end;
 
