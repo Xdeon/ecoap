@@ -11,7 +11,7 @@
 
 -include_lib("ecoap_common/include/coap_def.hrl").
 
--type coap_endpoint_id() :: coap_endpoint:coap_endpoint_id().
+-type coap_endpoint_id() :: ecoap_socket:coap_endpoint_id().
 -type coap_uri() :: core_link:coap_uri().
 
 % called when a client asks for .well-known/core resources
