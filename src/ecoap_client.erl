@@ -43,7 +43,7 @@
 	block_obseq = undefined :: undefined | non_neg_integer(),
 	ongoing_block = undefined :: undefined | reference(),
 	obs_key = undefined :: undefined | observe_key(),
-	ep_id = undefined :: coap_endpoint:coap_endpoint_id()
+	ep_id = undefined :: ecoap_socket:coap_endpoint_id()
 }).
 
 -define(TOKEN_LENGTH, 4). % shall be at least 32 random bits
