@@ -254,7 +254,7 @@ handle_info({timeout, TrId, Event}, State=#state{trans=Trans, trans_args=TransAr
 handle_info({request_complete, Token}, State=#state{tokens=Tokens}) ->
     %io:format("request_complete~n"),
     Tokens2 = maps:remove(Token, Tokens),
-    purge_state(State#state{tokens=Tokens2});
+    {noreply, State#state{tokens=Tokens2}};
 % Only monitor possible observe handlers instead of every new spawned handler
 % so that we can save some extra message traffic
 handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{rescnt=Count, trans_args=TransArgs=#{handler_regs:=Regs}, handler_refs=Refs}) ->
