@@ -160,8 +160,9 @@ process_request(EpID, Request, State) ->
 check_resource(EpID, Request=#coap_message{options=Options}, 
     State=#state{prefix=Prefix, suffix=Suffix, query=Query, module=Module}) ->
     % check accpetable format 
+    Accept = coap_message_utils:get_option('Accept', Options),
     case invoke_callback(Module, coap_get,
-            [EpID, Prefix, Suffix, Query, Options]) of
+            [EpID, Prefix, Suffix, Query, Accept]) of
         R1 = #coap_content{} ->
             check_preconditions(EpID, Request, R1, State);
         R2 = {error, 'NotFound'} ->
@@ -233,7 +234,8 @@ handle_method(_EpID, Request, _Resource, State) ->
 handle_observe(EpID, Request=#coap_message{options=Options}, Content=#coap_content{},
         State=#state{endpoint_pid=EndpointPid, id=ID, prefix=Prefix, suffix=Suffix, uri=Uri, module=Module, observer=undefined}) ->
     % the first observe request from this user to this resource
-    case invoke_callback(Module, coap_observe, [EpID, Prefix, Suffix, requires_ack(Request), Options]) of
+    Accept = coap_message_utils:get_option('Accept', Options),
+    case invoke_callback(Module, coap_observe, [EpID, Prefix, Suffix, Accept, requires_ack(Request)]) of
         {ok, ObState} ->
             gen_server:cast(EndpointPid, {register_handler, ID, self()}),
             pg2:create({coap_observer, Uri}),
@@ -260,9 +262,8 @@ handle_unobserve(_EpID, Request=#coap_message{token=Token}, Resource, State=#sta
 handle_unobserve(_EpID, Request, Resource, State) ->
     return_resource(Request, Resource, State).
 
-cancel_observer(#coap_message{options=Options}, State=#state{uri=Uri, module=Module, obstate=ObState}) ->
-    ok = invoke_callback(Module, coap_unobserve, [ObState, Options]),
-    % Uri = coap_message_utils:get_option('Uri_Path', Options, []),
+cancel_observer(#coap_message{}, State=#state{uri=Uri, module=Module, obstate=ObState}) ->
+    ok = invoke_callback(Module, coap_unobserve, [ObState]),
     ok = pg2:leave({coap_observer, Uri}, self()),
     % will the last observer to leave this group please turn out the lights
     case pg2:get_members({coap_observer, Uri}) of
@@ -298,8 +299,8 @@ created_or_changed(#coap_content{}) ->
 created_or_changed({error, 'NotFound'}) ->
     {ok, 'Created'}.
 
-handle_delete(EpID, Request=#coap_message{options=Options}, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
-    case invoke_callback(Module, coap_delete, [EpID, Prefix, Suffix, Options]) of
+handle_delete(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
+    case invoke_callback(Module, coap_delete, [EpID, Prefix, Suffix]) of
         ok ->
             return_response(Request, {ok, 'Deleted'}, State);
         {error, Error} ->
