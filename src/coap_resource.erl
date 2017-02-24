@@ -21,12 +21,12 @@
 	Uri :: coap_uri().
 
 % GET handler
--callback coap_get(EpID, Prefix, Name, Query, Options) -> Content | Error when
+-callback coap_get(EpID, Prefix, Name, Query, Accept) -> Content | Error when
 	EpID :: coap_endpoint_id(),
 	Prefix :: [binary()],
 	Name :: [binary()],
 	Query :: [binary()],
-	Options :: optionset(),
+	Accept :: non_neg_integer() | binary(),
 	Content :: coap_content(),
 	Error :: coap_error().
 
@@ -49,26 +49,24 @@
 	Error :: coap_error().
 
 % DELETE handler
--callback coap_delete(EpID, Prefix, Name, Options) -> ok | Error when
+-callback coap_delete(EpID, Prefix, Name) -> ok | Error when
 	EpID :: coap_endpoint_id(),
 	Prefix :: [binary()],
 	Name :: [binary()],
-	Options :: optionset(),
 	Error :: coap_error().
 
 % observe request handler
--callback coap_observe(EpID, Prefix, Name, NeedAck, Options) -> {ok, Obstate} | Error when
+-callback coap_observe(EpID, Prefix, Name, Accept, NeedAck) -> {ok, Obstate} | Error when
 	EpID :: coap_endpoint_id(),
 	Prefix :: [binary()],
 	Name :: [binary()],
+	Accept :: non_neg_integer() | binary(),
 	NeedAck :: boolean(),
-	Options :: optionset(),
 	Obstate :: any(),
 	Error :: coap_error().
 
 % cancellation request handler
--callback coap_unobserve(Obstate, Options) -> ok when
-	Options :: optionset(),
+-callback coap_unobserve(Obstate) -> ok when
 	Obstate :: any().
 
 % handler for messages sent to the responder process
