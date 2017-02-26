@@ -149,8 +149,8 @@ handle_cast({register_handler, ID, Pid}, State=#state{rescnt=Count, trans_args=T
 handle_cast({remove_token, Token}, State=#state{tokens=Tokens}) when is_binary(Token)->
     {noreply, State#state{tokens=maps:remove(Token, Tokens)}};
 handle_cast({remove_token, TokenRef}, State=#state{tokens=Tokens, trans=Trans}) ->
-    {Token, TrId} = maps:fold(fun(Key, {{_, Ref}, ReqTrId}, _) when Ref =:= TokenRef -> {Key, ReqTrId}; (_, _, Acc) -> Acc end, {undefined, undefined}, Tokens),
-    {noreply, State#state{tokens=maps:remove(Token, Tokens), trans=maps:remove(TrId, Trans)}};
+    {Token, ReqTrId} = maps:fold(fun(Key, {{_, Ref}, TrId}, _) when Ref =:= TokenRef -> {Key, TrId}; (_, _, Acc) -> Acc end, {undefined, undefined}, Tokens),
+    {noreply, State#state{tokens=maps:remove(Token, Tokens), trans=maps:remove(ReqTrId, Trans)}};
 
 handle_cast(shutdown, State) ->
     {stop, normal, State};
@@ -251,11 +251,10 @@ handle_info({timeout, TrId, Event}, State=#state{trans=Trans, trans_args=TransAr
         {ok, TrState} -> update_state(State, TrId, coap_exchange:timeout(Event, TransArgs, TrState));
         error -> {noreply, State} % ignore unexpected responses
     end;
-handle_info({request_complete, Token, ReqTrId}, State=#state{tokens=Tokens, trans=Trans}) ->
+handle_info({request_complete, Token}, State=#state{tokens=Tokens}) ->
     %io:format("request_complete~n"),
     Tokens2 = maps:remove(Token, Tokens),
-    Trans2 = maps:remove(ReqTrId, Trans),
-    {noreply, State#state{tokens=Tokens2, trans=Trans2}};
+    {noreply, State#state{tokens=Tokens2}};
 % Only monitor possible observe handlers instead of every new spawned handler
 % so that we can save some extra message traffic
 handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{rescnt=Count, trans_args=TransArgs=#{handler_regs:=Regs}, handler_refs=Refs}) ->
@@ -280,7 +279,6 @@ code_change(_OldVsn, State, _Extra) ->
 
 %% Internal
 make_new_request(Message=#coap_message{token=Token}, Receiver, State=#state{tokens=Tokens, nextmid=MsgId}) ->
-    % io:format("ReqTrId: ~p~n", [{out, MsgId}]),
     Tokens2 = maps:put(Token, {Receiver, {out, MsgId}}, Tokens),
     make_new_message(Message, Receiver, State#state{tokens=Tokens2}).
 
