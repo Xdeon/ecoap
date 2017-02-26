@@ -27,6 +27,8 @@
 	sock_pid = undefined :: pid(),
 	req_refs = undefined :: #{reference() => req()},
 	obs_regs = undefined :: #{observe_key() => reference()},
+	% block_refs maps origin req reference with subsequent req reference within the same blockwise transfer
+	block_refs = undefined :: #{reference() => reference()},
 	msg_type = 'CON' :: 'CON' | 'NON'
 }).
 
@@ -210,7 +212,7 @@ remove_observe_ref(Pid, Key) ->
 
 init([]) ->
 	{ok, SockPid} = ecoap_socket:start_link(),
-	{ok, #state{sock_pid=SockPid, req_refs=maps:new(), obs_regs=maps:new()}}.
+	{ok, #state{sock_pid=SockPid, req_refs=maps:new(), obs_regs=maps:new(), block_refs=maps:new()}}.
 
 handle_call({send_request, EpID, ping, ClientPid}, From, State=#state{sock_pid=SockPid, req_refs=ReqRefs}) ->
 	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
@@ -229,13 +231,32 @@ handle_call({send_request_async, EpID, {Method, Options, Content}, ClientPid}, _
 	Req = #req{method=Method, options=Options, content=Content, client_ref=Ref, client_pid=ClientPid, ep_id=EpID},
 	{reply, {ok, Ref}, State#state{req_refs=store_ref(Ref, Req, ReqRefs)}};
 
-handle_call({cancel_async_request, Ref}, _From, State=#state{sock_pid=SockPid, req_refs=ReqRefs, obs_regs=ObsRegs}) ->
-	case find_ref(Ref, ReqRefs) of
-		undefined -> {reply, {error, no_request}, State};
-		#req{ep_id=EpID, obs_key=Key} ->
+handle_call({cancel_async_request, Ref}, _From, State=#state{sock_pid=SockPid, req_refs=ReqRefs, block_refs=BlockRefs, obs_regs=ObsRegs}) ->
+% cancel async request in following cases:
+% 1. ordinary req, including non req, separate res, observe con/non req
+% 2. blockwise transfer for both con and non
+% 3. blockwise transfer for both con and non, during an observe
+	case {find_ref(Ref, ReqRefs), find_ref(Ref, BlockRefs)} of
+		{undefined, undefined} -> 
+			% no req exist
+			{reply, {error, no_request}, State};
+		{undefined, SubRef} ->
+			% found ordinary blockwise transfer
+			#req{ep_id=EpID} = find_ref(SubRef, ReqRefs),
+			{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
+			ok = coap_endpoint:remove_token(EndpointPid, SubRef),
+			{reply, ok, State#state{req_refs=delete_ref(SubRef, ReqRefs), block_refs=delete_ref(Ref, BlockRefs)}};
+		{#req{ep_id=EpID, obs_key=Key}, undefined} ->
+			% found ordinary req or observe req without blockwise transfer
 			{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
 			ok = coap_endpoint:remove_token(EndpointPid, Ref),
-			{reply, ok, State#state{req_refs=delete_ref(Ref, ReqRefs), obs_regs=delete_ref(Key, ObsRegs)}}
+			{reply, ok, State#state{req_refs=delete_ref(Ref, ReqRefs), obs_regs=delete_ref(Key, ObsRegs)}};
+		{#req{ep_id=EpID, obs_key=Key}, SubRef} ->
+			% found observe req with blockwise transfer
+			{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
+			ok = coap_endpoint:remove_token(EndpointPid, Ref),
+			ok = coap_endpoint:remove_token(EndpointPid, SubRef),
+			{reply, ok, State#state{req_refs=delete_ref(Ref, delete_ref(SubRef, ReqRefs)), block_refs=delete_ref(Ref, BlockRefs), obs_regs=delete_ref(Key, ObsRegs)}}
 	end;
 
 handle_call({start_observe, Key, EpID, {Method, Options, _Content}, ClientPid}, _From,
@@ -368,7 +389,7 @@ handle_response(Ref, EndpointPid, _Message=#coap_message{code={ok, 'Continue'}, 
 	end;
 
 handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options=Options1, payload=Data}, 
-	State = #state{req_refs=ReqRefs, msg_type=Type}) ->
+	State = #state{req_refs=ReqRefs, block_refs=BlockRefs, msg_type=Type}) ->
 	case find_ref(Ref, ReqRefs) of
 		undefined -> 
 			io:format("unknown response: ~p~n", [Message]),
@@ -385,7 +406,7 @@ handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options
 		            case coap_message_utils:get_option('Observe', Options1) of
 		            	undefined ->
 		            		% We need to clean up intermediate requests info during a blockwise transfer and only keep the newest one
-		            		{noreply, State#state{req_refs=store_ref(Ref2, Req#req{fragment=NewFragment, ongoing_block=Ref2}, delete_ref(Ref, ReqRefs))}};
+		            		{noreply, State#state{req_refs=store_ref(Ref2, Req#req{fragment=NewFragment, ongoing_block=Ref2}, delete_ref(Ref, ReqRefs)), block_refs=update_block_refs(ClientRef, Ref2, BlockRefs)}};
 		            	N ->
 		            		% This is the first response of a blockwise transfer when observing certain resource
 		            		% We remember the observe seq number here because following requests will be normal ones
@@ -393,7 +414,7 @@ handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options
 		            		% (info of the last request with block option) before continuing and always start a fresh block transfer
 		            		% This eliminates the possiblilty that multiple block transfers exist 
 		            		% and thus a potential mix up of old & new blocks of the (changed) resource
-		            		{noreply, State#state{req_refs=store_ref(Ref2, Req#req{fragment=NewFragment, block_obseq=N, ongoing_block=Ref2}, delete_ref(OngoingBlock, ReqRefs))}}	
+		            		{noreply, State#state{req_refs=store_ref(Ref2, Req#req{fragment=NewFragment, block_obseq=N, ongoing_block=Ref2}, delete_ref(OngoingBlock, ReqRefs)), block_refs=update_block_refs(ClientRef, Ref2, BlockRefs)}}	
 		            end;
 		        _Else ->
 		            % not segmented
@@ -407,7 +428,7 @@ handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options
 			        			Num ->
 			        				ok = send_notify(ClientPid, ClientRef, Num, Res)
 			        		end,
-			        		{noreply, State#state{req_refs=delete_ref(Ref, ReqRefs)}};
+			        		{noreply, State#state{req_refs=delete_ref(Ref, ReqRefs), block_refs=delete_ref(ClientRef, BlockRefs)}};
 			        	Num ->
 			        		ok = send_notify(ClientPid, ClientRef, Num, Res),
 			        		{noreply, State}
@@ -446,6 +467,10 @@ handle_ack(Ref, State=#state{req_refs=ReqRefs}) ->
 send_notify(ClientPid, ClientRef, Obseq, Res) ->
     ClientPid ! {coap_notify, ClientRef, self(), Obseq, Res},
     ok.
+
+update_block_refs(undefined, _, BlockRefs) -> BlockRefs;
+update_block_refs(InitRef, NewRef, BlockRefs) ->
+	store_ref(InitRef, NewRef, BlockRefs).
 
 find_ref(Ref, Refs) ->
 	case maps:find(Ref, Refs) of
