@@ -309,22 +309,22 @@ handle_request(Message=#coap_message{code=Method, options=Options},
             ok
     end;
 
-handle_request(Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={Sender, Ref}}) ->
+handle_request(Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={{Sender, Ref}, _}}) ->
     %io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
     Sender ! {coap_request, EpID, EndpointPid, Ref, Message},
     ok.
 
-handle_response(Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={Sender, Ref}}) ->
+handle_response(Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={{Sender, Ref}, _}}) ->
     %io:fwrite("handle_response called from ~p with ~p~n", [self(), Message]),    
     Sender ! {coap_response, EpID, EndpointPid, Ref, Message},
     request_complete(EndpointPid, Message).
 
-handle_error(Message, Error, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={Sender, Ref}}) ->
+handle_error(Message, Error, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={{Sender, Ref}, _}}) ->
 	%io:fwrite("handle_error called from ~p with ~p~n", [self(), Message]),
 	Sender ! {coap_error, EpID, EndpointPid, Ref, Error},
 	request_complete(EndpointPid, Message).
 
-handle_ack(_Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={Sender, Ref}}) ->
+handle_ack(_Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={{Sender, Ref}, _}}) ->
 	%io:fwrite("handle_ack called from ~p with ~p~n", [self(), _Message]),
 	Sender ! {coap_ack, EpID, EndpointPid, Ref},
 	ok.

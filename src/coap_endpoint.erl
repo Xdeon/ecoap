@@ -44,7 +44,7 @@
                         handler_sup => pid(),
                         handler_regs => #{tuple() => pid()}}.
 -type trid() :: {in | out, non_neg_integer()}.
--type receiver() :: {pid(), reference()}.
+-type receiver() :: {{pid(), reference()}, trid()}.
 -opaque state() :: #state{}.
 
 -export_type([state/0]).
@@ -148,9 +148,9 @@ handle_cast({register_handler, ID, Pid}, State=#state{rescnt=Count, trans_args=T
 % remove token manually
 handle_cast({remove_token, Token}, State=#state{tokens=Tokens}) when is_binary(Token)->
     {noreply, State#state{tokens=maps:remove(Token, Tokens)}};
-handle_cast({remove_token, TokenRef}, State=#state{tokens=Tokens}) ->
-    Token = maps:fold(fun(Key, {_, Ref}, _) when Ref =:= TokenRef -> Key; (_, _, Acc) -> Acc end, undefined, Tokens),
-    {noreply, State#state{tokens=maps:remove(Token, Tokens)}};
+handle_cast({remove_token, TokenRef}, State=#state{tokens=Tokens, trans=Trans}) ->
+    {Token, ReqTrId} = maps:fold(fun(Key, {{_, Ref}, TrId}, _) when Ref =:= TokenRef -> {Key, TrId}; (_, _, Acc) -> Acc end, {undefined, undefined}, Tokens),
+    {noreply, State#state{tokens=maps:remove(Token, Tokens), trans=maps:remove(ReqTrId, Trans)}};
 
 handle_cast(shutdown, State) ->
     {stop, normal, State};
@@ -278,12 +278,12 @@ code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
 %% Internal
-make_new_request(Message=#coap_message{token=Token}, Receiver, State=#state{tokens=Tokens}) ->
-    Tokens2 = maps:put(Token, Receiver, Tokens),
+make_new_request(Message=#coap_message{token=Token}, Receiver, State=#state{tokens=Tokens, nextmid=MsgId}) ->
+    Tokens2 = maps:put(Token, {Receiver, {out, MsgId}}, Tokens),
     make_new_message(Message, Receiver, State#state{tokens=Tokens2}).
 
 make_new_message(Message, Receiver, State=#state{nextmid=MsgId}) ->
-    make_message({out, MsgId}, Message#coap_message{id=MsgId}, Receiver, State#state{nextmid=next_mid(MsgId)}).
+    make_message({out, MsgId}, Message#coap_message{id=MsgId}, {Receiver, {out, MsgId}}, State#state{nextmid=next_mid(MsgId)}).
 
 make_message(TrId, Message, Receiver, State=#state{trans_args=TransArgs}) ->
     update_state(State, TrId,
