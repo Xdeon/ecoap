@@ -82,7 +82,7 @@ error_while_observe_block({Server, Client}) ->
     {match, BlockReqMsgId4, _} = server_stub:expect_request(Server, ExpectReq#coap_message{options=[{'Block2', {3, false, 64}}, {'Uri-Path', [<<"test">>]}]}),
     server_stub:send_response(Server, #coap_message{type='RST', id=BlockReqMsgId4}),
     timer:sleep(50),
-    {state, _, ReqRefs, _, _} = sys:get_state(Client),
+    ReqRefs = ecoap_client:get_reqrefs(Client),
     [?_assertEqual(#{}, ReqRefs)].
 
 % TODO: observe test

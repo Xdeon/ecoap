@@ -13,7 +13,7 @@
 %% observe
 -export([observe/2, observe/3, unobserve/2, unobserve/3]).
 %% utilities
--export([set_con/1, set_non/1]).
+-export([set_con/1, set_non/1, get_reqrefs/1]).
 
 %% gen_server.
 -export([init/1]).
@@ -192,6 +192,10 @@ set_con(Pid) -> gen_server:call(Pid, {set_msg_type, 'CON'}).
 -spec set_non(pid()) -> ok.
 set_non(Pid) -> gen_server:call(Pid, {set_msg_type, 'NON'}).
 
+% utility function for test purpose
+-spec get_reqrefs(pid()) -> map().
+get_reqrefs(Pid) -> gen_server:call(Pid, get_reqrefs).
+
 assemble_request(Method, Uri, Options, Content) ->
 	{EpID, Path, Query} = resolve_uri(Uri),
 	Options2 = coap_message_utils:append_option('Uri-Query', Query, coap_message_utils:append_option('Uri-Path', Path, Options)),
@@ -290,6 +294,9 @@ handle_call({cancel_observe, Ref, ETag}, _From, State=#state{sock_pid=SockPid, r
 
 handle_call({set_msg_type, Type}, _From, State) ->
 	{reply, ok, State#state{msg_type=Type}};
+
+handle_call(get_reqrefs, _From, State=#state{req_refs=ReqRefs}) ->
+	{reply, ReqRefs, State};
 
 handle_call(_Request, _From, State) ->
 	{noreply, State}.
