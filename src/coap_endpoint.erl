@@ -44,7 +44,7 @@
                         handler_sup => pid(),
                         handler_regs => #{tuple() => pid()}}.
 -type trid() :: {in | out, non_neg_integer()}.
--type receiver() :: {pid(), reference()}.
+-type receiver() :: {{pid(), reference()}, trid()}.
 -opaque state() :: #state{}.
 
 -export_type([state/0]).
@@ -148,9 +148,9 @@ handle_cast({register_handler, ID, Pid}, State=#state{rescnt=Count, trans_args=T
 % remove token manually
 handle_cast({remove_token, Token}, State=#state{tokens=Tokens}) when is_binary(Token)->
     {noreply, State#state{tokens=maps:remove(Token, Tokens)}};
-handle_cast({remove_token, TokenRef}, State=#state{tokens=Tokens}) ->
-    Token = maps:fold(fun(Key, {_, Ref}, _) when Ref =:= TokenRef -> Key; (_, _, Acc) -> Acc end, undefined, Tokens),
-    {noreply, State#state{tokens=maps:remove(Token, Tokens)}};
+handle_cast({remove_token, TokenRef}, State=#state{tokens=Tokens, trans=Trans}) ->
+    {Token, TrId} = maps:fold(fun(Key, {{_, Ref}, ReqTrId}, _) when Ref =:= TokenRef -> {Key, ReqTrId}; (_, _, Acc) -> Acc end, {undefined, undefined}, Tokens),
+    {noreply, State#state{tokens=maps:remove(Token, Tokens), trans=maps:remove(TrId, Trans)}};
 
 handle_cast(shutdown, State) ->
     {stop, normal, State};
@@ -251,10 +251,11 @@ handle_info({timeout, TrId, Event}, State=#state{trans=Trans, trans_args=TransAr
         {ok, TrState} -> update_state(State, TrId, coap_exchange:timeout(Event, TransArgs, TrState));
         error -> {noreply, State} % ignore unexpected responses
     end;
-handle_info({request_complete, Token}, State=#state{tokens=Tokens}) ->
+handle_info({request_complete, Token, ReqTrId}, State=#state{tokens=Tokens, trans=Trans}) ->
     %io:format("request_complete~n"),
     Tokens2 = maps:remove(Token, Tokens),
-    {noreply, State#state{tokens=Tokens2}};
+    Trans2 = maps:remove(ReqTrId, Trans),
+    {noreply, State#state{tokens=Tokens2, trans=Trans2}};
 % Only monitor possible observe handlers instead of every new spawned handler
 % so that we can save some extra message traffic
 handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{rescnt=Count, trans_args=TransArgs=#{handler_regs:=Regs}, handler_refs=Refs}) ->
@@ -278,12 +279,13 @@ code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
 %% Internal
-make_new_request(Message=#coap_message{token=Token}, Receiver, State=#state{tokens=Tokens}) ->
-    Tokens2 = maps:put(Token, Receiver, Tokens),
+make_new_request(Message=#coap_message{token=Token}, Receiver, State=#state{tokens=Tokens, nextmid=MsgId}) ->
+    % io:format("ReqTrId: ~p~n", [{out, MsgId}]),
+    Tokens2 = maps:put(Token, {Receiver, {out, MsgId}}, Tokens),
     make_new_message(Message, Receiver, State#state{tokens=Tokens2}).
 
 make_new_message(Message, Receiver, State=#state{nextmid=MsgId}) ->
-    make_message({out, MsgId}, Message#coap_message{id=MsgId}, Receiver, State#state{nextmid=next_mid(MsgId)}).
+    make_message({out, MsgId}, Message#coap_message{id=MsgId}, {Receiver, {out, MsgId}}, State#state{nextmid=next_mid(MsgId)}).
 
 make_message(TrId, Message, Receiver, State=#state{trans_args=TransArgs}) ->
     update_state(State, TrId,

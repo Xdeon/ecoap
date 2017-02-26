@@ -307,30 +307,31 @@ handle_request(Message=#coap_message{code=Method, options=Options},
             ok
     end;
 
-handle_request(Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={Sender, Ref}}) ->
+handle_request(Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={{Sender, Ref}, _}}) ->
     %io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
     Sender ! {coap_request, EpID, EndpointPid, Ref, Message},
     ok.
 
-handle_response(Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={Sender, Ref}}) ->
+handle_response(Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={{Sender, Ref}, ReqTrId}}) ->
     %io:fwrite("handle_response called from ~p with ~p~n", [self(), Message]),    
     Sender ! {coap_response, EpID, EndpointPid, Ref, Message},
-    request_complete(EndpointPid, Message).
+    request_complete(EndpointPid, Message, ReqTrId).
 
-handle_error(Message, Error, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={Sender, Ref}}) ->
+handle_error(Message, Error, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={{Sender, Ref}, ReqTrId}}) ->
 	%io:fwrite("handle_error called from ~p with ~p~n", [self(), Message]),
 	Sender ! {coap_error, EpID, EndpointPid, Ref, Error},
-	request_complete(EndpointPid, Message).
+	request_complete(EndpointPid, Message, ReqTrId).
 
-handle_ack(_Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={Sender, Ref}}) ->
+handle_ack(_Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={{Sender, Ref}, _}}) ->
 	%io:fwrite("handle_ack called from ~p with ~p~n", [self(), _Message]),
 	Sender ! {coap_ack, EpID, EndpointPid, Ref},
 	ok.
 
-request_complete(EndpointPid, #coap_message{token=Token, options=Options}) ->
+request_complete(EndpointPid, #coap_message{token=Token, options=Options}, ReqTrId) ->
     case coap_message_utils:get_option('Observe', Options) of
         undefined ->
-            EndpointPid ! {request_complete, Token},
+            % io:format("request_complete, ReqTrId: ~p~n", [ReqTrId]),
+            EndpointPid ! {request_complete, Token, ReqTrId},
             ok;
         % an observe notification should not remove the request token
         _Else ->
