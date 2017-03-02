@@ -182,7 +182,7 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, _TKL:4, 0:3, _CodeDe
     %io:format("MsgBin: ~p~n", [BinMessage]),
     % end of debug
     update_state(State, TrId,
-        coap_exchange:received(BinMessage, TransArgs, create_transport(TrId, undefined, State)));
+        coap_exchange:received(BinMessage, TransArgs, create_exchange(TrId, undefined, State)));
 % incoming CON(0) or NON(1) response
 handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgId:16, Token:TKL/bytes, _/bytes>>},
     State=#state{trans=Trans, tokens=Tokens, trans_args=TransArgs=#{sock:=Socket, sock_mode:=Mode, ep_id:=EpID}}) ->
@@ -200,7 +200,7 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgI
              case maps:find(Token, Tokens) of
                 {ok, Receiver} ->
                     update_state(State, TrId,
-                        coap_exchange:received(BinMessage, TransArgs, init_transport(TrId, Receiver)));
+                        coap_exchange:received(BinMessage, TransArgs, init_exchange(TrId, Receiver)));
                 error ->
                     % token was not recognized
                     BinRST = coap_message:encode(coap_message_utils:rst(MsgId)),
@@ -287,7 +287,7 @@ make_new_message(Message, Receiver, State=#state{nextmid=MsgId}) ->
 
 make_message(TrId, Message, Receiver, State=#state{trans_args=TransArgs}) ->
     update_state(State, TrId,
-        coap_exchange:send(Message, TransArgs, create_transport(TrId, Receiver, State))).
+        coap_exchange:send(Message, TransArgs, init_exchange(TrId, Receiver))).
 
 make_new_response(Message=#coap_message{id=MsgId}, Receiver, State=#state{trans=Trans, trans_args=TransArgs}) ->
     %io:format("The response: ~p~n", [Message]),
@@ -325,15 +325,16 @@ next_mid(MsgId) ->
         true -> 1 % or 0?
     end.
 
-create_transport(TrId, Receiver, #state{trans=Trans}) ->
+% find or initialize a new exchange
+create_exchange(TrId, Receiver, #state{trans=Trans}) ->
     case maps:find(TrId, Trans) of
         {ok, TrState} -> TrState;
-        error -> init_transport(TrId, Receiver)
+        error -> init_exchange(TrId, Receiver)
     end.
 
-% init_transport(TrId, undefined) ->
+% init_exchange(TrId, undefined) ->
 %     coap_exchange:init(TrId, undefined);
-init_transport(TrId, Receiver) ->
+init_exchange(TrId, Receiver) ->
     coap_exchange:init(TrId, Receiver).
 
 update_state(State=#state{trans=Trans}, TrId, undefined) ->
