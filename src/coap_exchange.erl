@@ -234,15 +234,15 @@ await_pack({in, BinAck}, TransArgs, State=#exchange{token=Token}) ->
     	% this is an empty ack for separate response
         #coap_message{type='ACK', code=undefined} = Ack ->
             handle_ack(Ack, TransArgs, State),
-            undefined;
+            next_state(undefined, State);
             % next_state(aack_sent, State);
         #coap_message{type='RST'} = Ack ->
             handle_error(coap_message_utils:set_token(Token, Ack), 'RST', TransArgs, State),
-            undefined;
+            next_state(undefined, State);
             % next_state(aack_sent, State);
         #coap_message{} = Ack ->
         	handle_response(Ack, TransArgs, State),
-            undefined;
+            next_state(undefined, State);
             % next_state(aack_sent, State);
         % encounter format error, ignore the message
         % shall we inform the receiver?
@@ -257,8 +257,8 @@ await_pack({timeout, await_pack}, TransArgs=#{sock:=Socket, sock_mode:=Mode, ep_
     next_state(await_pack, TransArgs, State#exchange{retry_time=Timeout2, retry_count=Count+1}, Timeout2);
 await_pack({timeout, await_pack}, TransArgs, State=#exchange{trid={out, MsgId}, token=Token}) ->
     handle_error(coap_message_utils:set_token(Token, coap_message_utils:rst(MsgId)), timeout, TransArgs, State),
+    next_state(undefined, State).
     % next_state(aack_sent, State).
-    undefined.
 
 -spec aack_sent({in, binary()} | {timeout, await_pack}, coap_endpoint:trans_args(), exchange()) -> exchange().
 aack_sent({in, _Ack}, _TransArgs, State) ->
@@ -287,22 +287,22 @@ handle_request(Message=#coap_message{code=Method, options=Options},
             ok
     end;
 
-handle_request(Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={{Sender, Ref}, _}}) ->
+handle_request(Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={Sender, Ref}}) ->
     %io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
     Sender ! {coap_request, EpID, EndpointPid, Ref, Message},
     ok.
 
-handle_response(Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={{Sender, Ref}, _}}) ->
+handle_response(Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={Sender, Ref}}) ->
     %io:fwrite("handle_response called from ~p with ~p~n", [self(), Message]),    
     Sender ! {coap_response, EpID, EndpointPid, Ref, Message},
     request_complete(EndpointPid, Message).
 
-handle_error(Message, Error, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={{Sender, Ref}, _}}) ->
+handle_error(Message, Error, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={Sender, Ref}}) ->
 	%io:fwrite("handle_error called from ~p with ~p~n", [self(), Message]),
 	Sender ! {coap_error, EpID, EndpointPid, Ref, Error},
 	request_complete(EndpointPid, Message).
 
-handle_ack(_Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={{Sender, Ref}, _}}) ->
+handle_ack(_Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={Sender, Ref}}) ->
 	%io:fwrite("handle_ack called from ~p with ~p~n", [self(), _Message]),
 	Sender ! {coap_ack, EpID, EndpointPid, Ref},
 	ok.
@@ -340,6 +340,11 @@ next_state(Stage, #{endpoint_pid:=EndpointPid}, State=#exchange{trid=TrId, timer
     Timer2 = timeout_after(Timeout, EndpointPid, TrId, Stage),
     State#exchange{stage=Stage, timer=Timer2}.
 
+next_state(undefined, #exchange{timer=undefined}) ->
+    undefined;
+next_state(undefined, #exchange{timer=Timer}) ->
+    _ = erlang:cancel_timer(Timer),
+    undefined;
 next_state(Stage, State=#exchange{timer=undefined}) ->
     State#exchange{stage=Stage};
 next_state(Stage, State=#exchange{stage=Stage1, timer=Timer}) ->

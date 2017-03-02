@@ -3,7 +3,7 @@
 
 %% API.
 -export([start_link/4, start_link/3, close/1, 
-    ping/1, send/2, send_message/3, send_request/3, send_response/3, remove_token/2]).
+    ping/1, send/2, send_message/3, send_request/3, send_response/3, cancel_request/2]).
 -export([generate_token/1]).
 
 %% gen_server.
@@ -30,21 +30,24 @@
     trans_args = undefined :: trans_args(),
 	tokens = undefined :: #{binary() => receiver()},
 	trans = undefined :: #{trid() => coap_exchange:exchange()},
-	nextmid = undefined :: non_neg_integer(),
+    receivers = undefined :: undefined | #{receiver() => {binary(), trid()}},
+	nextmid = undefined :: msg_id(),
 	rescnt = undefined :: non_neg_integer(),
     handler_refs = undefined :: undefined | #{reference() => tuple()},
     timer = undefined :: reference(),
     mode = server :: server | client
 }).
 
+-type msg_id() :: 0..?MAX_MESSAGE_ID.
+-type trid() :: {in | out, msg_id()}.
+-type receiver() :: {pid(), reference()}.
 -type trans_args() :: #{sock := inet:socket(),
                         sock_mode := atom(), 
                         ep_id := ecoap_socket:coap_endpoint_id(), 
                         endpoint_pid := pid(), 
                         handler_sup => pid(),
                         handler_regs => #{tuple() => pid()}}.
--type trid() :: {in | out, non_neg_integer()}.
--type receiver() :: {{pid(), reference()}, trid()}.
+
 -opaque state() :: #state{}.
 
 -export_type([state/0]).
@@ -108,9 +111,9 @@ send_response(EndpointPid, Ref, Message) ->
     gen_server:cast(EndpointPid, {send_response, Message, {self(), Ref}}),
     {ok, Ref}.
 
--spec remove_token(pid(), binary() | reference()) -> ok.
-remove_token(EndpointPid, TokenRef) ->
-    gen_server:cast(EndpointPid, {remove_token, TokenRef}).
+-spec cancel_request(pid(), binary() | reference()) -> ok.
+cancel_request(EndpointPid, Ref) ->
+    gen_server:cast(EndpointPid, {cancel_request, {self(), Ref}}).
 
 -spec generate_token(non_neg_integer()) -> binary().
 generate_token(TKL) ->
@@ -121,7 +124,7 @@ generate_token(TKL) ->
 init([undefined, SockMode, Socket, EpID]) ->
     TRef = erlang:start_timer(?SCAN_INTERVAL, self(), scan),
     TransArgs = #{sock=>Socket, sock_mode=>SockMode, ep_id=>EpID, endpoint_pid=>self()},
-    {ok, #state{tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs, mode=client}};
+    {ok, #state{tokens=maps:new(), trans=maps:new(), receivers=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs, mode=client}};
     
 init([HdlSupPid, SockMode, Socket, EpID]) ->
     TRef = erlang:start_timer(?SCAN_INTERVAL, self(), scan),
@@ -146,9 +149,13 @@ handle_cast({register_handler, ID, Pid}, State=#state{rescnt=Count, trans_args=T
     Ref = erlang:monitor(process, Pid),
     {noreply, State#state{rescnt=Count+1, trans_args=TransArgs#{handler_regs:=maps:put(ID, Pid, Regs)}, handler_refs=maps:put(Ref, ID, Refs)}};
 % remove token manually
-handle_cast({remove_token, TokenRef}, State=#state{tokens=Tokens, trans=Trans}) ->
-    {Token, ReqTrId} = maps:fold(fun(Key, {{_, Ref}, TrId}, _) when Ref =:= TokenRef -> {Key, TrId}; (_, _, Acc) -> Acc end, {undefined, undefined}, Tokens),
-    {noreply, State#state{tokens=maps:remove(Token, Tokens), trans=maps:remove(ReqTrId, Trans)}};
+handle_cast({cancel_request, Receiver}, State=#state{tokens=Tokens, trans=Trans, receivers=Receivers}) ->
+    case maps:find(Receiver, Receivers) of
+        {ok, {Token, TrId}} ->
+            {noreply, State#state{tokens=maps:remove(Token, Tokens), trans=maps:remove(TrId, Trans), receivers=maps:remove(Receiver, Receivers)}};
+        error ->
+            {noreply, State}
+    end;
 
 handle_cast(shutdown, State) ->
     {stop, normal, State};
@@ -249,10 +256,9 @@ handle_info({timeout, TrId, Event}, State=#state{trans=Trans, trans_args=TransAr
         {ok, TrState} -> update_state(State, TrId, coap_exchange:timeout(Event, TransArgs, TrState));
         error -> {noreply, State} % ignore unexpected responses
     end;
-handle_info({request_complete, Token}, State=#state{tokens=Tokens}) ->
+handle_info({request_complete, Token}, State=#state{tokens=Tokens, receivers=Receivers}) ->
     %io:format("request_complete~n"),
-    Tokens2 = maps:remove(Token, Tokens),
-    {noreply, State#state{tokens=Tokens2}};
+    {noreply, State#state{tokens=maps:remove(Token, Tokens), receivers=maps:remove(maps:get(Token, Tokens, undefined), Receivers)}};
 % Only monitor possible observe handlers instead of every new spawned handler
 % so that we can save some extra message traffic
 handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{rescnt=Count, trans_args=TransArgs=#{handler_regs:=Regs}, handler_refs=Refs}) ->
@@ -276,12 +282,12 @@ code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
 %% Internal
-make_new_request(Message=#coap_message{token=Token}, Receiver, State=#state{tokens=Tokens, nextmid=MsgId}) ->
-    Tokens2 = maps:put(Token, {Receiver, {out, MsgId}}, Tokens),
-    make_new_message(Message, Receiver, State#state{tokens=Tokens2}).
+make_new_request(Message=#coap_message{token=Token}, Receiver, State=#state{tokens=Tokens, nextmid=MsgId, receivers=Receivers}) ->
+    Tokens2 = maps:put(Token, Receiver, Tokens),
+    make_new_message(Message, Receiver, State#state{tokens=Tokens2, receivers=maps:put(Receiver, {Token, {out, MsgId}}, Receivers)}).
 
 make_new_message(Message, Receiver, State=#state{nextmid=MsgId}) ->
-    make_message({out, MsgId}, Message#coap_message{id=MsgId}, {Receiver, {out, MsgId}}, State#state{nextmid=next_mid(MsgId)}).
+    make_message({out, MsgId}, Message#coap_message{id=MsgId}, Receiver, State#state{nextmid=next_mid(MsgId)}).
 
 make_message(TrId, Message, Receiver, State=#state{trans_args=TransArgs}) ->
     update_state(State, TrId,
