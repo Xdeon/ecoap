@@ -248,18 +248,18 @@ handle_call({cancel_async_request, Ref}, _From, State=#state{sock_pid=SockPid, r
 			% found ordinary blockwise transfer
 			#req{ep_id=EpID} = find_ref(SubRef, ReqRefs),
 			{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
-			ok = coap_endpoint:remove_token(EndpointPid, SubRef),
+			ok = coap_endpoint:cancel_request(EndpointPid, SubRef),
 			{reply, ok, State#state{req_refs=delete_ref(SubRef, ReqRefs), block_refs=delete_ref(Ref, BlockRefs)}};
 		{#req{ep_id=EpID, obs_key=Key}, undefined} ->
 			% found ordinary req or observe req without blockwise transfer
 			{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
-			ok = coap_endpoint:remove_token(EndpointPid, Ref),
+			ok = coap_endpoint:cancel_request(EndpointPid, Ref),
 			{reply, ok, State#state{req_refs=delete_ref(Ref, ReqRefs), obs_regs=delete_ref(Key, ObsRegs)}};
 		{#req{ep_id=EpID, obs_key=Key}, SubRef} ->
 			% found observe req with blockwise transfer
 			{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
-			ok = coap_endpoint:remove_token(EndpointPid, Ref),
-			ok = coap_endpoint:remove_token(EndpointPid, SubRef),
+			ok = coap_endpoint:cancel_request(EndpointPid, Ref),
+			ok = coap_endpoint:cancel_request(EndpointPid, SubRef),
 			{reply, ok, State#state{req_refs=delete_ref(Ref, delete_ref(SubRef, ReqRefs)), block_refs=delete_ref(Ref, BlockRefs), obs_regs=delete_ref(Key, ObsRegs)}}
 	end;
 
