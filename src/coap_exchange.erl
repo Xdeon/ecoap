@@ -90,15 +90,6 @@ idle(Msg={out, #coap_message{type='CON'}}, TransArgs, State=#exchange{}) ->
     out_con(Msg, TransArgs, State#exchange{expire_time=?EXCHANGE_LIFETIME}).
 
 
-%% For Non-confirmable message %%
-% As a server:
-% -> NON(REQUEST) => NON(RESPONSE)-> => end
-% -> NON(REQUEST) => NON(RESPONSE)-> => ->RST
-% As a client:
-% NON(REQUEST)-> => ->NON(RESPONSE), token is cleaned up by calling handle_response & request_complete
-% NON(REQUEST)-> => ->RST, token is cleaned up by calling handle_error & request_complete
-% NON(REQUEST)-> => ->CON(RESPONSE) => ACK(EMPTY)->, token is cleaned up by calling handle_response & request_complete, who sends the ACK?
-
 % --- incoming NON
 -spec in_non({in, binary()}, coap_endpoint:trans_args(), exchange()) -> exchange().
 in_non({in, BinMessage}, TransArgs, State) ->
@@ -210,19 +201,6 @@ pack_sent({timeout, await_aack}, _TransArgs, State) ->
 	% ignore the msg
 	next_state(pack_sent, State).
 
-
-%% For confirmable message %%
-% As a server:
-% ->CON(REQUEST) => ACK(RESPONSE)->
-% ->CON(REQUEST) => ACK(EMPTY)-> => CON(RESPONSE)-> => ->ACK(EMPTY) 
-% ->CON(REQUEST) => RST->
-% As a client:
-% CON(REQUEST)-> => ->RST, token is cleaned up by calling handle_error & request_complete
-% CON(REQUEST)-> => ->ACK(RESPONSE), token is cleaned up by calling handle_response & request_complete
-% CON(REQUEST)-> => ->ACK(EMPTY) => ->CON(RESPONSE) => ACK(EMPTY)->, token is cleaned up by calling handle_response & request_complete, ??what about the empty ACK??
-% CON(REQUEST)-> => ->ACK(EMPTY) => ->NON(RESPONSE), token is cleaned up by calling handle_response & request_complete
-% CON(REQUEST)-> => ->CON(RESPONSE) => ACK(EMPTY)-> .... => ->ACK(EMPTY) ignore out of order empty ack form server, token cleaned up by calling handle_response & request_complete
-
 % Note that, as the underlying datagram
 % transport may not be sequence-preserving, the Confirmable message
 % carrying the response may actually arrive before or after the
@@ -236,6 +214,8 @@ pack_sent({timeout, await_aack}, _TransArgs, State) ->
 % (preceded or followed by an Empty Acknowledgement message) in reply
 % to a Confirmable request, or a Confirmable response in reply to a
 % Non-confirmable request.
+
+% TODO: CON->CON does not cancel retransmission of the request
 
 % --- outgoing CON->ACK|RST
 -spec out_con({out, coap_message()}, coap_endpoint:trans_args(), exchange()) -> exchange().

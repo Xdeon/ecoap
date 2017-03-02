@@ -146,8 +146,6 @@ handle_cast({register_handler, ID, Pid}, State=#state{rescnt=Count, trans_args=T
     Ref = erlang:monitor(process, Pid),
     {noreply, State#state{rescnt=Count+1, trans_args=TransArgs#{handler_regs:=maps:put(ID, Pid, Regs)}, handler_refs=maps:put(Ref, ID, Refs)}};
 % remove token manually
-handle_cast({remove_token, Token}, State=#state{tokens=Tokens}) when is_binary(Token)->
-    {noreply, State#state{tokens=maps:remove(Token, Tokens)}};
 handle_cast({remove_token, TokenRef}, State=#state{tokens=Tokens, trans=Trans}) ->
     {Token, ReqTrId} = maps:fold(fun(Key, {{_, Ref}, TrId}, _) when Ref =:= TokenRef -> {Key, TrId}; (_, _, Acc) -> Acc end, {undefined, undefined}, Tokens),
     {noreply, State#state{tokens=maps:remove(Token, Tokens), trans=maps:remove(ReqTrId, Trans)}};
