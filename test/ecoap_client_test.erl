@@ -16,6 +16,7 @@ basic_test_() ->
 
 basic(Pid) ->
 	[
+        ?_assertEqual(ok, ecoap_client:ping(Pid, "coap://coap.me:5683")),
 		?_assertEqual({ok, 'Content', #coap_content{max_age = undefined, format = <<"text/plain">>, payload = <<"world">>}}, 
 			ecoap_client:request(Pid, 'GET', "coap://coap.me:5683/hello")),
 		?_assertEqual({error, 'InternalServerError', #coap_content{max_age = undefined, format = <<"text/plain">>, payload = <<"Oops: broken">>}}, 
