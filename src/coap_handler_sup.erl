@@ -21,8 +21,8 @@ get_handler(SupPid, HandlerID, HandlerRegs) ->
     case maps:find(HandlerID, HandlerRegs) of
         error ->          
             start_handler(SupPid, HandlerID);
-        {ok, Pid} ->
-            {ok, Pid}
+        Res ->
+            Res
     end.
 
 start_handler(SupPid, HandlerID) ->
