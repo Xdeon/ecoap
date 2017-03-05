@@ -1,7 +1,7 @@
 -module(simple_storage_test).
 -behaviour(coap_resource).
 
--export([coap_discover/2, coap_get/5, coap_post/4, coap_put/4, coap_delete/3, coap_observe/5, coap_unobserve/1, handle_info/2, coap_ack/2]).
+-export([coap_discover/2, coap_get/5, coap_post/4, coap_put/4, coap_delete/4, coap_observe/4, coap_unobserve/1, handle_info/2, coap_ack/2]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("ecoap_common/include/coap_def.hrl").
@@ -12,22 +12,23 @@
 coap_discover(Prefix, _Args) ->
     [{absolute, Prefix, []}].
 
-coap_get(_EpId, _Prefix, [Name], _Query, _Accept) ->
+coap_get(_EpId, _Prefix, [Name], _Query, _Request) ->
     case mnesia:dirty_read(resources, Name) of
         [{resources, Name, Resource}] -> Resource;
         [] -> {error, 'NotFound'}
     end.
 
-coap_post(_EpId, _Prefix, _Suffix, _Content) ->
+coap_post(_EpId, _Prefix, _Suffix, _Request) ->
     {error, 'MethodNotAllowed', ?NOT_IMPLEMENTED}.
 
-coap_put(_EpId, _Prefix, [Name], Content) ->
+coap_put(_EpId, _Prefix, [Name], Request) ->    
+    Content = coap_utils:get_content(Request),
     mnesia:dirty_write(resources, {resources, Name, Content}).
 
-coap_delete(_EpId, _Prefix, [Name]) ->
+coap_delete(_EpId, _Prefix, [Name], _Request) ->
     mnesia:dirty_delete(resources, Name).
 
-coap_observe(_EpId, _Prefix, _Suffix, _Ack, _Accept) -> {error, 'MethodNotAllowed'}.
+coap_observe(_EpId, _Prefix, _Suffix, _Request) -> {error, 'MethodNotAllowed'}.
 coap_unobserve(_State) -> ok.
 handle_info(_Message, State) -> {noreply, State}.
 coap_ack(_Ref, State) -> {ok, State}.

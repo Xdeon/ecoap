@@ -38,7 +38,6 @@
     mode = server :: server | client
 }).
 
--type msg_id() :: 0..?MAX_MESSAGE_ID.
 -type trid() :: {in | out, msg_id()}.
 -type receiver() :: {pid(), reference()}.
 -type trans_args() :: #{sock := inet:socket(),
@@ -208,7 +207,7 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgI
                         coap_exchange:received(BinMessage, TransArgs, init_exchange(TrId, Receiver)));
                 error ->
                     % token was not recognized
-                    BinRST = coap_message:encode(coap_message_utils:rst(MsgId)),
+                    BinRST = coap_message:encode(coap_utils:rst(MsgId)),
                     %io:format("<- reset~n"),
                     ok = coap_exchange:send_datagram(Mode, Socket, EpID, BinRST),
                     {noreply, State}

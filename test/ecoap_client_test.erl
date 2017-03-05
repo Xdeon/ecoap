@@ -21,8 +21,8 @@ basic(Pid) ->
 			ecoap_client:request(Pid, 'GET', "coap://coap.me:5683/hello")),
 		?_assertEqual({error, 'InternalServerError', #coap_content{max_age = undefined, format = <<"text/plain">>, payload = <<"Oops: broken">>}}, 
 			ecoap_client:request(Pid, 'GET', "coap://coap.me:5683/broken")),
-        ?_assertEqual({ok, 'Created', #coap_content{max_age = undefined, location = [<<"large-create">>]}},
-            ecoap_client:request(Pid, 'POST', "coap://coap.me:5683/large-create", <<"Test">>)),
+        % ?_assertEqual({ok, 'Created', #coap_content{max_age = undefined, location = [<<"large-create">>]}},
+        %     ecoap_client:request(Pid, 'POST', "coap://coap.me:5683/large-create", <<"Test">>)),
         ?_assertEqual({ok, 'Changed', #coap_content{max_age = undefined}}, 
             ecoap_client:request(Pid, 'PUT', "coap://coap.me:5683/large-update", <<"Test">>)),
         ?_assertEqual({ok, 'Deleted', #coap_content{max_age = undefined, format = <<"text/plain">>, payload = <<"DELETE OK">>}}, 
@@ -63,7 +63,7 @@ blockwise(Pid) ->
 % verify that ecoap_client clean up state in this case
 error_while_observe_block({Server, Client}) ->
     _ = spawn_link(ecoap_client, observe, [Client, "coap://localhost:5683/test"]),
-    ExpectReq = coap_message_utils:request('CON', 'GET', <<>>, [{'Uri-Path', [<<"test">>]}, {'Observe', 0}]),
+    ExpectReq = coap_utils:request('CON', 'GET', <<>>, [{'Uri-Path', [<<"test">>]}, {'Observe', 0}]),
     timer:sleep(50),
     {match, BlockReqMsgId, BlockReqToken} = server_stub:expect_request(Server, ExpectReq),
     server_stub:send_response(Server, 
