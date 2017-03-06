@@ -61,33 +61,33 @@ simple_storage_test(Client) ->
         ecoap_client:request(Client, 'GET', "coap://127.0.0.1/storage/one")),
 
     ?_assertEqual({error, 'MethodNotAllowed', #coap_content{payload=?NOT_IMPLEMENTED}},
-        ecoap_client:request(Client, 'POST', "coap://127.0.0.1/storage/one", #coap_content{})),
+        ecoap_client:request(Client, 'POST', "coap://127.0.0.1/storage/one", <<>>)),
 
     ?_assertEqual({ok, 'Created', #coap_content{}},
         ecoap_client:request(Client, 'PUT', "coap://127.0.0.1/storage/one",
-            #coap_content{etag= <<"1">>, payload= <<"1">>}, [{'If-None-Match', true}])),
+            <<"1">>, [{'ETag', [<<"1">>]}, {'If-None-Match', true}])),
 
     ?_assertEqual({error, 'PreconditionFailed'},
         ecoap_client:request(Client, 'PUT', "coap://127.0.0.1/storage/one",
-            #coap_content{etag= <<"1">>, payload= <<"1">>}, [{'If-None-Match', true}])),
+            <<"1">>, [{'ETag', [<<"1">>]}, {'If-None-Match', true}])),
 
     ?_assertEqual({ok, 'Content', #coap_content{etag= <<"1">>, payload= <<"1">>}},
         ecoap_client:request(Client, 'GET', "coap://127.0.0.1/storage/one")),
 
     ?_assertEqual({ok, 'Valid', #coap_content{etag= <<"1">>}},
         ecoap_client:request(Client, 'GET', "coap://127.0.0.1/storage/one",
-            #coap_content{}, [{'ETag', [<<"1">>]}])),
+            <<>>, [{'ETag', [<<"1">>]}])),
 
     ?_assertEqual({ok, 'Changed', #coap_content{}},
-        ecoap_client:request(Client, 'PUT', "coap://127.0.0.1/storage/one",
-            #coap_content{etag= <<"2">>, payload= <<"2">>})),
+        ecoap_client:request(Client, 'PUT', "coap://127.0.0.1/storage/one", 
+            <<"2">>, [{'ETag', [<<"2">>]}])),
 
     ?_assertEqual({ok, 'Content', #coap_content{etag= <<"2">>, payload= <<"2">>}},
         ecoap_client:request(Client, 'GET', "coap://127.0.0.1/storage/one")),
 
     ?_assertEqual({ok, 'Content', #coap_content{etag= <<"2">>, payload= <<"2">>}},
         ecoap_client:request(Client, 'GET', "coap://127.0.0.1/storage/one",
-            #coap_content{}, [{'ETag', [<<"1">>]}])),
+            <<>>, [{'ETag', [<<"1">>]}])),
 
     % observe existing resource when coap_observe is not implemented
     ?_assertEqual({ok, 'Content', #coap_content{etag= <<"2">>, payload= <<"2">>}},
@@ -95,7 +95,7 @@ simple_storage_test(Client) ->
 
     ?_assertEqual({ok, 'Valid', #coap_content{etag= <<"2">>}},
         ecoap_client:request(Client, 'GET', "coap://127.0.0.1/storage/one",
-            #coap_content{}, [{'ETag', [<<"1">>, <<"2">>]}])),
+            <<>>, [{'ETag', [<<"1">>, <<"2">>]}])),
 
     ?_assertEqual({ok, 'Deleted', #coap_content{}},
         ecoap_client:request(Client, 'DELETE', "coap://127.0.0.1/storage/one")),
