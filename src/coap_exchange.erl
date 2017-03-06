@@ -117,14 +117,14 @@ out_non({out, Message}, #{sock:=Socket, sock_mode:=Mode, ep_id:=EpID}, State) ->
     %io:fwrite("~p send outgoing non msg ~p~n", [self(), Message]),
     BinMessage = coap_message:encode(Message),
     ok = send_datagram(Mode, Socket, EpID, BinMessage),
-    check_next_state(sent_non, State#exchange{token=coap_message_utils:get_token(Message)}).
+    check_next_state(sent_non, State#exchange{token=coap_utils:get_token(Message)}).
 
 % we may get reset
 -spec sent_non({in, binary()}, coap_endpoint:trans_args(), exchange()) -> exchange().
 sent_non({in, BinMessage}, TransArgs, State=#exchange{token=Token})->
     case catch coap_message:decode(BinMessage) of
         #coap_message{type='RST'} = Message ->
-            handle_error(coap_message_utils:set_token(Token, Message), 'RST', TransArgs, State),
+            handle_error(coap_utils:set_token(Token, Message), 'RST', TransArgs, State),
             next_state(got_rst, State);
         % ignore other response
         #coap_message{} -> 
@@ -144,7 +144,7 @@ in_con({in, BinMessage}, TransArgs, State) ->
     case catch coap_message:decode(BinMessage) of
         #coap_message{code=undefined, id=MsgId} ->
             % provoked reset
-            go_rst_sent(coap_message_utils:rst(MsgId), TransArgs, State);
+            go_rst_sent(coap_utils:rst(MsgId), TransArgs, State);
         #coap_message{code=Method} = Message when is_atom(Method) ->
             handle_request(Message, TransArgs, State),
             go_await_aack(Message, TransArgs, State);
@@ -158,7 +158,7 @@ in_con({in, BinMessage}, TransArgs, State) ->
 -spec go_await_aack(coap_message(), coap_endpoint:trans_args(), exchange()) -> exchange().
 go_await_aack(Message, TransArgs, State) ->
     % we may need to ack the message
-    EmptyACK = coap_message_utils:ack(Message),
+    EmptyACK = coap_utils:ack(Message),
     BinAck = coap_message:encode(EmptyACK),
     next_state(await_aack, TransArgs, State#exchange{msgbin=BinAck}, ?PROCESSING_DELAY).
 
@@ -227,7 +227,7 @@ out_con({out, Message}, TransArgs=#{sock:=Socket, sock_mode:=Mode, ep_id:=EpID},
     ok = send_datagram(Mode, Socket, EpID, BinMessage),
     % _ = rand:seed(exs1024),
     Timeout = ?ACK_TIMEOUT+rand:uniform(?ACK_RANDOM_FACTOR),
-    next_state(await_pack, TransArgs, State#exchange{msgbin=BinMessage, token=coap_message_utils:get_token(Message), retry_time=Timeout, retry_count=0}, Timeout).
+    next_state(await_pack, TransArgs, State#exchange{msgbin=BinMessage, token=coap_utils:get_token(Message), retry_time=Timeout, retry_count=0}, Timeout).
 
 % peer ack
 -spec await_pack({in, binary()} | {timeout, await_pack}, coap_endpoint:trans_args(), exchange()) -> exchange().
@@ -239,7 +239,7 @@ await_pack({in, BinAck}, TransArgs, State=#exchange{token=Token}) ->
             next_state(undefined, State);
             % next_state(aack_sent, State);
         #coap_message{type='RST'} = Ack ->
-            handle_error(coap_message_utils:set_token(Token, Ack), 'RST', TransArgs, State),
+            handle_error(coap_utils:set_token(Token, Ack), 'RST', TransArgs, State),
             next_state(undefined, State);
             % next_state(aack_sent, State);
         #coap_message{} = Ack ->
@@ -258,7 +258,7 @@ await_pack({timeout, await_pack}, TransArgs=#{sock:=Socket, sock_mode:=Mode, ep_
     Timeout2 = Timeout*2,
     next_state(await_pack, TransArgs, State#exchange{retry_time=Timeout2, retry_count=Count+1}, Timeout2);
 await_pack({timeout, await_pack}, TransArgs, State=#exchange{trid={out, MsgId}, token=Token}) ->
-    handle_error(coap_message_utils:set_token(Token, coap_message_utils:rst(MsgId)), timeout, TransArgs, State),
+    handle_error(coap_utils:set_token(Token, coap_utils:rst(MsgId)), timeout, TransArgs, State),
     next_state(undefined, State).
     % next_state(aack_sent, State).
 
@@ -277,15 +277,15 @@ handle_request(Message=#coap_message{code=Method, options=Options},
     #{ep_id:=EpID, handler_sup:=HdlSupPid, endpoint_pid:=EndpointPid, handler_regs:=HandlerRegs}, 
     #exchange{receiver=undefined}) ->
     %io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
-    Uri = coap_message_utils:get_option('Uri-Path', Options, []),
-    Query = coap_message_utils:get_option('Uri-Query', Options, []),
+    Uri = coap_utils:get_option('Uri-Path', Options, []),
+    Query = coap_utils:get_option('Uri-Query', Options, []),
     case coap_handler_sup:get_handler(HdlSupPid, {Method, Uri, Query}, HandlerRegs) of
         {ok, Pid} ->
             Pid ! {coap_request, EpID, EndpointPid, undefined, Message},
             ok;
         {error, 'NotFound'} ->
         	{ok, _} = coap_endpoint:send(EndpointPid,
-                coap_message_utils:response({error, 'NotFound'}, Message)),
+                coap_utils:response({error, 'NotFound'}, Message)),
             ok
     end;
 
@@ -310,7 +310,7 @@ handle_ack(_Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiv
 	ok.
 
 request_complete(EndpointPid, #coap_message{token=Token, options=Options}) ->
-    case coap_message_utils:get_option('Observe', Options) of
+    case coap_utils:get_option('Observe', Options) of
         undefined ->
             EndpointPid ! {request_complete, Token},
             ok;

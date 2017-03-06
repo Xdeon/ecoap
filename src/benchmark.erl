@@ -1,5 +1,5 @@
 -module(benchmark).
--export([coap_discover/2, coap_get/5, coap_post/4, coap_put/4, coap_delete/3, coap_observe/5, coap_unobserve/1, handle_info/2, coap_ack/2]).
+-export([coap_discover/2, coap_get/5, coap_post/4, coap_put/4, coap_delete/4, coap_observe/4, coap_unobserve/1, handle_info/2, coap_ack/2]).
 -export([start/0, stop/0]).
 -export([fib/1]).
 
@@ -21,11 +21,11 @@ stop() ->
 coap_discover(Prefix, _Args) ->
     [{absolute, Prefix, []}].
 
-coap_get(_EpID, [<<"benchmark">>], _Name, _Query, _Accept) ->
+coap_get(_EpID, [<<"benchmark">>], _Name, _Query, _Request) ->
     #coap_content{payload = <<"hello world">>};
-coap_get(_EpID, [<<"fibonacci">>], _Name, [], _Accept) ->
+coap_get(_EpID, [<<"fibonacci">>], _Name, [], _Request) ->
     #coap_content{payload = <<"fibonacci(20) = ", (integer_to_binary(fib(20)))/binary>>};
-coap_get(_EpID, [<<"fibonacci">>], _Name, [Query|_], _Accept) ->
+coap_get(_EpID, [<<"fibonacci">>], _Name, [Query|_], _Request) ->
     Num = case re:run(Query, "^n=[0-9]+") of
         {match, [{Pos, Len}]} ->
             binary_to_integer(lists:nth(2, binary:split(binary:part(Query, Pos, Len), <<"=">>)));
@@ -33,26 +33,26 @@ coap_get(_EpID, [<<"fibonacci">>], _Name, [Query|_], _Accept) ->
             20
     end,
     #coap_content{payload= <<"fibonacci(", (integer_to_binary(Num))/binary, ") = ", (integer_to_binary(fib(Num)))/binary>>};
-coap_get(_EpID, [<<"helloWorld">>], _Name, _Query, _Accept) ->
+coap_get(_EpID, [<<"helloWorld">>], _Name, _Query, _Request) ->
     #coap_content{payload = <<"Hello World!">>, format = 0};
-coap_get(_EpID, [<<"shutdown">>], _Name, _Query, _Accept) ->
+coap_get(_EpID, [<<"shutdown">>], _Name, _Query, _Request) ->
     #coap_content{payload = <<"Send a POST request to this resource to shutdown the server">>};
-coap_get(_EpID, _Prefix, _Name, _Query, _Accept) ->
+coap_get(_EpID, _Prefix, _Name, _Query, _Request) ->
     {error, 'NotFound'}.
 
-coap_post(_EpID, [<<"shutdown">>], _Name, _Content) ->
+coap_post(_EpID, [<<"shutdown">>], _Name, _Request) ->
     _ = spawn(fun() -> io:format("Shutting down everything in 1 second~n"), timer:sleep(1000), benchmark:stop() end),
     {ok, 'Changed', #coap_content{payload = <<"Shutting down">>}};
-coap_post(_EpID, _Prefix, _Name, _Content) ->
+coap_post(_EpID, _Prefix, _Name, _Request) ->
     {error, 'MethodNotAllowed'}.
 
-coap_put(_EpID, _Prefix, _Name, _Content) ->
+coap_put(_EpID, _Prefix, _Name, _Request) ->
     {error, 'MethodNotAllowed'}.
 
-coap_delete(_EpID, _Prefix, _Name) ->
+coap_delete(_EpID, _Prefix, _Name, _Request) ->
     {error, 'MethodNotAllowed'}.
 
-coap_observe(_EpID, _Prefix, _Name, _Ack, _Accept) ->
+coap_observe(_EpID, _Prefix, _Name, _Request) ->
     {error, 'MethodNotAllowed'}.
 
 coap_unobserve(_Obstate) ->

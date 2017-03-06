@@ -136,31 +136,31 @@ send_request(Pid, EpID, Req) ->
 
 assemble_request(Method, Uri, Options, Content) ->
 	{EpID, Path, Query} = resolve_uri(Uri),
-	Options2 = coap_message_utils:append_option('Uri-Query', Query, coap_message_utils:append_option('Uri-Path', Path, Options)),
+	Options2 = coap_utils:append_option('Uri-Query', Query, coap_utils:append_option('Uri-Path', Path, Options)),
 	{EpID, {Method, Options2, convert_content(Content)}}.
 
 request_block(EndpointPid, Method, ROpt, Content) ->
     request_block(EndpointPid, Method, ROpt, undefined, Content).
 
 request_block(EndpointPid, Method, ROpt, Block1, Content) ->
-    coap_endpoint:send(EndpointPid, coap_message_utils:set_content(Content, Block1,
-        coap_message_utils:request('CON', Method, <<>>, ROpt))).
+    coap_endpoint:send(EndpointPid, coap_utils:set_content(Content, Block1,
+        coap_utils:request('CON', Method, <<>>, ROpt))).
 
 handle_response(EndpointPid, _Message=#coap_message{code={ok, 'Continue'}, options=Options1}, 
 	State=#state{req=#req{method=Method, options=Options2, content=Content}}) ->
-	{Num, true, Size} = coap_message_utils:get_option('Block1', Options1),
+	{Num, true, Size} = coap_utils:get_option('Block1', Options1),
 	{ok, Ref2} = request_block(EndpointPid, Method, Options2, {Num+1, false, Size}, Content),
 	{noreply, State#state{ref=Ref2}};
 
 handle_response(EndpointPid, Message=#coap_message{code={ok, Code}, options=Options1, payload=Data}, 
 	State=#state{endpoint_pid=EndpointPid, 
 		req=Req=#req{method=Method, options=Options2, fragment=Fragment}, from=From}) ->
-	case coap_message_utils:get_option('Block2', Options1) of
+	case coap_utils:get_option('Block2', Options1) of
         {Num, true, Size} ->
          	% more blocks follow, ask for more
             % no payload for requests with Block2 with NUM != 0
         	{ok, Ref2} = coap_endpoint:send(EndpointPid,
-            	coap_message_utils:request('CON', Method, <<>>, coap_message_utils:append_option('Block2', {Num+1, false, Size}, Options2))),
+            	coap_utils:request('CON', Method, <<>>, coap_utils:append_option('Block2', {Num+1, false, Size}, Options2))),
 				{noreply, State#state{ref=Ref2, req=Req#req{fragment= <<Fragment/binary, Data/binary>>}}};
 		 _Else ->
 		 	Res = return_response({ok, Code}, Message#coap_message{payload= <<Fragment/binary, Data/binary>>}),
@@ -179,11 +179,11 @@ send_response(From, Res) ->
 	ok.
 
 return_response({ok, Code}, Message) ->
-    {ok, Code, coap_message_utils:get_content(Message)};
+    {ok, Code, coap_utils:get_content(Message)};
 return_response({error, Code}, #coap_message{payload= <<>>}) ->
     {error, Code};
 return_response({error, Code}, Message) ->
-    {error, Code, coap_message_utils:get_content(Message)}.
+    {error, Code, coap_utils:get_content(Message)}.
 
 close_transport(SockPid, EndpointPid) ->
 	coap_endpoint:close(EndpointPid),

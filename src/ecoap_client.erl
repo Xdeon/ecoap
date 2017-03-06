@@ -99,8 +99,8 @@ observe(Pid, Uri) ->
 
 -spec observe(pid(), list(), optionset()) -> observe_response().
 observe(Pid, Uri, Options) ->
-	{EpID, Req} = assemble_request('GET', Uri, coap_message_utils:append_option('Observe', 0, Options), <<>>),
-	Accpet = coap_message_utils:get_option('Accpet', Options),
+	{EpID, Req} = assemble_request('GET', Uri, coap_utils:append_option('Observe', 0, Options), <<>>),
+	Accpet = coap_utils:get_option('Accpet', Options),
 	Key = {Uri, Accpet},
 	MonitorRef = erlang:monitor(process, Pid),
 	{ok, ClientRef} = gen_server:call(Pid, {start_observe, Key, EpID, Req, self()}),
@@ -198,7 +198,7 @@ get_reqrefs(Pid) -> gen_server:call(Pid, get_reqrefs).
 
 assemble_request(Method, Uri, Options, Content) ->
 	{EpID, Path, Query} = resolve_uri(Uri),
-	Options2 = coap_message_utils:append_option('Uri-Query', Query, coap_message_utils:append_option('Uri-Path', Path, Options)),
+	Options2 = coap_utils:append_option('Uri-Query', Query, coap_utils:append_option('Uri-Path', Path, Options)),
 	{EpID, {Method, Options2, convert_content(Content)}}.
 
 send_request(Pid, EpID, Req, ClientPid) ->
@@ -272,9 +272,9 @@ handle_call({start_observe, Key, EpID, {Method, Options, _Content}, ClientPid}, 
 			end,
 	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
 	{ok, Ref} = coap_endpoint:send(EndpointPid,  
-					coap_message_utils:set_token(Token,
-						coap_message_utils:request(Type, Method, <<>>, Options))),	
-	Options2 = coap_message_utils:remove_option('Observe', Options),
+					coap_utils:set_token(Token,
+						coap_utils:request(Type, Method, <<>>, Options))),	
+	Options2 = coap_utils:remove_option('Observe', Options),
 	Req = #req{method=Method, options=Options2, token=Token, client_ref=Ref, client_pid=ClientPid, obs_key=Key, ep_id=EpID},
 	{reply, {ok, Ref}, State#state{obs_regs=store_ref(Key, Ref, ObsRegs), req_refs=store_ref(Ref, Req, delete_ref(OldRef, ReqRefs))}};
 
@@ -282,12 +282,12 @@ handle_call({cancel_observe, Ref, ETag}, _From, State=#state{sock_pid=SockPid, r
 	case find_ref(Ref, ReqRefs) of
 		undefined -> {reply, {error, no_observe}, State};
 		#req{method=Method, options=Options, token=Token, obs_key=Key, ep_id=EpID, client_pid=ClientPid} ->
-			Options2 = coap_message_utils:put_option('ETag', [ETag], Options),
+			Options2 = coap_utils:put_option('ETag', [ETag], Options),
 			{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
 			{ok, Ref2} = coap_endpoint:send(EndpointPid,  
-							coap_message_utils:set_token(Token, 
-								coap_message_utils:request(Type, Method, <<>>, Options2))),
-			Options3 = coap_message_utils:remove_option('Observe', Options2),
+							coap_utils:set_token(Token, 
+								coap_utils:request(Type, Method, <<>>, Options2))),
+			Options3 = coap_utils:remove_option('Observe', Options2),
 			Req = #req{method=Method, options=Options3, token=Token, client_ref=Ref2, client_pid=ClientPid, ep_id=EpID},
 			{reply, {ok, Ref2}, State#state{obs_regs=delete_ref(Key, ObsRegs), req_refs=store_ref(Ref2, Req, delete_ref(Ref, ReqRefs))}}
 	end;
@@ -312,7 +312,7 @@ handle_cast(_Msg, State) ->
 
 % response arrived as a separate CON msg
 handle_info({coap_response, _EpID, EndpointPid, Ref, Message=#coap_message{type='CON'}}, State) ->
-	{ok, _} = coap_endpoint:send(EndpointPid, coap_message_utils:ack(Message)),
+	{ok, _} = coap_endpoint:send(EndpointPid, coap_utils:ack(Message)),
 	handle_response(Ref, EndpointPid, Message, State);
 
 handle_info({coap_response, _EpID, EndpointPid, Ref, Message}, State) ->
@@ -343,8 +343,8 @@ request_block(EndpointPid, Type, Method, ROpt, Content) ->
     request_block(EndpointPid, Type, Method, ROpt, undefined, Content).
 
 request_block(EndpointPid, Type, Method, ROpt, Block1, Content) ->
-    coap_endpoint:send(EndpointPid, coap_message_utils:set_content(Content, Block1,
-        coap_message_utils:request(Type, Method, <<>>, ROpt))).
+    coap_endpoint:send(EndpointPid, coap_utils:set_content(Content, Block1,
+        coap_utils:request(Type, Method, <<>>, ROpt))).
 
 % TODO (Solved):
 % what happens if we can not detect an already ongoing blockwise transfer for a notification 
@@ -390,7 +390,7 @@ handle_response(Ref, EndpointPid, _Message=#coap_message{code={ok, 'Continue'}, 
 	case find_ref(Ref, ReqRefs) of
 		undefined -> {noreply, State};
 		#req{method=Method, options=Options2, content=Content} = Req ->
-			{Num, true, Size} = coap_message_utils:get_option('Block1', Options1),
+			{Num, true, Size} = coap_utils:get_option('Block1', Options1),
 			{ok, Ref2} = request_block(EndpointPid, Type, Method, Options2, {Num+1, false, Size}, Content),
 			{noreply, State#state{req_refs=store_ref(Ref2, Req, delete_ref(Ref, ReqRefs))}}
 	end;
@@ -403,14 +403,14 @@ handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options
 			{noreply, State};
 		#req{method=Method, options=Options2, fragment=Fragment, client_ref=ClientRef, 
 			client_pid=ClientPid, from=From, block_obseq=Obseq, ongoing_block=OngoingBlock} = Req ->
-			case coap_message_utils:get_option('Block2', Options1) of
+			case coap_utils:get_option('Block2', Options1) of
 		        {Num, true, Size} ->
 		            % more blocks follow, ask for more
 		            % no payload for requests with Block2 with NUM != 0
 		            {ok, Ref2} = coap_endpoint:send(EndpointPid,
-		            	coap_message_utils:request(Type, Method, <<>>, coap_message_utils:append_option('Block2', {Num+1, false, Size}, Options2))),
+		            	coap_utils:request(Type, Method, <<>>, coap_utils:append_option('Block2', {Num+1, false, Size}, Options2))),
 		            NewFragment = <<Fragment/binary, Data/binary>>,
-		            case coap_message_utils:get_option('Observe', Options1) of
+		            case coap_utils:get_option('Observe', Options1) of
 		            	undefined ->
 		            		% We need to clean up intermediate requests info during a blockwise transfer and only keep the newest one
 		            		{noreply, State#state{req_refs=store_ref(Ref2, Req#req{fragment=NewFragment, ongoing_block=Ref2}, delete_ref(Ref, ReqRefs)), block_refs=update_block_refs(ClientRef, Ref2, BlockRefs)}};
@@ -426,7 +426,7 @@ handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options
 		        _Else ->
 		            % not segmented
 		            Res = return_response({ok, Code}, Message#coap_message{payload= <<Fragment/binary, Data/binary>>}),
-			        case coap_message_utils:get_option('Observe', Options1) of
+			        case coap_utils:get_option('Observe', Options1) of
 			        	undefined ->
 			        		% It will be a blockwise transfer observe notification if Obseq is not undefined
 			        		case Obseq of
@@ -499,11 +499,11 @@ send_response(From, _, _, Res) ->
     ok.
 
 return_response({ok, Code}, Message) ->
-    {ok, Code, coap_message_utils:get_content(Message)};
+    {ok, Code, coap_utils:get_content(Message)};
 return_response({error, Code}, #coap_message{payload= <<>>}) ->
     {error, Code};
 return_response({error, Code}, Message) ->
-    {error, Code, coap_message_utils:get_content(Message)}.
+    {error, Code, coap_utils:get_content(Message)}.
 
 convert_content(Content = #coap_content{}) -> Content;
 convert_content(Content) when is_binary(Content) -> #coap_content{payload=Content};
