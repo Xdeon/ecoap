@@ -3,7 +3,7 @@
 
 %% API.
 -export([start_link/4, start_link/3, close/1, 
-    ping/1, send/2, send_message/3, send_request/3, send_response/3, cancel_request/2]).
+        ping/1, send/2, send_message/3, send_request/3, send_response/3, cancel_request/2]).
 -export([generate_token/1]).
 
 %% gen_server.
@@ -110,7 +110,7 @@ send_response(EndpointPid, Ref, Message) ->
     gen_server:cast(EndpointPid, {send_response, Message, {self(), Ref}}),
     {ok, Ref}.
 
--spec cancel_request(pid(), binary() | reference()) -> ok.
+-spec cancel_request(pid(), reference()) -> ok.
 cancel_request(EndpointPid, Ref) ->
     gen_server:cast(EndpointPid, {cancel_request, {self(), Ref}}).
 
@@ -147,7 +147,7 @@ handle_cast({register_handler, ID, Pid}, State=#state{rescnt=Count, trans_args=T
     io:format("register_handler ~p for ~p~n", [Pid, ID]),
     Ref = erlang:monitor(process, Pid),
     {noreply, State#state{rescnt=Count+1, trans_args=TransArgs#{handler_regs:=maps:put(ID, Pid, Regs)}, handler_refs=maps:put(Ref, ID, Refs)}};
-% remove token manually
+% cancel request include removing token, request exchange state and receiver reference
 handle_cast({cancel_request, Receiver}, State=#state{tokens=Tokens, trans=Trans, receivers=Receivers}) ->
     case maps:find(Receiver, Receivers) of
         {ok, {Token, TrId}} ->

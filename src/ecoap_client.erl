@@ -265,12 +265,15 @@ handle_call({cancel_async_request, Ref}, _From, State=#state{sock_pid=SockPid, r
 
 handle_call({start_observe, Key, EpID, {Method, Options, _Content}, ClientPid}, _From,
 	State=#state{sock_pid=SockPid, req_refs=ReqRefs, obs_regs=ObsRegs, msg_type=Type}) ->
+	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
 	OldRef = find_ref(Key, ObsRegs),
 	Token = case find_ref(OldRef, ReqRefs) of
-				undefined -> coap_endpoint:generate_token(?TOKEN_LENGTH);
-				#req{token=OldToken} -> OldToken
+				undefined -> 
+					coap_endpoint:generate_token(?TOKEN_LENGTH);
+				#req{token=OldToken} -> 
+					ok = coap_endpoint:cancel_request(EndpointPid, OldRef),
+					OldToken
 			end,
-	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
 	{ok, Ref} = coap_endpoint:send(EndpointPid,  
 					coap_utils:set_token(Token,
 						coap_utils:request(Type, Method, <<>>, Options))),	
