@@ -54,7 +54,7 @@
 
 -type from() :: {pid(), term()}.
 -type req() :: #req{}.
--type request_content() :: coap_content() | binary() | list().
+-type request_content() :: binary().
 -type response() :: {ok, success_code(), coap_content()} | {error, error_code()} | {error, error_code(), coap_content()} | {separate, reference()}.
 -type observe_response() :: {reference(), non_neg_integer(), response()} | response().
 -type observe_key() :: {list(), atom() | non_neg_integer()}.
@@ -153,7 +153,7 @@ unobserve(Pid, Ref, ETag) ->
 
 -spec request(pid(), coap_method(), list()) -> response().
 request(Pid, Method, Uri) ->
-	request(Pid, Method, Uri, #coap_content{}, []).
+	request(Pid, Method, Uri, <<>>, []).
 
 -spec request(pid(), coap_method(), list(), request_content()) -> response().
 request(Pid, Method, Uri, Content) -> 
@@ -166,7 +166,7 @@ request(Pid, Method, Uri, Content, Options) ->
 
 -spec async_request(pid(), coap_method(), list()) -> {ok, reference()}.
 async_request(Pid, Method, Uri) ->
-	async_request(Pid, Method, Uri, #coap_content{}, []).
+	async_request(Pid, Method, Uri, <<>>, []).
 
 -spec async_request(pid(), coap_method(), list(), request_content()) -> {ok, reference()}.
 async_request(Pid, Method, Uri, Content) -> 
@@ -199,7 +199,7 @@ get_reqrefs(Pid) -> gen_server:call(Pid, get_reqrefs).
 assemble_request(Method, Uri, Options, Content) ->
 	{EpID, Path, Query} = resolve_uri(Uri),
 	Options2 = coap_utils:append_option('Uri-Query', Query, coap_utils:append_option('Uri-Path', Path, Options)),
-	{EpID, {Method, Options2, convert_content(Content)}}.
+	{EpID, {Method, Options2, #coap_content{payload=Content}}}.
 
 send_request(Pid, EpID, Req, ClientPid) ->
 	% set timeout to infinity because coap_endpoint will always return a response, 
@@ -504,10 +504,6 @@ return_response({error, Code}, #coap_message{payload= <<>>}) ->
     {error, Code};
 return_response({error, Code}, Message) ->
     {error, Code, coap_utils:get_full_content(Message)}.
-
-convert_content(Content = #coap_content{}) -> Content;
-convert_content(Content) when is_binary(Content) -> #coap_content{payload=Content};
-convert_content(Content) when is_list(Content) -> #coap_content{payload=list_to_binary(Content)}.
 
 resolve_uri(Uri) ->
     {ok, {_Scheme, _UserInfo, Host, PortNo, Path, Query}} =

@@ -41,8 +41,10 @@
 
 -type from() :: {pid(), term()}.
 -type req() :: #req{}.
--type request_content() :: coap_content() | binary() | list().
+-type request_content() :: binary().
 -type response() :: {ok, success_code(), coap_content()} | {error, error_code()} | {error, error_code(), coap_content()} | {separate, reference()}.
+-opaque state() :: #state{}.
+-export_type([state/0]).
 
 -include_lib("ecoap_common/include/coap_def.hrl").
 
@@ -69,7 +71,7 @@ ping(Uri) ->
 
 -spec request(coap_method(), list()) -> response().
 request(Method, Uri) ->
-	request(Method, Uri, #coap_content{}, []).
+	request(Method, Uri, <<>>, []).
 
 -spec request(coap_method(), list(), request_content()) -> response().
 request(Method, Uri, Content) ->
@@ -137,7 +139,7 @@ send_request(Pid, EpID, Req) ->
 assemble_request(Method, Uri, Options, Content) ->
 	{EpID, Path, Query} = resolve_uri(Uri),
 	Options2 = coap_utils:append_option('Uri-Query', Query, coap_utils:append_option('Uri-Path', Path, Options)),
-	{EpID, {Method, Options2, convert_content(Content)}}.
+	{EpID, {Method, Options2, #coap_content{payload=Content}}}.
 
 request_block(EndpointPid, Method, ROpt, Content) ->
     request_block(EndpointPid, Method, ROpt, undefined, Content).
@@ -188,10 +190,6 @@ return_response({error, Code}, Message) ->
 close_transport(SockPid, EndpointPid) ->
 	coap_endpoint:close(EndpointPid),
 	ecoap_socket:close(SockPid).
-
-convert_content(Content = #coap_content{}) -> Content;
-convert_content(Content) when is_binary(Content) -> #coap_content{payload=Content};
-convert_content(Content) when is_list(Content) -> #coap_content{payload=list_to_binary(Content)}.
 
 resolve_uri(Uri) ->
     {ok, {_Scheme, _UserInfo, Host, PortNo, Path, Query}} =
