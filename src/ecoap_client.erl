@@ -265,15 +265,12 @@ handle_call({cancel_async_request, Ref}, _From, State=#state{sock_pid=SockPid, r
 
 handle_call({start_observe, Key, EpID, {Method, Options, _Content}, ClientPid}, _From,
 	State=#state{sock_pid=SockPid, req_refs=ReqRefs, obs_regs=ObsRegs, msg_type=Type}) ->
-	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
 	OldRef = find_ref(Key, ObsRegs),
 	Token = case find_ref(OldRef, ReqRefs) of
-				undefined -> 
-					coap_endpoint:generate_token(?TOKEN_LENGTH);
-				#req{token=OldToken} -> 
-					ok = coap_endpoint:cancel_request(EndpointPid, OldRef),
-					OldToken
+				undefined -> coap_endpoint:generate_token(?TOKEN_LENGTH);
+				#req{token=OldToken} -> OldToken
 			end,
+	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
 	{ok, Ref} = coap_endpoint:send(EndpointPid,  
 					coap_utils:set_token(Token,
 						coap_utils:request(Type, Method, <<>>, Options))),	
@@ -285,7 +282,7 @@ handle_call({cancel_observe, Ref, ETag}, _From, State=#state{sock_pid=SockPid, r
 	case find_ref(Ref, ReqRefs) of
 		undefined -> {reply, {error, no_observe}, State};
 		#req{method=Method, options=Options, token=Token, obs_key=Key, ep_id=EpID, client_pid=ClientPid} ->
-			Options2 = coap_utils:put_option('ETag', [ETag], Options),
+			Options2 = coap_utils:put_option('ETag', ETag, Options),
 			{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
 			{ok, Ref2} = coap_endpoint:send(EndpointPid,  
 							coap_utils:set_token(Token, 

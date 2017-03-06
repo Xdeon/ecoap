@@ -282,8 +282,10 @@ code_change(_OldVsn, State, _Extra) ->
 
 %% Internal
 make_new_request(Message=#coap_message{token=Token}, Receiver, State=#state{tokens=Tokens, nextmid=MsgId, receivers=Receivers}) ->
+    % in case this is a request using previous token, we need to remove the outdated receiver reference first
+    Receivers2 = maps:put(Receiver, {Token, {out, MsgId}}, maps:remove(maps:get(Token, Tokens, undefined), Receivers)),
     Tokens2 = maps:put(Token, Receiver, Tokens),
-    make_new_message(Message, Receiver, State#state{tokens=Tokens2, receivers=maps:put(Receiver, {Token, {out, MsgId}}, Receivers)}).
+    make_new_message(Message, Receiver, State#state{tokens=Tokens2, receivers=Receivers2}).
 
 make_new_message(Message, Receiver, State=#state{nextmid=MsgId}) ->
     make_message({out, MsgId}, Message#coap_message{id=MsgId}, Receiver, State#state{nextmid=next_mid(MsgId)}).
