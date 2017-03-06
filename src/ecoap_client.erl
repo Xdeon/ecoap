@@ -499,11 +499,11 @@ send_response(From, _, _, Res) ->
     ok.
 
 return_response({ok, Code}, Message) ->
-    {ok, Code, coap_utils:get_content(Message)};
+    {ok, Code, coap_utils:get_full_content(Message)};
 return_response({error, Code}, #coap_message{payload= <<>>}) ->
     {error, Code};
 return_response({error, Code}, Message) ->
-    {error, Code, coap_utils:get_content(Message)}.
+    {error, Code, coap_utils:get_full_content(Message)}.
 
 convert_content(Content = #coap_content{}) -> Content;
 convert_content(Content) when is_binary(Content) -> #coap_content{payload=Content};
