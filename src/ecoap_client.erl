@@ -99,7 +99,7 @@ observe(Pid, Uri) ->
 
 -spec observe(pid(), list(), optionset()) -> observe_response().
 observe(Pid, Uri, Options) ->
-	{EpID, Req} = assemble_request('GET', Uri, coap_utils:append_option('Observe', 0, Options), <<>>),
+	{EpID, Req} = assemble_request('GET', Uri, coap_utils:add_option('Observe', 0, Options), <<>>),
 	Accpet = coap_utils:get_option('Accpet', Options),
 	Key = {Uri, Accpet},
 	MonitorRef = erlang:monitor(process, Pid),
@@ -198,7 +198,7 @@ get_reqrefs(Pid) -> gen_server:call(Pid, get_reqrefs).
 
 assemble_request(Method, Uri, Options, Content) ->
 	{EpID, Path, Query} = resolve_uri(Uri),
-	Options2 = coap_utils:append_option('Uri-Query', Query, coap_utils:append_option('Uri-Path', Path, Options)),
+	Options2 = coap_utils:add_option('Uri-Query', Query, coap_utils:add_option('Uri-Path', Path, Options)),
 	{EpID, {Method, Options2, #coap_content{payload=Content}}}.
 
 send_request(Pid, EpID, Req, ClientPid) ->
@@ -408,7 +408,7 @@ handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options
 		            % more blocks follow, ask for more
 		            % no payload for requests with Block2 with NUM != 0
 		            {ok, Ref2} = coap_endpoint:send(EndpointPid,
-		            	coap_utils:request(Type, Method, <<>>, coap_utils:append_option('Block2', {Num+1, false, Size}, Options2))),
+		            	coap_utils:request(Type, Method, <<>>, coap_utils:add_option('Block2', {Num+1, false, Size}, Options2))),
 		            NewFragment = <<Fragment/binary, Data/binary>>,
 		            case coap_utils:get_option('Observe', Options1) of
 		            	undefined ->

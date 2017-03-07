@@ -23,7 +23,7 @@
 
 -spec start_link() -> {ok, pid()}.
 start_link() ->
-	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 -spec register_handler([binary()], module(), _) -> ok | {error, duplicated}.
 register_handler(Prefix, Module, Args) ->
@@ -35,8 +35,8 @@ unregister_handler(Prefix) ->
 
 -spec get_links() -> list().
 get_links() ->
-    % lists:usort(get_links(ets:tab2list(?HANDLER_TAB))).
-    lists:usort(get_links(?HANDLER_TAB)).
+    lists:usort(get_links(ets:tab2list(?HANDLER_TAB))).
+    % lists:usort(get_links(?HANDLER_TAB)).
 
 -spec match_handler([binary()]) -> {[binary()], module(), _} | undefined.
 % match_handler(Uri) -> match_handler(Uri, ets:tab2list(?HANDLER_TAB)).
@@ -96,50 +96,46 @@ one_with_longer_uri(Elem1={Prefix, _, _}, {Match, _, _}) when length(Prefix) > l
 one_with_longer_uri(_Elem1, Elem2) -> Elem2.
 
 % ask each handler to provide a link list
-get_links(Reg) ->
-    ets:foldl(
-        fun({Prefix, Module, Args}, Acc) -> lists:append(Acc, get_links(Prefix, Module, Args)) end,
-        [], Reg).
-
 % get_links(Reg) ->
-%     lists:foldl(
-%         fun({Prefix, Module, Args}, Acc) -> lists:append(Acc, get_links(Prefix, Module, Args)) end,
+%     ets:foldl(
+%         fun({Prefix, Module, Args}, Acc) -> get_links(Prefix, Module, Args) ++ Acc end,
 %         [], Reg).
 
+get_links(Reg) ->
+    lists:foldl(
+        fun({Prefix, Module, Args}, Acc) -> get_links(Prefix, Module, Args) ++ Acc end,
+        [], Reg).
+
 get_links(Prefix, Module, Args) ->
-    case catch apply(Module, coap_discover, [Prefix, Args]) of
+    case catch {ok, apply(Module, coap_discover, [Prefix, Args])} of
         % for each pattern ask the handler to provide a list of resources
         {'EXIT', _} -> [];
-        Response -> Response
+        {ok, Response} -> Response
     end.
 
 %% gen_server.
 init([]) ->
-	% _ = ets:new(?HANDLER_TAB, [set, named_table, protected]),
+    % _ = ets:new(?HANDLER_TAB, [set, named_table, protected]),
     ets:insert(?HANDLER_TAB, {[<<".well-known">>, <<"core">>], resource_directory, undefined}),
-	{ok, #state{}}.
+    {ok, #state{}}.
 
 handle_call({register, Prefix, Module, Args}, _From, State) ->
-    case ets:member(?HANDLER_TAB, Prefix) of
-        true  -> {reply, {error, duplicated}, State};
-        false -> ets:insert(?HANDLER_TAB, {Prefix, Module, Args}),
-                 {reply, ok, State}
-    end;
+    ets:insert(?HANDLER_TAB, {Prefix, Module, Args}),
+    {reply, ok, State};    
 handle_call({unregister, Prefix}, _From, State) ->
     ets:delete(?HANDLER_TAB, Prefix),
-	{reply, ok, State};
+    {reply, ok, State};
 handle_call(_Request, _From, State) ->
-	{reply, ignored, State}.
+    {reply, ignored, State}.
 
 handle_cast(_Msg, State) ->
-	{noreply, State}.
+    {noreply, State}.
 
 handle_info(_Info, State) ->
-	{noreply, State}.
+    {noreply, State}.
 
 terminate(_Reason, _State) ->
-	ok.
+    ok.
 
 code_change(_OldVsn, State, _Extra) ->
-	{ok, State}.
-
+    {ok, State}.

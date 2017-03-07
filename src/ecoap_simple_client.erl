@@ -138,7 +138,7 @@ send_request(Pid, EpID, Req) ->
 
 assemble_request(Method, Uri, Options, Content) ->
 	{EpID, Path, Query} = resolve_uri(Uri),
-	Options2 = coap_utils:append_option('Uri-Query', Query, coap_utils:append_option('Uri-Path', Path, Options)),
+	Options2 = coap_utils:add_option('Uri-Query', Query, coap_utils:add_option('Uri-Path', Path, Options)),
 	{EpID, {Method, Options2, #coap_content{payload=Content}}}.
 
 request_block(EndpointPid, Method, ROpt, Content) ->
@@ -162,7 +162,7 @@ handle_response(EndpointPid, Message=#coap_message{code={ok, Code}, options=Opti
          	% more blocks follow, ask for more
             % no payload for requests with Block2 with NUM != 0
         	{ok, Ref2} = coap_endpoint:send(EndpointPid,
-            	coap_utils:request('CON', Method, <<>>, coap_utils:append_option('Block2', {Num+1, false, Size}, Options2))),
+            	coap_utils:request('CON', Method, <<>>, coap_utils:add_option('Block2', {Num+1, false, Size}, Options2))),
 				{noreply, State#state{ref=Ref2, req=Req#req{fragment= <<Fragment/binary, Data/binary>>}}};
 		 _Else ->
 		 	Res = return_response({ok, Code}, Message#coap_message{payload= <<Fragment/binary, Data/binary>>}),
