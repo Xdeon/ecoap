@@ -208,7 +208,7 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgI
                 error ->
                     % token was not recognized
                     BinRST = coap_message:encode(coap_utils:rst(MsgId)),
-                    %io:format("<- reset~n"),
+                    %io:fwrite("<- reset~n"),
                     ok = coap_exchange:send_datagram(Mode, Socket, EpID, BinRST),
                     {noreply, State}
             end
@@ -231,6 +231,7 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 2:2, TKL:4, _Code:8, MsgId:16,
                 true ->
                     update_state(State, TrId, coap_exchange:received(BinMessage, TransArgs, TrState));
                 false ->
+                    % io:fwrite("unrecognized token~n"),
                     {noreply, State}
             end;
         error ->
@@ -255,9 +256,10 @@ handle_info({timeout, TrId, Event}, State=#state{trans=Trans, trans_args=TransAr
         {ok, TrState} -> update_state(State, TrId, coap_exchange:timeout(Event, TransArgs, TrState));
         error -> {noreply, State} % ignore unexpected responses
     end;
-handle_info({request_complete, Token}, State=#state{tokens=Tokens, receivers=Receivers}) ->
+handle_info({request_complete, Receiver}, State=#state{tokens=Tokens, receivers=Receivers}) ->
     %io:format("request_complete~n"),
-    {noreply, State#state{tokens=maps:remove(Token, Tokens), receivers=maps:remove(maps:get(Token, Tokens, undefined), Receivers)}};
+    {Token, _} = maps:get(Receiver, Receivers, {undefined, undefined}),
+    {noreply, State#state{tokens=maps:remove(Token, Tokens), receivers=maps:remove(Receiver, Receivers)}};
 % Only monitor possible observe handlers instead of every new spawned handler
 % so that we can save some extra message traffic
 handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{rescnt=Count, trans_args=TransArgs=#{handler_regs:=Regs}, handler_refs=Refs}) ->
