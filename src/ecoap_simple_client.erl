@@ -42,7 +42,11 @@
 -type from() :: {pid(), term()}.
 -type req() :: #req{}.
 -type request_content() :: binary().
--type response() :: {ok, success_code(), coap_content()} | {error, error_code()} | {error, error_code(), coap_content()} | {separate, reference()}.
+-type response() :: {ok, success_code(), coap_content()} | 
+					{ok, success_code(), coap_content(), optionset()} | 
+					{error, error_code()} | 
+					{error, error_code(), coap_content()} | 
+					{separate, reference()}.
 -opaque state() :: #state{}.
 -export_type([state/0]).
 
@@ -181,11 +185,11 @@ send_response(From, Res) ->
 	ok.
 
 return_response({ok, Code}, Message) ->
-    {ok, Code, coap_utils:get_full_content(Message)};
+    {ok, Code, coap_utils:get_content(Message), coap_utils:get_extra_options(Message)};
 return_response({error, Code}, #coap_message{payload= <<>>}) ->
     {error, Code};
 return_response({error, Code}, Message) ->
-    {error, Code, coap_utils:get_full_content(Message)}.
+    {error, Code, coap_utils:get_content(Message)}.
 
 close_transport(SockPid, EndpointPid) ->
 	coap_endpoint:close(EndpointPid),

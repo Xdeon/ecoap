@@ -27,15 +27,15 @@ coap_get(_EpID, Prefix, Name, Query, Request) ->
     Accept = coap_utils:get_option('Accept', Request),
     io:format("get ~p ~p ~p accept ~p~n", [Prefix, Name, Query, Accept]),
     case mnesia:dirty_read(resources, Name) of
-        [{resources, Name, Resource}] -> Resource;
+        [{resources, Name, Resource}] -> {ok, Resource, []};
         [] -> {error, 'NotFound'}
     end.
 
 coap_post(_EpID, Prefix, Name, Request) -> 
     Content = coap_utils:get_content(Request),
     io:format("post ~p ~p ~p~n", [Prefix, Name, Content]),
-    {error, 'MethodNotAllowed'}.
-    % {ok, 'Created', Content#coap_content{options=[{'Location-Path', Prefix++Name}]}}.
+    % {error, 'MethodNotAllowed'}.
+    {ok, 'Created', #coap_content{}, [{'Location-Path', Prefix++Name}]}.
 
 coap_put(_EpID, Prefix, Name, Request) ->
     Content = coap_utils:get_content(Request),

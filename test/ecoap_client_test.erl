@@ -17,15 +17,15 @@ basic_test_() ->
 basic(Pid) ->
 	[
         ?_assertEqual(ok, ecoap_client:ping(Pid, "coap://coap.me:5683")),
-		?_assertEqual({ok, 'Content', #coap_content{format = <<"text/plain">>, payload = <<"world">>}}, 
+		?_assertEqual({ok, 'Content', #coap_content{format = <<"text/plain">>, payload = <<"world">>}, []}, 
 			ecoap_client:request(Pid, 'GET', "coap://coap.me:5683/hello")),
 		?_assertEqual({error, 'InternalServerError', #coap_content{format = <<"text/plain">>, payload = <<"Oops: broken">>}}, 
 			ecoap_client:request(Pid, 'GET', "coap://coap.me:5683/broken")),
-        ?_assertEqual({ok, 'Created', #coap_content{options = [{'Location-Path', [<<"large-create">>]}]}},
+        ?_assertEqual({ok, 'Created', #coap_content{}, [{'Location-Path', [<<"large-create">>]}]},
             ecoap_client:request(Pid, 'POST', "coap://coap.me:5683/large-create", <<"Test">>)),
-        ?_assertEqual({ok, 'Changed', #coap_content{}}, 
+        ?_assertEqual({ok, 'Changed', #coap_content{}, []}, 
             ecoap_client:request(Pid, 'PUT', "coap://coap.me:5683/large-update", <<"Test">>)),
-        ?_assertEqual({ok, 'Deleted', #coap_content{format = <<"text/plain">>, payload = <<"DELETE OK">>}}, 
+        ?_assertEqual({ok, 'Deleted', #coap_content{format = <<"text/plain">>, payload = <<"DELETE OK">>}, []}, 
             ecoap_client:request(Pid, 'DELETE', "coap://coap.me:5683/sink"))
 	].
 
@@ -56,8 +56,9 @@ blockwise_test_() ->
 blockwise(Pid) ->
     Response = ecoap_client:request(Pid, 'GET', "coap://californium.eclipse.org:5683/large", <<>>, [{'Block2', {0, false, 512}}]),
     [
-        ?_assertMatch({ok, 'Content', #coap_content{}}, Response), 
-        ?_assertEqual(1280, begin {_, _, #coap_content{payload=Payload}} = Response, byte_size(Payload) end)
+        % {'Size2', 1280} unsupported option
+        ?_assertMatch({ok, 'Content', #coap_content{}, [{28,<<5,0>>}]}, Response), 
+        ?_assertEqual(1280, begin {_, _, #coap_content{payload=Payload}, _} = Response, byte_size(Payload) end)
     ].
 
 % verify that ecoap_client clean up state in this case
