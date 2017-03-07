@@ -98,12 +98,12 @@ one_with_longer_uri(_Elem1, Elem2) -> Elem2.
 % ask each handler to provide a link list
 % get_links(Reg) ->
 %     ets:foldl(
-%         fun({Prefix, Module, Args}, Acc) -> lists:append(Acc, get_links(Prefix, Module, Args)) end,
+%         fun({Prefix, Module, Args}, Acc) -> get_links(Prefix, Module, Args) ++ Acc end,
 %         [], Reg).
 
 get_links(Reg) ->
     lists:foldl(
-        fun({Prefix, Module, Args}, Acc) -> lists:append(Acc, get_links(Prefix, Module, Args)) end,
+        fun({Prefix, Module, Args}, Acc) -> get_links(Prefix, Module, Args) ++ Acc end,
         [], Reg).
 
 get_links(Prefix, Module, Args) ->
