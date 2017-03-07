@@ -21,24 +21,26 @@
 	Uri :: coap_uri().
 
 % GET handler
--callback coap_get(EpID, Prefix, Name, Query, Request) -> Response | {error, Error} | {error, Error, Reason} when
+-callback coap_get(EpID, Prefix, Name, Query, Request) -> {ok, Content, Options} | {error, Error} | {error, Error, Reason} when
 	EpID :: coap_endpoint_id(),
 	Prefix :: [binary()],
 	Name :: [binary()],
 	Query :: [binary()],
 	Request :: coap_message(),
-	Response :: coap_content(),
+	Content :: coap_content(),
+	Options :: optionset(),
 	Error :: error_code(),
 	Reason :: binary().
 
 % POST handler
--callback coap_post(EpID, Prefix, Name, Request) -> {ok, Code, Response} | {error, Error} | {error, Error, Reason} when
+-callback coap_post(EpID, Prefix, Name, Request) -> {ok, Code, Content, Options} | {error, Error} | {error, Error, Reason} when
 	EpID :: coap_endpoint_id(),
 	Prefix :: [binary()],
 	Name :: [binary()],
 	Request :: coap_message(),
 	Code :: success_code(),
-	Response :: coap_content(),
+	Content :: coap_content(),
+	Options :: optionset(),
 	Error :: error_code(),
 	Reason :: binary().
 
@@ -77,11 +79,15 @@
 % handler for messages sent to the responder process
 % used to generate notifications
 -callback handle_info(Info, Obstate) -> 
-	{notify, Ref, Content | {error, Error}, NewObstate} | {noreply, NewObstate} | {stop, NewObstate} when
+	{notify, Ref, Content, Options, NewObstate} | 
+	{notify, Ref, {error, Error}, NewObstate} | 
+	{noreply, NewObstate} | 
+	{stop, NewObstate} when
 	Info :: any(),
 	Obstate :: any(),
 	Ref :: any(),
 	Content :: coap_content(),
+	Options :: optionset(),
 	Error :: error_code(),
 	NewObstate :: any().
 

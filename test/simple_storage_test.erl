@@ -14,7 +14,7 @@ coap_discover(Prefix, _Args) ->
 
 coap_get(_EpId, _Prefix, [Name], _Query, _Request) ->
     case mnesia:dirty_read(resources, Name) of
-        [{resources, Name, Resource}] -> Resource;
+        [{resources, Name, Resource}] -> {ok, Resource, []};
         [] -> {error, 'NotFound'}
     end.
 
@@ -54,7 +54,7 @@ simple_storage_test_() ->
 
 simple_storage_test(Client) ->
     [
-    ?_assertEqual({ok, 'Deleted', #coap_content{}},
+    ?_assertEqual({ok, 'Deleted', #coap_content{}, []},
         ecoap_client:request(Client, 'DELETE', "coap://127.0.0.1/storage/one")),
 
     ?_assertEqual({error, 'NotFound'},
@@ -63,7 +63,7 @@ simple_storage_test(Client) ->
     ?_assertEqual({error, 'MethodNotAllowed', #coap_content{payload=?NOT_IMPLEMENTED}},
         ecoap_client:request(Client, 'POST', "coap://127.0.0.1/storage/one", <<>>)),
 
-    ?_assertEqual({ok, 'Created', #coap_content{}},
+    ?_assertEqual({ok, 'Created', #coap_content{}, []},
         ecoap_client:request(Client, 'PUT', "coap://127.0.0.1/storage/one",
             <<"1">>, [{'ETag', [<<"1">>]}, {'If-None-Match', true}])),
 
@@ -71,33 +71,33 @@ simple_storage_test(Client) ->
         ecoap_client:request(Client, 'PUT', "coap://127.0.0.1/storage/one",
             <<"1">>, [{'ETag', [<<"1">>]}, {'If-None-Match', true}])),
 
-    ?_assertEqual({ok, 'Content', #coap_content{etag= <<"1">>, payload= <<"1">>}},
+    ?_assertEqual({ok, 'Content', #coap_content{etag= <<"1">>, payload= <<"1">>}, []},
         ecoap_client:request(Client, 'GET', "coap://127.0.0.1/storage/one")),
 
-    ?_assertEqual({ok, 'Valid', #coap_content{etag= <<"1">>}},
+    ?_assertEqual({ok, 'Valid', #coap_content{etag= <<"1">>}, []},
         ecoap_client:request(Client, 'GET', "coap://127.0.0.1/storage/one",
             <<>>, [{'ETag', [<<"1">>]}])),
 
-    ?_assertEqual({ok, 'Changed', #coap_content{}},
+    ?_assertEqual({ok, 'Changed', #coap_content{}, []},
         ecoap_client:request(Client, 'PUT', "coap://127.0.0.1/storage/one", 
             <<"2">>, [{'ETag', [<<"2">>]}])),
 
-    ?_assertEqual({ok, 'Content', #coap_content{etag= <<"2">>, payload= <<"2">>}},
+    ?_assertEqual({ok, 'Content', #coap_content{etag= <<"2">>, payload= <<"2">>}, []},
         ecoap_client:request(Client, 'GET', "coap://127.0.0.1/storage/one")),
 
-    ?_assertEqual({ok, 'Content', #coap_content{etag= <<"2">>, payload= <<"2">>}},
+    ?_assertEqual({ok, 'Content', #coap_content{etag= <<"2">>, payload= <<"2">>}, []},
         ecoap_client:request(Client, 'GET', "coap://127.0.0.1/storage/one",
             <<>>, [{'ETag', [<<"1">>]}])),
 
     % observe existing resource when coap_observe is not implemented
-    ?_assertEqual({ok, 'Content', #coap_content{etag= <<"2">>, payload= <<"2">>}},
+    ?_assertEqual({ok, 'Content', #coap_content{etag= <<"2">>, payload= <<"2">>}, []},
         ecoap_client:observe(Client, "coap://127.0.0.1/storage/one")),
 
-    ?_assertEqual({ok, 'Valid', #coap_content{etag= <<"2">>}},
+    ?_assertEqual({ok, 'Valid', #coap_content{etag= <<"2">>}, []},
         ecoap_client:request(Client, 'GET', "coap://127.0.0.1/storage/one",
             <<>>, [{'ETag', [<<"1">>, <<"2">>]}])),
 
-    ?_assertEqual({ok, 'Deleted', #coap_content{}},
+    ?_assertEqual({ok, 'Deleted', #coap_content{}, []},
         ecoap_client:request(Client, 'DELETE', "coap://127.0.0.1/storage/one")),
 
     ?_assertEqual({error, 'NotFound'},
