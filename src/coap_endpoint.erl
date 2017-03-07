@@ -149,13 +149,8 @@ handle_cast({register_handler, ID, Pid}, State=#state{rescnt=Count, trans_args=T
     {noreply, State#state{rescnt=Count+1, trans_args=TransArgs#{handler_regs:=maps:put(ID, Pid, Regs)}, handler_refs=maps:put(Ref, ID, Refs)}};
 % cancel request include removing token, request exchange state and receiver reference
 handle_cast({cancel_request, Receiver}, State=#state{tokens=Tokens, trans=Trans, receivers=Receivers}) ->
-    case maps:find(Receiver, Receivers) of
-        {ok, {Token, TrId}} ->
-            {noreply, State#state{tokens=maps:remove(Token, Tokens), trans=maps:remove(TrId, Trans), receivers=maps:remove(Receiver, Receivers)}};
-        error ->
-            {noreply, State}
-    end;
-
+    {Token, TrId} = maps:get(Receiver, Receivers, {undefined, undefined}),
+    {noreply, State#state{tokens=maps:remove(Token, Tokens), trans=maps:remove(TrId, Trans), receivers=maps:remove(Receiver, Receivers)}};
 handle_cast(shutdown, State) ->
     {stop, normal, State};
 handle_cast(_Msg, State) ->
