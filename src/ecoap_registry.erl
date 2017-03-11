@@ -39,61 +39,20 @@ get_links() ->
     % lists:usort(get_links(?HANDLER_TAB)).
 
 -spec match_handler([binary()]) -> {[binary()], module(), _} | undefined.
-% match_handler(Uri) -> match_handler(Uri, ets:tab2list(?HANDLER_TAB)).
 match_handler(Uri) -> match_handler(Uri, ?HANDLER_TAB).
 
 -spec clear_registry() -> true.
 clear_registry() -> ets:delete_all_objects(?HANDLER_TAB).
 
-% match_handler(_Uri, []) ->
-%     undefined;
-% match_handler(Uri, [{Prefix, Module, Args} | T]) ->
-%     case match_prefix(Prefix, Uri) of
-%         true  -> {Prefix, Module, Args};
-%         false -> match_handler(Uri, T)
-%     end.
-
-% match_prefix([], []) ->
-%     true;
-% match_prefix([], _) ->
-%     true;
-% match_prefix([H|T1], [H|T2]) ->
-%     match_prefix(T1, T2);
-% match_prefix(_Prefix, _Uri) ->
-%     false.
-
-% TODO: more optimization for matching en entry
-match_handler(Uri, Reg) ->
-    % avoid traversing the table when URI could directly match an entry
-    % however if this is not the case, an extra lookup is needed before searching the entire table
-    case ets:lookup(Reg, Uri) of
-        [Elem] -> Elem;
-        [] ->
-            ets:foldl(
-                fun(Elem={Prefix, _, _}, Found) ->
-                    case lists:prefix(Prefix, Uri) of
-                        true -> one_with_longer_uri(Elem, Found);
-                        false -> Found
-                    end
-                end,
-                undefined, Reg)
-    end.
-
-% match_handler(Uri, Reg) ->
-%     lists:foldl(
-%         fun(Elem={Prefix, _, _}, Found) ->
-%             case lists:prefix(Prefix, Uri) of
-%                 true -> one_with_longer_uri(Elem, Found);
-%                 false -> Found
-%             end
-%         end,
-%         undefined, Reg).
-
 % select an entry with a longest prefix
 % this allows user to have one handler for "foo" and another for "foo/bar"
-one_with_longer_uri(Elem1, undefined) -> Elem1;
-one_with_longer_uri(Elem1={Prefix, _, _}, {Match, _, _}) when length(Prefix) > length(Match) -> Elem1;
-one_with_longer_uri(_Elem1, Elem2) -> Elem2.
+match_handler([], _) ->
+    undefined;
+match_handler(Uri, Reg) ->
+    case ets:lookup(Reg, Uri) of
+        [Elem] -> Elem;
+        [] -> match_handler(lists:droplast(Uri), Reg)
+    end.
 
 % ask each handler to provide a link list
 % get_links(Reg) ->
@@ -139,3 +98,18 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+-ifdef(TEST).
+
+-include_lib("eunit/include/eunit.hrl").
+
+match_test_() ->
+    Tab = ets:new(ecoap_registry, [set]),
+    ets:insert(Tab, {[<<"foo">>], ?MODULE, undefined}),
+    ets:insert(Tab, {[<<"foo">>, <<"bar">>], ?MODULE, undefined}),
+    [?_assertEqual({[<<"foo">>], ?MODULE, undefined}, match_handler([<<"foo">>], Tab)),
+    ?_assertEqual({[<<"foo">>, <<"bar">>], ?MODULE, undefined}, match_handler([<<"foo">>, <<"bar">>], Tab)),
+    ?_assertEqual({[<<"foo">>, <<"bar">>], ?MODULE, undefined}, match_handler([<<"foo">>, <<"bar">>, <<"hoge">>], Tab))
+    ].
+
+-endif.
