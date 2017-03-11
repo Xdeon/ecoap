@@ -14,8 +14,6 @@
 -export([terminate/2]).
 -export([code_change/3]).
 
--compile([export_all]).
-
 -define(SPEC(MFA),
     {endpoint_sup_sup,
     {endpoint_sup_sup, start_link, [MFA]},
