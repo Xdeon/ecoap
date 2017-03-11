@@ -46,8 +46,14 @@ clear_registry() -> ets:delete_all_objects(?HANDLER_TAB).
 
 % select an entry with a longest prefix
 % this allows user to have one handler for "foo" and another for "foo/bar"
-match_handler([], _) ->
-    undefined;
+
+match_handler([], Reg) ->
+    % check if a match-all handler exists
+    % this also serves as a root handler
+    case ets:lookup(Reg, []) of
+        [Elem] -> Elem;
+        [] -> undefined
+    end;
 match_handler(Uri, Reg) ->
     case ets:lookup(Reg, Uri) of
         [Elem] -> Elem;
@@ -110,6 +116,13 @@ match_test_() ->
     [?_assertEqual({[<<"foo">>], ?MODULE, undefined}, match_handler([<<"foo">>], Tab)),
     ?_assertEqual({[<<"foo">>, <<"bar">>], ?MODULE, undefined}, match_handler([<<"foo">>, <<"bar">>], Tab)),
     ?_assertEqual({[<<"foo">>, <<"bar">>], ?MODULE, undefined}, match_handler([<<"foo">>, <<"bar">>, <<"hoge">>], Tab))
+    ].
+
+match_all_test_() ->
+    Tab = ets:new(ecoap_registry, [set]),
+    ets:insert(Tab, {[], ?MODULE, undefined}),
+    [?_assertEqual({[], ?MODULE, undefined}, match_handler([<<"foo">>], Tab)),
+    ?_assertEqual({[], ?MODULE, undefined}, match_handler([<<"foo">>, <<"bar">>], Tab))
     ].
 
 -endif.
