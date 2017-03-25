@@ -6,7 +6,7 @@
 
 %% Only applies to one time use supervision tree...
 
-start_link(SockMode, Socket, EpID) ->
+start_link(SocketModule, Socket, EpID) ->
     {ok, SupPid} = supervisor:start_link(?MODULE, []),
     {ok, HdlSupPid} = supervisor:start_child(SupPid, 
       	#{id => coap_handler_sup,
@@ -17,7 +17,7 @@ start_link(SockMode, Socket, EpID) ->
           modules => [coap_handler_sup]}),
     {ok, EpPid} = supervisor:start_child(SupPid,
         #{id => coap_endpoint,
-         start => {coap_endpoint, start_link, [HdlSupPid, SockMode, Socket, EpID]},
+         start => {coap_endpoint, start_link, [HdlSupPid, SocketModule, Socket, EpID]},
          restart => permanent, 
          shutdown => 5000, 
          type => worker, 

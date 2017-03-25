@@ -15,11 +15,11 @@ init([InPort, Opts]) ->
 			   shutdown => infinity,
 			   type => supervisor,
 			   modules => [ecoap_reg_sup]},
-			   #{id => ecoap_socket,
-			   start => {ecoap_socket, start_link, [self(), InPort, Opts]},
+			   #{id => ecoap_udp_socket,
+			   start => {ecoap_udp_socket, start_link, [self(), InPort, Opts]},
 			   restart => permanent, 
 			   shutdown => 10000, 
 		       type => worker, 
-			   modules => [ecoap_socket]}
+			   modules => [ecoap_udp_socket]}
     		],
     {ok, {#{strategy => rest_for_one, intensity => 3, period => 10}, Procs}}.

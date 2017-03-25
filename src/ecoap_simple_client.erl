@@ -1,5 +1,5 @@
 % This module provide a simple synchronous CoAP client
-% Each request is made in a pair of newly-opened ecoap_socket and coap_endpoint processes synchronously
+% Each request is made in a pair of newly-opened ecoap_udp_socket and coap_endpoint processes synchronously
 % After a request is completed, related processes are automatically shut down
 % It aims at simplicity for use without need for starting, terminating and managing process manually
 % Thus it can not be used as an OTP-compliant component
@@ -95,14 +95,14 @@ init([]) ->
 	{ok, #state{}}.
 
 handle_call({send_request, EpID, ping}, From, State) -> 
-	{ok, SockPid} = ecoap_socket:start_link(),
-	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
+	{ok, SockPid} = ecoap_udp_socket:start_link(),
+	{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpID),
 	{ok, Ref} = coap_endpoint:ping(EndpointPid),
 	{noreply, State#state{sock_pid=SockPid, endpoint_pid=EndpointPid, ref=Ref, from=From}};
 
 handle_call({send_request, EpID, {Method, Options, Content}}, From, State) ->
-	{ok, SockPid} = ecoap_socket:start_link(),
-	{ok, EndpointPid} = ecoap_socket:get_endpoint(SockPid, EpID),
+	{ok, SockPid} = ecoap_udp_socket:start_link(),
+	{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpID),
 	{ok, Ref} = request_block(EndpointPid, Method, Options, Content),
 	Req = #req{method=Method, options=Options, content=Content},
 	{noreply, State#state{sock_pid=SockPid, endpoint_pid=EndpointPid, ref=Ref, req=Req, from=From}};
@@ -193,7 +193,7 @@ return_response({error, Code}, Message) ->
 
 close_transport(SockPid, EndpointPid) ->
 	coap_endpoint:close(EndpointPid),
-	ecoap_socket:close(SockPid).
+	ecoap_udp_socket:close(SockPid).
 
 resolve_uri(Uri) ->
     {ok, {_Scheme, _UserInfo, Host, PortNo, Path, Query}} =

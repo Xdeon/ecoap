@@ -1,9 +1,10 @@
--module(ecoap_socket).
+-module(ecoap_udp_socket).
 -behaviour(gen_server).
 
 %% API.
 -export([start_link/0, start_link/3, close/1]).
 -export([get_endpoint/2, get_all_endpoints/1]).
+-export([send_datagram/3]).
 
 %% gen_server.
 -export([init/1]).
@@ -67,6 +68,11 @@ get_endpoint(Pid, {PeerIP, PeerPortNo}) ->
 get_all_endpoints(Pid) ->
 	gen_server:call(Pid, get_all_endpoints).
 
+%% module specific send function 
+-spec send_datagram(inet:socket(), ecoap_udp_socket:coap_endpoint_id(), binary()) -> ok.
+send_datagram(Socket, {PeerIP, PeerPortNo}, Datagram) ->
+    inet_udp:send(Socket, PeerIP, PeerPortNo, Datagram).
+
 %% gen_server.
 
 init([InPort, Opts]) ->
@@ -92,7 +98,7 @@ handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoints=End
         error ->
             % {ok, EpSupPid, EpPid} = endpoint_sup:start_link(Socket, EpID),
             % %io:fwrite("EpSupPid: ~p EpPid: ~p~n", [EpSupPid, EpPid]),
-            {ok, EpPid} = coap_endpoint:start_link(udp, Socket, EpID),
+            {ok, EpPid} = coap_endpoint:start_link(?MODULE, Socket, EpID),
             %io:fwrite("client started~n"),
             {reply, {ok, EpPid}, store_endpoint(EpID, EpPid, State)}
     end;
@@ -102,7 +108,7 @@ handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoints=End
 		{ok, EpPid} ->
 			{reply, {ok, EpPid}, State};
 		error ->
-		    case endpoint_sup_sup:start_endpoint(PoolPid, [udp, Socket, EpID]) of
+		    case endpoint_sup_sup:start_endpoint(PoolPid, [?MODULE, Socket, EpID]) of
 		        {ok, _, EpPid} ->
 		            {reply, {ok, EpPid}, store_endpoint(EpID, EpPid, State)};
 		        Error ->
@@ -131,7 +137,7 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, en
 			EpPid ! {datagram, Bin},
 			{noreply, State};
 		error when is_pid(PoolPid) -> 
-			case endpoint_sup_sup:start_endpoint(PoolPid, [udp, Socket, EpID]) of
+			case endpoint_sup_sup:start_endpoint(PoolPid, [?MODULE, Socket, EpID]) of
 				{ok, _, EpPid} -> 
 					%io:fwrite("start endpoint ~p~n", [EpID]),
 					EpPid ! {datagram, Bin},
