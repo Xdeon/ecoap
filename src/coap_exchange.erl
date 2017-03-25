@@ -2,7 +2,7 @@
 
 %% API
 -export([init/2, received/3, send/3, send_datagram/4, timeout/3, awaits_response/1, not_expired/1]).
--export([idle/3, got_non/3, sent_non/3, got_rst/3, await_aack/3, pack_sent/3, await_pack/3, aack_sent/3]).
+-export([idle/3, got_non/3, sent_non/3, await_aack/3, pack_sent/3, await_pack/3, aack_sent/3]).
 
 -define(ACK_TIMEOUT, 2000).
 -define(ACK_RANDOM_FACTOR, 1000). % ACK_TIMEOUT*0.5
@@ -55,9 +55,6 @@ send_datagram(udp, Socket, {PeerIP, PeerPortNo}, Datagram) ->
 % send_datagram(dtls, Socket, _, Datagram) ->
 %     ssl:send(Socket, Datagram).
 
-% when the transport expires remove terminate the state
-% timeout(transport, _State) ->
-%     undefined;
 % process timeout
 -spec timeout(atom(), coap_endpoint:trans_args(), exchange()) -> exchange().
 timeout(Event, TransArgs, State=#exchange{stage=Stage}) ->
@@ -73,19 +70,15 @@ awaits_response(_State) ->
 % ->NON
 -spec idle({in | out, binary()}, coap_endpoint:trans_args(), exchange()) -> exchange().
 idle(Msg={in, <<1:2, 1:2, _:12, _Tail/bytes>>}, TransArgs, State=#exchange{}) ->
-    % timeout_after(?NON_LIFETIME, Channel, TrId, transport),
     in_non(Msg, TransArgs, State#exchange{expire_time=?NON_LIFETIME});
 % ->CON
 idle(Msg={in, <<1:2, 0:2, _:12, _Tail/bytes>>}, TransArgs, State=#exchange{}) ->
-    % timeout_after(?EXCHANGE_LIFETIME, Channel, TrId, transport),
     in_con(Msg, TransArgs, State#exchange{expire_time=?EXCHANGE_LIFETIME});
 % NON->
 idle(Msg={out, #coap_message{type='NON'}}, TransArgs, State=#exchange{}) ->
-    % timeout_after(?NON_LIFETIME, Channel, TrId, transport),
     out_non(Msg, TransArgs, State#exchange{expire_time=?NON_LIFETIME});
 % CON->
 idle(Msg={out, #coap_message{type='CON'}}, TransArgs, State=#exchange{}) ->
-    % timeout_after(?EXCHANGE_LIFETIME, Channel, TrId, transport),
     out_con(Msg, TransArgs, State#exchange{expire_time=?EXCHANGE_LIFETIME}).
 
 
@@ -100,15 +93,17 @@ in_non({in, BinMessage}, TransArgs, State) ->
             handle_response(Message, TransArgs, State),
             check_next_state(got_non, State);
         % shall we send reset?
-        {error, _Error} -> undefined
+        {error, _Error} -> 
+            next_state(undefined, State)
     end.
 
 -spec got_non({in, binary()}, coap_endpoint:trans_args(), exchange()) -> exchange().
 got_non({in, _Message}, _TransArgs, State) ->
-    % ignore request retransmission
+    % ignore retransmission
     next_state(got_non, State).
 
 % --- outgoing NON
+
 -spec out_non({out, coap_message()}, coap_endpoint:trans_args(), exchange()) -> exchange().
 out_non({out, Message}, #{sock:=Socket, sock_mode:=Mode, ep_id:=EpID}, State) ->
     %io:fwrite("~p send outgoing non msg ~p~n", [self(), Message]),
@@ -122,8 +117,8 @@ sent_non({in, BinMessage}, TransArgs, State)->
     case catch coap_message:decode(BinMessage) of
         #coap_message{type='RST'} = Rst ->
             handle_error(Rst, 'RST', TransArgs, State),
-            next_state(got_rst, State);
-        % ignore other response
+            next_state(undefined, State);
+        % ignore other message type
         #coap_message{} -> 
             next_state(sent_non, State);
         % encounter format error, ignore the message
@@ -131,11 +126,8 @@ sent_non({in, BinMessage}, TransArgs, State)->
             next_state(sent_non, State)
     end.
 
--spec got_rst({in, binary()}, coap_endpoint:trans_args(), exchange()) -> exchange().
-got_rst({in, _BinMessage}, _TransArgs, State)->
-    next_state(got_rst, State).
-
 % --- incoming CON->ACK|RST
+
 -spec in_con({in, binary()}, coap_endpoint:trans_args(), exchange()) -> exchange().
 in_con({in, BinMessage}, TransArgs, State) ->
     case catch coap_message:decode(BinMessage) of
@@ -149,7 +141,7 @@ in_con({in, BinMessage}, TransArgs, State) ->
             handle_response(Message, TransArgs, State),
             go_await_aack(Message, TransArgs, State);
         {error, _Error} ->
-            undefined
+            next_state(undefined, State)
     end.
 
 -spec go_await_aack(coap_message(), coap_endpoint:trans_args(), exchange()) -> exchange().
@@ -161,7 +153,7 @@ go_await_aack(Message, TransArgs, State) ->
 
 -spec await_aack({in, binary()} | {timeout, await_aack} | {out, coap_message()}, coap_endpoint:trans_args(), exchange()) -> exchange().
 await_aack({in, _BinMessage}, _TransArgs, State) ->
-    % ignore request retransmission
+    % ignore retransmission
     next_state(await_aack, State);
 
 await_aack({timeout, await_aack}, #{sock:=Socket, sock_mode:=Mode, ep_id:=EpID}, State=#exchange{msgbin=BinAck}) ->
@@ -185,10 +177,10 @@ go_pack_sent(Ack, #{sock:=Socket, sock_mode:=Mode, ep_id:=EpID}, State) ->
     check_next_state(pack_sent, State#exchange{msgbin=BinAck}).
 
 -spec go_rst_sent(coap_message(), coap_endpoint:trans_args(), exchange()) -> exchange().
-go_rst_sent(RST, #{sock:=Socket, sock_mode:=Mode, ep_id:=EpID}, _State) ->
+go_rst_sent(RST, #{sock:=Socket, sock_mode:=Mode, ep_id:=EpID}, State) ->
     BinRST = coap_message:encode(RST),
     ok = send_datagram(Mode, Socket, EpID, BinRST),
-    undefined.
+    next_state(undefined, State).
 
 -spec pack_sent({in, binary()} | {timeout, await_aack}, coap_endpoint:trans_args(), exchange()) -> exchange().
 pack_sent({in, _BinMessage}, #{sock:=Socket, sock_mode:=Mode, ep_id:=EpID}, State=#exchange{msgbin=BinAck}) ->
@@ -217,6 +209,7 @@ pack_sent({timeout, await_aack}, _TransArgs, State) ->
 % TODO: CON->CON does not cancel retransmission of the request
 
 % --- outgoing CON->ACK|RST
+
 -spec out_con({out, coap_message()}, coap_endpoint:trans_args(), exchange()) -> exchange().
 out_con({out, Message}, TransArgs=#{sock:=Socket, sock_mode:=Mode, ep_id:=EpID}, State) ->
     %io:fwrite("~p send outgoing con msg ~p~n", [self(), Message]),
@@ -324,7 +317,7 @@ timeout_after(Time, EndpointPid, TrId, Event) ->
 
 % check deduplication flag to decide whether clean up state
 -ifdef(nodedup).
-check_next_state(_, _) -> undefined.
+check_next_state(_, State) -> next_state(undefined, State).
 -else.
 check_next_state(Stage, State) -> next_state(Stage, State).
 -endif.
