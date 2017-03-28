@@ -28,7 +28,7 @@ coap_get(_EpID, [<<"fibonacci">>], _Name, [], _Request) ->
 coap_get(_EpID, [<<"fibonacci">>], _Name, [Query|_], _Request) ->
     Num = case re:run(Query, "^n=[0-9]+") of
         {match, [{Pos, Len}]} ->
-            binary_to_integer(lists:nth(2, binary:split(binary:part(Query, Pos, Len), <<"=">>)));
+            binary_to_integer(lists:nth(2, binary:split(binary:part(Query, Pos, Len), <<$=>>)));
         nomatch -> 
             20
     end,
