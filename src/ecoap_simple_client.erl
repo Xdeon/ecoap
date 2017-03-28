@@ -65,7 +65,7 @@ close(Pid) ->
 -spec ping(list()) -> ok | error.
 ping(Uri) ->
 	{ok, Pid} = start_link(),
-	{EpID, _Path, _Query} = resolve_uri(Uri),
+	{_Scheme, EpID, _Path, _Query} = coap_utils:decode_uri(Uri),
 	Res = case send_request(Pid, EpID, ping) of
 		{error, 'RST'} -> ok;
 		_Else -> error
@@ -141,7 +141,7 @@ send_request(Pid, EpID, Req) ->
 	gen_server:call(Pid, {send_request, EpID, Req}, infinity).
 
 assemble_request(Method, Uri, Options, Content) ->
-	{EpID, Path, Query} = resolve_uri(Uri),
+	{_Scheme, EpID, Path, Query} = coap_utils:decode_uri(Uri),
 	Options2 = coap_utils:add_option('Uri-Query', Query, coap_utils:add_option('Uri-Path', Path, Options)),
 	{EpID, {Method, Options2, #coap_content{payload=Content}}}.
 
@@ -195,27 +195,3 @@ close_transport(SockPid, EndpointPid) ->
 	coap_endpoint:close(EndpointPid),
 	ecoap_udp_socket:close(SockPid).
 
-resolve_uri(Uri) ->
-    {ok, {_Scheme, _UserInfo, Host, PortNo, Path, Query}} =
-        http_uri:parse(Uri, [{scheme_defaults, [{coap, 5683}]}]),
-    {ok, PeerIP} = inet:getaddr(Host, inet),
-    {{PeerIP, PortNo}, split_path(Path), split_query(Query)}.
-
-split_path([]) -> [];
-split_path([$/]) -> [];
-split_path([$/ | Path]) -> split_segments(Path, $/, []).
-
-split_query([]) -> [];
-split_query([$? | Path]) -> split_segments(Path, $&, []).
-
-split_segments(Path, Char, Acc) ->
-    case string:rchr(Path, Char) of
-        0 ->
-            [make_segment(Path) | Acc];
-        N when N > 0 ->
-            split_segments(string:substr(Path, 1, N-1), Char,
-                [make_segment(string:substr(Path, N+1)) | Acc])
-    end.
-
-make_segment(Seg) ->
-    list_to_binary(http_uri:decode(Seg)).
