@@ -61,7 +61,7 @@ blockwise(Pid) ->
         ?_assertEqual(1280, begin {_, _, #coap_content{payload=Payload}, _} = Response, byte_size(Payload) end)
     ].
 
-% verify that ecoap_client clean up state in this case
+% verify that ecoap_client clean up its state in this case
 error_while_observe_block({Server, Client}) ->
     _ = spawn_link(ecoap_client, observe, [Client, "coap://localhost:5683/test"]),
     ExpectReq = coap_utils:request('CON', 'GET', <<>>, [{'Uri-Path', [<<"test">>]}, {'Observe', 0}]),
@@ -85,6 +85,12 @@ error_while_observe_block({Server, Client}) ->
     server_stub:send_response(Server, #coap_message{type='RST', id=BlockReqMsgId4}),
     timer:sleep(50),
     ReqRefs = ecoap_client:get_reqrefs(Client),
-    [?_assertEqual(#{}, ReqRefs)].
+    BlockRefs = ecoap_client:get_blockrefs(Client),
+    ObsRegs = ecoap_client:get_obsregs(Client),
+    [
+        ?_assertEqual(#{}, ReqRefs),
+        ?_assertEqual(#{}, BlockRefs),
+        ?_assertEqual(#{}, ObsRegs)
+    ].
 
-% TODO: observe test
+% TODO: more observe tests
