@@ -34,8 +34,8 @@ coap_get(_EpID, Prefix, Name, Query, Request) ->
 coap_post(_EpID, Prefix, Name, Request) -> 
     Content = coap_utils:get_content(Request),
     io:format("post ~p ~p ~p~n", [Prefix, Name, Content]),
-    % {error, 'MethodNotAllowed'}.
-    {ok, 'Created', #coap_content{}, [{'Location-Path', Prefix++Name}]}.
+    {error, 'MethodNotAllowed'}.
+    % {ok, 'Created', #coap_content{}, [{'Location-Path', Prefix++Name}]}.
 
 coap_put(_EpID, Prefix, Name, Request) ->
     Content = coap_utils:get_content(Request),
