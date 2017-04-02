@@ -4,7 +4,7 @@
 %% API.
 -export([start_link/4, start_link/3, close/1, 
         ping/1, send/2, send_message/3, send_request/3, send_response/3, cancel_request/2]).
--export([generate_token/1]).
+-export([generate_token/0, generate_token/1]).
 
 %% gen_server.
 -export([init/1]).
@@ -92,7 +92,7 @@ send(EndpointPid, Message=#coap_message{}) ->
 -spec send_request(pid(), Ref, coap_message()) -> {ok, Ref}.
 % when no token is assigned then generate one
 send_request(EndpointPid, Ref, Message=#coap_message{token= <<>>}) ->
-    Token = generate_token(?TOKEN_LENGTH), % shall be at least 32 random bits
+    Token = generate_token(), 
     gen_server:cast(EndpointPid, {send_request, Message#coap_message{token=Token}, {self(), Ref}}),
     {ok, Ref};
 % use user defined token
@@ -113,6 +113,9 @@ send_response(EndpointPid, Ref, Message) ->
 -spec cancel_request(pid(), reference()) -> ok.
 cancel_request(EndpointPid, Ref) ->
     gen_server:cast(EndpointPid, {cancel_request, {self(), Ref}}).
+
+-spec generate_token() -> binary().
+generate_token() -> generate_token(?TOKEN_LENGTH).
 
 -spec generate_token(non_neg_integer()) -> binary().
 generate_token(TKL) ->

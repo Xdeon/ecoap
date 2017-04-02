@@ -62,7 +62,7 @@ start_link() ->
 close(Pid) -> 
 	gen_server:cast(Pid, shutdown).
 
--spec ping(list()) -> ok | error.
+-spec ping(string()) -> ok | error.
 ping(Uri) ->
 	{ok, Pid} = start_link(),
 	{_Scheme, EpID, _Path, _Query} = coap_utils:decode_uri(Uri),
@@ -73,15 +73,15 @@ ping(Uri) ->
 	ok = close(Pid),
 	Res.
 
--spec request(coap_method(), list()) -> response().
+-spec request(coap_method(), string()) -> response().
 request(Method, Uri) ->
 	request(Method, Uri, <<>>, []).
 
--spec request(coap_method(), list(), request_content()) -> response().
+-spec request(coap_method(), string(), request_content()) -> response().
 request(Method, Uri, Content) ->
 	request(Method, Uri, Content, []).	
 
--spec request(coap_method(), list(), request_content(), optionset()) -> response().
+-spec request(coap_method(), string(), request_content(), optionset()) -> response().
 request(Method, Uri, Content, Options) ->
 	{ok, Pid} = start_link(),
 	{EpID, Req} = assemble_request(Method, Uri, Options, Content),
