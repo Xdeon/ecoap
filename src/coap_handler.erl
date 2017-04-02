@@ -39,14 +39,14 @@ start_link(EndpointPid, ID) ->
 	gen_server:start_link(?MODULE, [EndpointPid, ID], []).
 
 -spec notify([binary()], coap_content() | coap_error()) -> ok.
-notify(Uri, Resource) ->
-    notify(Uri, Resource, []).
+notify(Uri, Content) ->
+    notify(Uri, Content, []).
 
 -spec notify([binary()], coap_content() | coap_error(), optionset()) -> ok.
-notify(Uri, Resource, Options) ->
+notify(Uri, Content, Options) ->
     case pg2:get_members({coap_observer, Uri}) of
         {error, _} -> ok;
-        List -> [gen_server:cast(Pid, {obs_notify, Resource, Options}) || Pid <- List], ok
+        List -> [gen_server:cast(Pid, {obs_notify, Content, Options}) || Pid <- List], ok
     end.
 
 %% gen_server.
@@ -67,11 +67,11 @@ handle_call(_Request, _From, State) ->
     error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
 	{noreply, State}.
 
-handle_cast({obs_notify, _Resource, _Options}, State=#state{observer=undefined}) ->
+handle_cast({obs_notify, _Content, _Options}, State=#state{observer=undefined}) ->
     % ignore unexpected notification
     {noreply, State};
-handle_cast({obs_notify, Resource=#coap_content{}, Options}, State=#state{observer=Observer}) ->
-    return_resource(Observer, Resource, Options, State);
+handle_cast({obs_notify, Content=#coap_content{}, Options}, State=#state{observer=Observer}) ->
+    return_resource(Observer, Content, Options, State);
 handle_cast({obs_notify, {error, Code}, _Options}, State=#state{observer=Observer}) ->
     {ok, State2} = cancel_observer(Observer, State),
     return_response(Observer, {error, Code}, State2);
@@ -98,8 +98,8 @@ handle_info({coap_error, _EpID, _EndpointPid, _Ref, _Error}, State=#state{observ
     {stop, normal, State2};
 handle_info(Info, State=#state{module=Module, observer=Observer, obstate=ObState}) ->
     case invoke_callback(Module, handle_info, [Info, ObState]) of
-        {notify, Ref, Resource=#coap_content{}, Options, ObState2} ->
-            return_resource(Ref, Observer, {ok, 'Content'}, Resource, Options, State#state{obstate=ObState2});
+        {notify, Ref, Content=#coap_content{}, Options, ObState2} ->
+            return_resource(Ref, Observer, {ok, 'Content'}, Content, Options, State#state{obstate=ObState2});
         {notify, Ref, {error, Code}, ObState2} ->
             % should we cancel observe here and terminate, if an observer relation exists?
             return_response(Ref, Observer, {error, Code}, <<>>, State#state{obstate=ObState2});
@@ -163,8 +163,8 @@ process_request(EpID, Request, State) ->
 check_resource(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, query=Query, module=Module}) ->
     % check accpetable format 
     case invoke_callback(Module, coap_get, [EpID, Prefix, Suffix, Query, Request]) of
-        {ok, Resource, Options} ->
-            check_preconditions(EpID, Request, Resource, Options, State);
+        {ok, Content, Options} ->
+            check_preconditions(EpID, Request, Content, Options, State);
         {error, 'NotFound'} = R ->
             check_preconditions(EpID, Request, R, [], State);
         {error, Code} ->
@@ -173,10 +173,10 @@ check_resource(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, query=Q
             return_response([], Request, {error, Code}, Reason, State)
     end.
 
-check_preconditions(EpID, Request, Resource, Options, State) ->
-    case if_match(Request, Resource) andalso if_none_match(Request, Resource) of
+check_preconditions(EpID, Request, Content, Options, State) ->
+    case if_match(Request, Content) andalso if_none_match(Request, Content) of
         true ->
-            handle_method(EpID, Request, Resource, Options, State);
+            handle_method(EpID, Request, Content, Options, State);
         false ->
             return_response(Request, {error, 'PreconditionFailed'}, State)
     end.
@@ -196,14 +196,14 @@ if_none_match(Request, #coap_content{}) ->
 if_none_match(#coap_message{}, {error, _}) ->
     true.
 
-handle_method(EpID, Request=#coap_message{code='GET'}, Resource=#coap_content{}, Options, State) ->
+handle_method(EpID, Request=#coap_message{code='GET'}, Content=#coap_content{}, Options, State) ->
      case coap_utils:get_option('Observe', Request) of
         0 ->
-            handle_observe(EpID, Request, Resource, Options, State);
+            handle_observe(EpID, Request, Content, Options, State);
         1 ->
-            handle_unobserve(EpID, Request, Resource, Options, State);
+            handle_unobserve(EpID, Request, Content, Options, State);
         undefined ->
-            return_resource(Request, Resource, Options, State);
+            return_resource(Request, Content, Options, State);
         _Else ->
             return_response(Request, {error, 'BadOption'}, State)
     end;
@@ -211,16 +211,16 @@ handle_method(EpID, Request=#coap_message{code='GET'}, Resource=#coap_content{},
 handle_method(_EpID, Request=#coap_message{code='GET'}, {error, Code}, _Options, State) ->
     return_response(Request, {error, Code}, State);
 
-handle_method(EpID, Request=#coap_message{code='POST'}, _Resource, _Options, State) ->
+handle_method(EpID, Request=#coap_message{code='POST'}, _Content, _Options, State) ->
     handle_post(EpID, Request, State);
 
-handle_method(EpID, Request=#coap_message{code='PUT'}, Resource, _Options, State) ->
-    handle_put(EpID, Request, Resource, State);
+handle_method(EpID, Request=#coap_message{code='PUT'}, Content, _Options, State) ->
+    handle_put(EpID, Request, Content, State);
 
-handle_method(EpID, Request=#coap_message{code='DELETE'}, _Resource, _Options, State) ->
+handle_method(EpID, Request=#coap_message{code='DELETE'}, _Content, _Options, State) ->
     handle_delete(EpID, Request, State);
 
-handle_method(_EpID, Request, _Resource, _Options, State) ->
+handle_method(_EpID, Request, _Content, _Options, State) ->
     return_response(Request, {error, 'MethodNotAllowed'}, State).
 
 %  TODO RFC7641:
@@ -252,11 +252,11 @@ handle_observe(_EpID, Request, Content, Options, State) ->
     % subsequent observe request from the same user
     return_resource(Request, Content, Options, State#state{observer=Request}).
 
-handle_unobserve(_EpID, Request=#coap_message{token=Token}, Resource, Options, State=#state{observer=#coap_message{token=Token}}) ->
+handle_unobserve(_EpID, Request=#coap_message{token=Token}, Content, Options, State=#state{observer=#coap_message{token=Token}}) ->
     {ok, State2} = cancel_observer(Request, State),
-    return_resource(Request, Resource, Options, State2);
-handle_unobserve(_EpID, Request, Resource, Options, State) ->
-    return_resource(Request, Resource, Options, State).
+    return_resource(Request, Content, Options, State2);
+handle_unobserve(_EpID, Request, Content, Options, State) ->
+    return_resource(Request, Content, Options, State).
 
 cancel_observer(#coap_message{}, State=#state{uri=Uri, module=Module, obstate=ObState}) ->
     ok = invoke_callback(Module, coap_unobserve, [ObState]),
@@ -279,11 +279,11 @@ handle_post(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=Mod
             return_response([], Request, {error, Error}, Reason, State)
     end.
 
-handle_put(EpID, Request, Resource, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
+handle_put(EpID, Request, Content, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
     % Content = coap_utils:get_content(Request),
     case invoke_callback(Module, coap_put, [EpID, Prefix, Suffix, Request]) of
         ok ->
-            return_response(Request, created_or_changed(Resource), State);
+            return_response(Request, created_or_changed(Content), State);
         {error, Error} ->
             return_response(Request, {error, Error}, State);
         {error, Error, Reason} ->
