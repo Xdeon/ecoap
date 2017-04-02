@@ -51,9 +51,8 @@
 
 -type from() :: {pid(), term()}.
 -type req() :: #req{}.
--type request_content() :: binary().
--type response() :: {ok, success_code(), coap_content()} | 
-					{ok, success_code(), coap_content(), optionset()} | 
+-type request_content() :: binary() | coap_content().
+-type response() :: {ok, success_code(), coap_content(), optionset()} | 
 					{error, error_code()} | 
 					{error, error_code(), coap_content()} | 
 					{separate, reference()}.
@@ -200,7 +199,10 @@ get_blockrefs(Pid) -> gen_server:call(Pid, get_blockrefs).
 assemble_request(Method, Uri, Options, Content) ->
 	{_Scheme, EpID, Path, Query} = coap_utils:decode_uri(Uri),
 	Options2 = coap_utils:add_option('Uri-Query', Query, coap_utils:add_option('Uri-Path', Path, Options)),
-	{EpID, {Method, Options2, #coap_content{payload=Content}}}.
+	{EpID, {Method, Options2, convert_content(Content)}}.
+
+convert_content(Content=#coap_content{}) -> Content;
+convert_content(Content) when is_binary(Content) -> #coap_content{payload=Content}.
 
 send_request(Pid, EpID, Req, ClientPid) ->
 	% set timeout to infinity because coap_endpoint will always return a response, 
