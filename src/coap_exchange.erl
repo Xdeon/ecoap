@@ -220,16 +220,16 @@ await_pack({in, BinAck}, TransArgs, State) ->
     	% this is an empty ack for separate response
         #coap_message{type='ACK', code=undefined} = Ack ->
             handle_ack(Ack, TransArgs, State),
-            next_state(undefined, State);
-            % next_state(aack_sent, State);
+            % since we can confirm when an outgoing confirmable message
+            % has been acknowledged or reset, we can safely clean the msgbin 
+            % which won't be used again from this moment
+            check_next_state(aack_sent, State#exchange{msgbin= <<>>});
         #coap_message{type='RST'} = Rst ->
             handle_error(Rst, 'RST', TransArgs, State),
-            next_state(undefined, State);
-            % next_state(aack_sent, State);
+            check_next_state(aack_sent, State#exchange{msgbin= <<>>});
         #coap_message{} = Ack ->
         	handle_response(Ack, TransArgs, State),
-            next_state(undefined, State);
-            % next_state(aack_sent, State);
+            check_next_state(aack_sent, State#exchange{msgbin= <<>>});
         % encounter format error, ignore the message
         % shall we inform the receiver?
         {error, _Error} ->
@@ -243,8 +243,7 @@ await_pack({timeout, await_pack}, TransArgs=#{sock:=Socket, sock_module:=SocketM
     next_state(await_pack, TransArgs, State#exchange{retry_time=Timeout2, retry_count=Count+1}, Timeout2);
 await_pack({timeout, await_pack}, TransArgs, State=#exchange{trid={out, MsgId}}) ->
     handle_error(coap_utils:rst(MsgId), timeout, TransArgs, State),
-    next_state(undefined, State).
-    % next_state(aack_sent, State).
+    check_next_state(aack_sent, State#exchange{msgbin= <<>>}).
 
 -spec aack_sent({in, binary()} | {timeout, await_pack}, coap_endpoint:trans_args(), exchange()) -> exchange().
 aack_sent({in, _Ack}, _TransArgs, State) ->
@@ -271,12 +270,13 @@ handle_request(Message=#coap_message{code=Method, options=Options},
         	{ok, _} = coap_endpoint:send(EndpointPid,
                 coap_utils:response({error, 'NotFound'}, Message)),
             ok
-    end;
+    end.
 
-handle_request(Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={Sender, Ref}}) ->
-    %io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
-    Sender ! {coap_request, EpID, EndpointPid, Ref, Message},
-    ok.
+% it makes no sense to have the following code block because as a client we could not know the recevier of the request in advance
+% handle_request(Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver={Sender, Ref}}) ->
+%     %io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
+%     Sender ! {coap_request, EpID, EndpointPid, Ref, Message},
+%     ok.
 
 handle_response(Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiver=Receiver={Sender, Ref}}) ->
     %io:fwrite("handle_response called from ~p with ~p~n", [self(), Message]),    
