@@ -53,6 +53,7 @@
 -type req() :: #req{}.
 -type request_content() :: binary() | coap_content().
 -type response() :: {ok, success_code(), coap_content(), optionset()} | 
+					{error, timeout} |
 					{error, error_code()} | 
 					{error, error_code(), coap_content()} | 
 					{separate, reference()}.
@@ -89,7 +90,7 @@ ping(Pid, Uri) ->
 % Following notifications will be sent to the caller process as messages in form of {coap_notify, ClientRef, Pid, N, Res}
 % where ClientRef is the reference, Pid is the ecoap_client pid, N is the observe sequence number and Res is the response content.
 % If some error happened in server side, e.g. a reset/error code is received during observing
-% the response is sent to the caller process as message in form of {async_response, ClientRef, Pid, Res} where Res is {error, _}.
+% the response is sent to the caller process as message in form of {coap_notify, ClientRef, Pid, undefined, Res} where Res is {error, _}.
 
 % If the ecoap_client process crashed during the calll, the call fails with reason noproc.
 
@@ -106,7 +107,7 @@ observe(Pid, Uri, Options) ->
 	{ok, ClientRef} = gen_server:call(Pid, {start_observe, Key, EpID, Req, self()}),
 	receive 
 		% Server does not support observing the resource or an error happened
-		{async_response, ClientRef, Pid, Res} -> 
+		{coap_notify, ClientRef, Pid, undefined, Res} ->
 			erlang:demonitor(MonitorRef, [flush]),
 			% We need to remove the observe reference 
 			remove_observe_ref(Pid, Key),
@@ -145,6 +146,19 @@ unobserve(Pid, Ref, ETag) ->
 		Else -> Else
 	end.
 
+% Send a request synchronously
+
+% Returns response of the sent request in the following format:
+% Sucess response: {ok, Code, Content, ExtraOptions} where ExtraOptions is a list of options that are not covered by the ones in Content
+% Error response: {error, Code}; {error, Code, Content}
+% When server decides to respond with a separate response, returns {separate, Reference} where Reference can be used to match response later or cancel the request
+% The separate response will be sent as message in format of {async_response, Reference, Pid, Response} where Pid is the process ID of ecoap_client, Response is any of the Success/Error Response
+% When sending a confirmable request and server is not responsive, returns {error, timeout}
+
+% Note the synchronous request function always behave in a synchronous way no matter what the message type is
+% Therefore one should always use the asynchronous request function to send a non-confirmable request 
+% if there is a risk that the response gets lost and we wait forever
+
 -spec request(pid(), coap_method(), string()) -> response().
 request(Pid, Method, Uri) ->
 	request(Pid, Method, Uri, <<>>, []).
@@ -157,6 +171,16 @@ request(Pid, Method, Uri, Content) ->
 request(Pid, Method, Uri, Content, Options) ->
 	{EpID, Req} = assemble_request(Method, Uri, Options, Content),
 	send_request(Pid, EpID, Req, self()).
+
+% Send a request asynchronously
+
+% Returns {ok, Reference} where Reference can be used to match response later or cancel the request
+% The asynchronous response will be sent as message in format of {async_response, Reference, Pid, Response} 
+% where Pid is the process ID of ecoap_client, Response is any of the Success/Error Response (including {error, timeout}), same as in synchronous request function
+
+% Specially, when combined with separate response, two asychronous responses will be sent as messages 
+% The first one is in format of {async_response, Reference, Pid, {separate, Reference}} 
+% and the second one, a.k.a. the real response is in normal form: {async_response, Reference, Pid, Response}
 
 -spec async_request(pid(), coap_method(), string()) -> {ok, reference()}.
 async_request(Pid, Method, Uri) ->
@@ -176,6 +200,7 @@ async_request(Pid, Method, Uri, Content, Options) ->
 % i.e. cancel it by removing token info and let next notification be rejected
 % Blockwise transfer is cancelled by removing the origin request token and its record completely
 % so that if the cancellation occurs before a blockwise transfer finish, next block response will be discarded and no new request will be sent
+
 -spec cancel_async_request(pid(), reference()) -> ok | {error, no_request}.
 cancel_async_request(Pid, Ref) ->
 	gen_server:call(Pid, {cancel_async_request, Ref}).
@@ -411,7 +436,7 @@ handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options
 			io:format("unknown response: ~p~n", [Message]),
 			{noreply, State};
 		#req{method=Method, options=Options2, fragment=Fragment, client_ref=ClientRef, 
-			client_pid=ClientPid, from=From, block_obseq=Obseq} = Req ->
+			client_pid=ClientPid, from=From, block_obseq=Obseq, obs_key=Key} = Req ->
 			case coap_utils:get_option('Block2', Options1) of
 		        {Num, true, Size} ->
 		            % more blocks follow, ask for more
@@ -437,16 +462,11 @@ handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options
 		            Res = return_response({ok, Code}, Message#coap_message{payload= <<Fragment/binary, Data/binary>>}),
 			        case coap_utils:get_option('Observe', Options1) of
 			        	undefined ->
-			        		% It will be a blockwise transfer observe notification if Obseq is not undefined
-			        		case Obseq of
-			        			undefined -> 
-			        				ok = send_response(From, ClientPid, ClientRef, Res);
-			        			Num ->
-			        				ok = send_notify(ClientPid, ClientRef, Num, Res)
-			        		end,
+			        		% It will be a blockwise transfer observe notification if Obseq != undefined
+			        		ok = send_response(From, ClientPid, ClientRef, Key, Obseq, Res),
 			        		{noreply, State#state{req_refs=delete_ref(Ref, ReqRefs), block_refs=delete_ref(ClientRef, BlockRefs)}};
 			        	Num ->
-			        		ok = send_notify(ClientPid, ClientRef, Num, Res),
+			        		ok = send_response(From, ClientPid, ClientRef, Key, Num, Res),
 			        		% Clean ReqRefs and BlockRefs in case we receive a non-block observe notification in the middle of a block notification
 			        		% In this case the ongoing blockwise transfer is discarded			     
 			        		{noreply, State#state{req_refs=delete_ref(find_ref(ClientRef, BlockRefs), ReqRefs), block_refs=delete_ref(ClientRef, BlockRefs)}}
@@ -465,7 +485,7 @@ handle_error(Ref, Error, State=#state{req_refs=ReqRefs, obs_regs=ObsRegs, block_
 					#coap_message{code={error, Code}} -> return_response({error, Code}, Error);
 					_ -> {error, Error}
 			end,
-		    ok = send_response(From, ClientPid, ClientRef, Res),
+		    ok = send_response(From, ClientPid, ClientRef, Key, undefined, Res),
 			% Make sure we remove any observe relation and info of request related to the error
 			% Note: Though it is enough to remove req info just using Ref as key, since for any ordinary message exchange
 			% info of last req is always cleaned. Howerver one exception is observe as info of origin observe req is kept until
@@ -477,14 +497,10 @@ handle_error(Ref, Error, State=#state{req_refs=ReqRefs, obs_regs=ObsRegs, block_
 handle_ack(Ref, State=#state{req_refs=ReqRefs}) ->
 	case find_ref(Ref, ReqRefs) of
 		undefined -> {noreply, State};
-		#req{client_ref=ClientRef, from=From, client_pid=ClientPid} = Req ->
-			ok = send_response(From, ClientPid, ClientRef, {separate, Ref}),
+		#req{client_ref=ClientRef, from=From, client_pid=ClientPid, obs_key=Key} = Req ->
+			ok = send_response(From, ClientPid, ClientRef, Key, undefined, {separate, Ref}),
 			{noreply, State#state{req_refs=store_ref(Ref, Req#req{from=undefined, client_ref=Ref}, ReqRefs)}}
 	end.
-
-send_notify(ClientPid, ClientRef, Obseq, Res) ->
-    ClientPid ! {coap_notify, ClientRef, self(), Obseq, Res},
-    ok.
 
 update_block_refs(undefined, _, BlockRefs) -> BlockRefs;
 update_block_refs(InitRef, NewRef, BlockRefs) ->
@@ -502,11 +518,14 @@ store_ref(Ref, Val, Refs) ->
 delete_ref(Ref, Refs) ->
 	maps:remove(Ref, Refs).
 
-send_response(undefined, ClientPid, ClientRef, Res) ->
-    ClientPid ! {async_response, ClientRef, self(), Res},
-    ok;
-send_response(From, _, _, Res) ->
-    _ = gen_server:reply(From, Res),
+send_response(undefined, ClientPid, ClientRef, undefined, _Obseq, Res) ->
+	ClientPid ! {async_response, ClientRef, self(), Res},
+	ok;
+send_response(undefined, ClientPid, ClientRef, _ObsKey, Obseq, Res) ->
+	ClientPid ! {coap_notify, ClientRef, self(), Obseq, Res},
+	ok;
+send_response(From, _, _, _, _, Res) ->
+    gen_server:reply(From, Res),
     ok.
 
 return_response({ok, Code}, Message) ->
