@@ -1,5 +1,5 @@
 % This module provide a simple synchronous CoAP client
-% Each request is made in a pair of newly-opened ecoap_udp_socket and coap_endpoint processes synchronously
+% Each request is made in a pair of newly-spawned ecoap_udp_socket and coap_endpoint processes synchronously
 % After a request is completed, related processes are automatically shut down
 % It aims at simplicity for use without need for starting, terminating and managing process manually
 % Thus it can not be used as an OTP-compliant component
@@ -8,6 +8,7 @@
 % If it is finished within 247s than it will appear as a synchronous response that just takes a bit longer to complete
 % If it is beyond 247s than the request will finally times out
 % But note that there will not be any empty ACK to a separate CON response since everything has been shutdown after receiving
+% This module only supports sending confirmable requests
 
 -module(ecoap_simple_client).
 -behaviour(gen_server).
@@ -43,9 +44,9 @@
 -type req() :: #req{}.
 -type request_content() :: binary() | coap_content().
 -type response() :: {ok, success_code(), coap_content(), optionset()} | 
+					{error, timeout} |
 					{error, error_code()} | 
-					{error, error_code(), coap_content()} | 
-					{separate, reference()}.
+					{error, error_code(), coap_content()}.
 -opaque state() :: #state{}.
 -export_type([state/0]).
 
@@ -122,7 +123,7 @@ handle_info({coap_response, _EpID, EndpointPid, Ref, Message}, State=#state{ref=
 handle_info({coap_error, _EpID, _EndpointPid, Ref, Error}, 
 	State=#state{ref=Ref, from=From}) ->
 	ok = send_response(From, {error, Error}), 
-	{noreply, State};
+	{noreply, State#state{ref=undefined}};
 
 handle_info(_Info, State) ->
 	{noreply, State}.
@@ -173,14 +174,14 @@ handle_response(EndpointPid, Message=#coap_message{code={ok, Code}, options=Opti
 		 _Else ->
 		 	Res = return_response({ok, Code}, Message#coap_message{payload= <<Fragment/binary, Data/binary>>}),
 		 	ok = send_response(From, Res),
-		 	{noreply, State}
+		 	{noreply, State#state{ref=undefined}}
     end;
 
 handle_response(_EndpointPid, Message=#coap_message{code={error, Code}}, 
 	State=#state{from=From}) ->
 	Res = return_response({error, Code}, Message),
 	ok = send_response(From, Res),
-	{noreply, State}.
+	{noreply, State#state{ref=undefined}}.
 
 send_response(From, Res) ->
 	_ = gen_server:reply(From, Res),
