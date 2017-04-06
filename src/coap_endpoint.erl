@@ -30,7 +30,7 @@
     trans_args = undefined :: trans_args(),
 	tokens = undefined :: #{binary() => receiver()},
 	trans = undefined :: #{trid() => coap_exchange:exchange()},
-    receivers = undefined :: undefined | #{receiver() => {binary(), trid()}},
+    receivers = undefined :: #{receiver() => {binary(), trid()}},
 	nextmid = undefined :: msg_id(),
 	rescnt = undefined :: non_neg_integer(),
     handler_refs = undefined :: undefined | #{reference() => tuple()},
@@ -123,15 +123,17 @@ generate_token(TKL) ->
 
 %% gen_server.
 
+% client
 init([undefined, SocketModule, Socket, EpID]) ->
     TRef = erlang:start_timer(?SCAN_INTERVAL, self(), scan),
     TransArgs = #{sock=>Socket, sock_module=>SocketModule, ep_id=>EpID, endpoint_pid=>self()},
     {ok, #state{tokens=maps:new(), trans=maps:new(), receivers=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs, mode=client}};
-    
+
+% server 
 init([HdlSupPid, SocketModule, Socket, EpID]) ->
     TRef = erlang:start_timer(?SCAN_INTERVAL, self(), scan),
     TransArgs = #{sock=>Socket, sock_module=>SocketModule, ep_id=>EpID, endpoint_pid=>self(), handler_sup=>HdlSupPid, handler_regs=>maps:new()},
-    {ok, #state{tokens=maps:new(), trans=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs, handler_refs=maps:new(), mode=server}}.
+    {ok, #state{tokens=maps:new(), trans=maps:new(), receivers=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs, handler_refs=maps:new(), mode=server}}.
 
 handle_call(_Request, _From, State) ->
     error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
