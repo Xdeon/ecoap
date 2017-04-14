@@ -34,8 +34,8 @@
 	nextmid = undefined :: msg_id(),
 	rescnt = undefined :: non_neg_integer(),
     handler_refs = undefined :: undefined | #{reference() => tuple()},
-    timer = undefined :: reference(),
-    mode = server :: server | client
+    timer = undefined :: reference()
+    % mode = server :: server | client
 }).
 
 -type trid() :: {in | out, msg_id()}.
@@ -127,13 +127,13 @@ generate_token(TKL) ->
 init([undefined, SocketModule, Socket, EpID]) ->
     TRef = erlang:start_timer(?SCAN_INTERVAL, self(), scan),
     TransArgs = #{sock=>Socket, sock_module=>SocketModule, ep_id=>EpID, endpoint_pid=>self()},
-    {ok, #state{tokens=maps:new(), trans=maps:new(), receivers=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs, mode=client}};
+    {ok, #state{tokens=maps:new(), trans=maps:new(), receivers=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs}};
 
 % server 
 init([HdlSupPid, SocketModule, Socket, EpID]) ->
     TRef = erlang:start_timer(?SCAN_INTERVAL, self(), scan),
     TransArgs = #{sock=>Socket, sock_module=>SocketModule, ep_id=>EpID, endpoint_pid=>self(), handler_sup=>HdlSupPid, handler_regs=>maps:new()},
-    {ok, #state{tokens=maps:new(), trans=maps:new(), receivers=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs, handler_refs=maps:new(), mode=server}}.
+    {ok, #state{tokens=maps:new(), trans=maps:new(), receivers=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs, handler_refs=maps:new()}}.
 
 handle_call(_Request, _From, State) ->
     error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
@@ -352,8 +352,8 @@ update_state(State=#state{trans=Trans}, TrId, TrState) ->
     Trans2 = maps:put(TrId, TrState, Trans),
     {noreply, State#state{trans=Trans2}}.
 
-purge_state(State=#state{mode=client}) ->
-    {noreply, State};
+% purge_state(State=#state{mode=client}) ->
+%     {noreply, State};
 purge_state(State=#state{tokens=Tokens, trans=Trans, rescnt=Count}) ->
     case maps:size(Tokens) + maps:size(Trans) + Count of
         0 -> 
