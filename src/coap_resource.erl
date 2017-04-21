@@ -1,12 +1,3 @@
-%
-% The contents of this file are subject to the Mozilla Public License
-% Version 1.1 (the "License"); you may not use this file except in
-% compliance with the License. You may obtain a copy of the License at
-% http://www.mozilla.org/MPL/
-%
-% Copyright (c) 2015 Petr Gotthard <petr.gotthard@centrum.cz>
-%
-
 -module(coap_resource).
 
 -include_lib("ecoap_common/include/coap_def.hrl").
@@ -75,6 +66,16 @@
 % cancellation request handler
 -callback coap_unobserve(Obstate) -> ok when
 	Obstate :: any().
+
+% payload adapter for observe notifications
+% used to change payload format of a notification to fit the current client's requirement
+% called by coap_handler:notify/2, notify/3
+-callback coap_payload_adapter(Content, Options, Accept) -> {ok, NewContent, NewOptions} when
+	Content :: coap_content(),
+	Options :: optionset(),
+	Accept :: binary() | non_neg_integer(),
+	NewContent :: coap_content(),
+	NewOptions :: optionset().
 
 % handler for messages sent to the responder process
 % used to generate notifications

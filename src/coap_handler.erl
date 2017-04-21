@@ -70,8 +70,9 @@ handle_call(_Request, _From, State) ->
 handle_cast({obs_notify, _Content, _Options}, State=#state{observer=undefined}) ->
     % ignore unexpected notification
     {noreply, State};
-handle_cast({obs_notify, Content=#coap_content{}, Options}, State=#state{observer=Observer}) ->
-    return_resource(Observer, Content, Options, State);
+handle_cast({obs_notify, Content=#coap_content{}, Options}, State=#state{observer=Observer, module=Module}) ->
+    {ok, Content2, Options2} = invoke_callback(Module, coap_payload_adapter, [Content, Options, coap_utils:get_option('Accept', Observer)]),
+    return_resource(Observer, Content2, Options2, State);
 handle_cast({obs_notify, {error, Code}, _Options}, State=#state{observer=Observer}) ->
     {ok, State2} = cancel_observer(Observer, State),
     return_response(Observer, {error, Code}, State2);
@@ -100,9 +101,10 @@ handle_info(Info, State=#state{module=Module, observer=Observer, obstate=ObState
     case invoke_callback(Module, handle_info, [Info, ObState]) of
         {notify, Ref, Content=#coap_content{}, Options, ObState2} ->
             return_resource(Ref, Observer, {ok, 'Content'}, Content, Options, State#state{obstate=ObState2});
-        {notify, Ref, {error, Code}, ObState2} ->
-            % should we cancel observe here and terminate, if an observer relation exists?
-            return_response(Ref, Observer, {error, Code}, <<>>, State#state{obstate=ObState2});
+        {notify, Ref, {error, Code}, _Options, ObState2} ->
+            % should we wait for ack (of the error response, if applicable) before terminate?
+            {ok, State2} = cancel_observer(Observer, State#state{obstate=ObState2}),
+            return_response(Ref, Observer, {error, Code}, <<>>, State2);
         {noreply, ObState2} ->
             {noreply, State#state{obstate=ObState2}};
         {stop, ObState2} ->
@@ -356,7 +358,7 @@ send_response(Ref, Response, State=#state{endpoint_pid=EndpointPid, observer=Obs
     end.
 
 register_handler(EndpointPid, ID) ->
-    EndpointPid ! {register_handler, ID, self()}. 
+    EndpointPid ! {register_handler, ID, self()}, ok. 
 
 set_timeout(Timeout, State=#state{timer=undefined}) ->
     set_timeout0(State, Timeout);
@@ -385,6 +387,7 @@ next_seq(Seq) ->
 uri_suffix(Prefix, Uri) ->
 	lists:nthtail(length(Prefix), Uri).
 
+% should we patter match the error every time?
 invoke_callback(Module, Fun, Args) ->
     case catch {ok, apply(Module, Fun, Args)} of
         {ok, Response} ->
