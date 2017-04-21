@@ -148,14 +148,6 @@ handle_cast({send_message, Message, Receiver}, State) ->
 % outgoing response, either CON(0) or NON(1), piggybacked ACK(2) or RST(3)
 handle_cast({send_response, Message, Receiver}, State) ->
     make_new_response(Message, Receiver, State);
-handle_cast({register_handler, ID, Pid}, State=#state{rescnt=Count, trans_args=TransArgs=#{handler_regs:=Regs}, handler_refs=Refs}) ->
-    case maps:is_key(ID, Regs) of
-        true -> {noreply, State};
-        false ->
-            io:format("register_handler ~p for ~p~n", [Pid, ID]),
-            Ref = erlang:monitor(process, Pid),
-            {noreply, State#state{rescnt=Count+1, trans_args=TransArgs#{handler_regs:=maps:put(ID, Pid, Regs)}, handler_refs=maps:put(Ref, ID, Refs)}}
-    end;
 % cancel request include removing token, request exchange state and receiver reference
 handle_cast({cancel_request, Receiver}, State=#state{tokens=Tokens, trans=Trans, receivers=Receivers}) ->
     {Token, TrId} = maps:get(Receiver, Receivers, {undefined, undefined}),
@@ -266,11 +258,19 @@ handle_info({request_complete, Receiver}, State=#state{tokens=Tokens, receivers=
     {noreply, State#state{tokens=maps:remove(Token, Tokens), receivers=maps:remove(Receiver, Receivers)}};
 % Only monitor possible observe handlers instead of every new spawned handler
 % so that we can save some extra message traffic
+handle_info({register_handler, ID, Pid}, State=#state{rescnt=Count, trans_args=TransArgs=#{handler_regs:=Regs}, handler_refs=Refs}) ->
+    case maps:is_key(ID, Regs) of
+        true -> {noreply, State};
+        false ->
+            io:format("register_coap_handler ~p for ~p~n", [Pid, ID]),
+            Ref = erlang:monitor(process, Pid),
+            {noreply, State#state{rescnt=Count+1, trans_args=TransArgs#{handler_regs:=maps:put(ID, Pid, Regs)}, handler_refs=maps:put(Ref, ID, Refs)}}
+    end;
 handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{rescnt=Count, trans_args=TransArgs=#{handler_regs:=Regs}, handler_refs=Refs}) ->
     case maps:find(Ref, Refs) of
         {ok, ID} -> 
             %% Code added by wilbur
-            io:format("reg_handler_completed~n"),
+            io:format("coap_handler_completed~n"),
             %% end
             {noreply, State#state{rescnt=Count-1, trans_args=TransArgs#{handler_regs:=maps:remove(ID, Regs)}, handler_refs=maps:remove(Ref, Refs)}};
         error -> 

@@ -125,7 +125,7 @@ handle(EpID, Request, State=#state{endpoint_pid=EndpointPid, id=ID}) ->
             return_response(Request, {error, Code}, State);
         {'Continue', State2} ->
             % io:format("Has Block1~n"),
-            gen_server:cast(EndpointPid, {register_handler, ID, self()}),
+            register_handler(EndpointPid, ID),
             {ok, _} = coap_endpoint:send_response(EndpointPid, [],
                 coap_utils:set_option('Block1', Block1,
                     coap_utils:response({ok, 'Continue'}, Request))),
@@ -236,7 +236,7 @@ handle_observe(EpID, Request, Content=#coap_content{}, Options,
     % the first observe request from this user to this resource
     case invoke_callback(Module, coap_observe, [EpID, Prefix, Suffix, Request]) of
         {ok, ObState} ->
-            gen_server:cast(EndpointPid, {register_handler, ID, self()}),
+            register_handler(EndpointPid, ID),
             pg2:create({coap_observer, Uri}),
             ok = pg2:join({coap_observer, Uri}, self()),
             return_resource(Request, Content, Options, State#state{observer=Request, obstate=ObState});
@@ -347,13 +347,16 @@ send_response(Ref, Response, State=#state{endpoint_pid=EndpointPid, observer=Obs
             case coap_utils:get_option('Block2', Response) of
                 {_, true, _} ->
                     % client is expected to ask for more blocks
-                    gen_server:cast(EndpointPid, {register_handler, ID, self()}),
+                    register_handler(EndpointPid, ID),
                     set_timeout(?EXCHANGE_LIFETIME, State);
                 _Else ->
                     % no further communication concerning this request
                     {stop, normal, State}
             end
     end.
+
+register_handler(EndpointPid, ID) ->
+    EndpointPid ! {register_handler, ID, self()}. 
 
 set_timeout(Timeout, State=#state{timer=undefined}) ->
     set_timeout0(State, Timeout);
