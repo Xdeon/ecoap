@@ -1,6 +1,6 @@
 # General
 .eunit
-deps
+deps/
 *.o
 *.beam
 *.plt
@@ -14,9 +14,10 @@ rebar.lock
 _build/
 
 # erlang.mk
-.erlang.mk/
-*.d
-_rel/
+/.erlang.mk/
+/_rel/
+
+/ecoap.d
 
 # Project specific
 src/core_link_parser.erl
