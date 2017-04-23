@@ -1,7 +1,8 @@
 -module(simple_storage_test).
 -behaviour(coap_resource).
 
--export([coap_discover/2, coap_get/5, coap_post/4, coap_put/4, coap_delete/4, coap_observe/4, coap_unobserve/1, handle_info/2, coap_ack/2]).
+-export([coap_discover/2, coap_get/5, coap_post/4, coap_put/4, coap_delete/4, 
+        coap_observe/4, coap_unobserve/1, coap_payload_adapter/3, handle_info/2, coap_ack/2]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("ecoap_common/include/coap_def.hrl").
@@ -30,6 +31,7 @@ coap_delete(_EpId, _Prefix, [Name], _Request) ->
 
 coap_observe(_EpId, _Prefix, _Suffix, _Request) -> {error, 'MethodNotAllowed'}.
 coap_unobserve(_State) -> ok.
+coap_payload_adapter(Content, Options, _Accept) -> {ok, Content, Options}.
 handle_info(_Message, State) -> {noreply, State}.
 coap_ack(_Ref, State) -> {ok, State}.
 
