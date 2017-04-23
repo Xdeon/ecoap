@@ -2,7 +2,7 @@
 
 %% API
 -export([init/2, received/3, send/3, timeout/3, awaits_response/1, not_expired/1]).
--export([idle/3, got_non/3, sent_non/3, await_aack/3, pack_sent/3, await_pack/3, aack_sent/3]).
+-export([idle/3, got_non/3, sent_non/3, got_rst/3, await_aack/3, pack_sent/3, await_pack/3, aack_sent/3]).
 
 -define(ACK_TIMEOUT, 2000).
 -define(ACK_RANDOM_FACTOR, 1000). % ACK_TIMEOUT*0.5
@@ -113,7 +113,7 @@ sent_non({in, BinMessage}, TransArgs, State)->
     case catch coap_message:decode(BinMessage) of
         #coap_message{type='RST'} = Rst ->
             handle_error(Rst, 'RST', TransArgs, State),
-            next_state(undefined, State);
+            next_state(got_rst, State);
         % ignore other message type
         #coap_message{} -> 
             next_state(sent_non, State);
@@ -121,6 +121,10 @@ sent_non({in, BinMessage}, TransArgs, State)->
         {error, _Error} ->
             next_state(sent_non, State)
     end.
+
+-spec got_rst({in, binary()}, coap_endpoint:trans_args(), exchange()) -> exchange().
+got_rst({in, _BinMessage}, _TransArgs, State)->
+    next_state(got_rst, State).
 
 % --- incoming CON->ACK|RST
 
