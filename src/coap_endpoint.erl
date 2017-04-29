@@ -314,15 +314,16 @@ make_new_response(Message=#coap_message{id=MsgId}, Receiver, State=#state{trans=
                     update_state(State, {in, MsgId},
                         coap_exchange:send(Message, TransArgs, TrState));
                 false ->
-                %% Note by wilbur: otherwise it seems we are about to send a separate response?
-                %% This may be caused by exceed PROCESSING_DELAY when generating the response?
+                    % Note by wilbur:
+                    % send separate response or observe notification
                     make_new_message(Message, Receiver, State)
             end;
             %% Note by wilbur: why is the separate response by default a CON msg? 
             %% Because in this implementation a response for CON req uses the same msg type 
             %% until it is modified before being sent as an ACK
         error ->
-            %% Note by wilbur: Is this line of code used for dealing with out NON response?
+            % Note by wilbur:
+            % send NON response
             make_new_message(Message, Receiver, State)
     end.
 

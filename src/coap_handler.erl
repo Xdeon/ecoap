@@ -101,7 +101,7 @@ handle_info(Info, State=#state{module=Module, observer=Observer, obstate=ObState
     case invoke_callback(Module, handle_info, [Info, ObState]) of
         {notify, Ref, Content=#coap_content{}, Options, ObState2} ->
             return_resource(Ref, Observer, {ok, 'Content'}, Content, Options, State#state{obstate=ObState2});
-        {notify, Ref, {error, Code}, _Options, ObState2} ->
+        {notify, Ref, {error, Code}, ObState2} ->
             % should we wait for ack (of the error response, if applicable) before terminate?
             {ok, State2} = cancel_observer(Observer, State#state{obstate=ObState2}),
             return_response(Ref, Observer, {error, Code}, <<>>, State2);
