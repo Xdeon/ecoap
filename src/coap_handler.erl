@@ -363,7 +363,7 @@ register_handler(EndpointPid, ID) ->
 set_timeout(Timeout, State=#state{timer=undefined}) ->
     set_timeout0(State, Timeout);
 set_timeout(Timeout, State=#state{timer=Timer}) ->
-    _ = erlang:cancel_timer(Timer),
+    _ = erlang:cancel_timer(Timer, [{async, true}, {info, false}]),
     set_timeout0(State, Timeout).
 
 set_timeout0(State, Timeout) ->

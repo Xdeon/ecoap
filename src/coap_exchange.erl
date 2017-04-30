@@ -328,14 +328,14 @@ next_state(Stage, #{endpoint_pid:=EndpointPid}, State=#exchange{trid=TrId, timer
     State#exchange{stage=Stage, timer=Timer};
 % restart the timer
 next_state(Stage, #{endpoint_pid:=EndpointPid}, State=#exchange{trid=TrId, timer=Timer1}, Timeout) ->
-    _ = erlang:cancel_timer(Timer1),
+    _ = erlang:cancel_timer(Timer1, [{async, true}, {info, false}]),
     Timer2 = timeout_after(Timeout, EndpointPid, TrId, Stage),
     State#exchange{stage=Stage, timer=Timer2}.
 
 next_state(undefined, #exchange{timer=undefined}) ->
     undefined;
 next_state(undefined, #exchange{timer=Timer}) ->
-    _ = erlang:cancel_timer(Timer),
+    _ = erlang:cancel_timer(Timer, [{async, true}, {info, false}]),
     undefined;
 next_state(Stage, State=#exchange{timer=undefined}) ->
     State#exchange{stage=Stage};
@@ -343,7 +343,7 @@ next_state(Stage, State=#exchange{stage=Stage1, timer=Timer}) ->
     if
         % when going to another stage, the timer is cancelled
         Stage /= Stage1 ->
-            _ = erlang:cancel_timer(Timer),
+            _ = erlang:cancel_timer(Timer, [{async, true}, {info, false}]),
             State#exchange{stage=Stage, timer=undefined};
         % when staying in current phase, the timer continues
         true ->
