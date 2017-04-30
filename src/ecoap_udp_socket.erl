@@ -23,8 +23,10 @@
     supervisor,
     [endpoint_sup_sup]}).
 
+-define(ACTIVE_PACKETS, 100).
+
 -define(DEFAULT_SOCK_OPTS,
-	[binary, {active, 100}, {reuseaddr, true}]).
+	[binary, {active, ?ACTIVE_PACKETS}, {reuseaddr, true}]).
 
 -record(state, {
 	sock = undefined :: inet:socket(),
@@ -159,7 +161,7 @@ handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{endpoint_refs=En
  			{noreply, State}
  	end;
 handle_info({udp_passive, Socket}, State=#state{sock=Socket}) ->
-	ok = inet:setopts(Socket, [{active, 100}]),
+	ok = inet:setopts(Socket, [{active, ?ACTIVE_PACKETS}]),
 	{noreply, State};
 
 % handle_info({datagram, {PeerIP, PeerPortNo}, Data}, State=#state{sock=Socket}) ->
