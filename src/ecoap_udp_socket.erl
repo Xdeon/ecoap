@@ -23,7 +23,7 @@
     supervisor,
     [endpoint_sup_sup]}).
 
--define(ACTIVE_PACKETS, 100).
+-define(ACTIVE_PACKETS, 500).
 
 -define(DEFAULT_SOCK_OPTS,
 	[binary, {active, ?ACTIVE_PACKETS}, {reuseaddr, true}]).
