@@ -1,4 +1,4 @@
--module(coap_handler_sup).
+-module(ecoap_handler_sup).
 -behaviour(supervisor).
 
 -export([start_link/0, get_handler/3]).
@@ -8,12 +8,12 @@ start_link() ->
 	supervisor:start_link(?MODULE, []).
 
 init([]) ->
-    Procs = [#{id => coap_handler,
-               start => {coap_handler, start_link, []},
+    Procs = [#{id => ecoap_handler,
+               start => {ecoap_handler, start_link, []},
                restart => temporary, 
                shutdown => 5000, 
                type => worker, 
-               modules => [coap_handler]}
+               modules => [ecoap_handler]}
             ],
     {ok, {#{strategy => simple_one_for_one, intensity => 0, period => 1}, Procs}}.
 
@@ -52,8 +52,8 @@ start_handler(SupPid, HandlerID) ->
 %     %% end
 %     supervisor:start_child(SupPid,
 %         {HandlerID,
-%             {coap_handler, start_link, [self(), Uri, Query]},
-%             temporary, 5000, worker, [coap_handler]}).
+%             {ecoap_handler, start_link, [self(), Uri, Query]},
+%             temporary, 5000, worker, [ecoap_handler]}).
 
 % obs_handler_notify(EndpointPid, Observable, Pid) ->
 %     case Observable of

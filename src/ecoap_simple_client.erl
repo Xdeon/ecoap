@@ -1,5 +1,5 @@
 % This module provide a simple synchronous CoAP client
-% Each request is made in a pair of newly-spawned ecoap_udp_socket and coap_endpoint processes synchronously
+% Each request is made in a pair of newly-spawned ecoap_udp_socket and ecoap_endpoint processes synchronously
 % After a request is completed, related processes are automatically shut down
 % It aims at simplicity for use without need for starting, terminating and managing process manually
 % Thus it can not be used as an OTP-compliant component
@@ -43,7 +43,7 @@
 -type from() :: {pid(), term()}.
 -type req() :: #req{}.
 -type request_content() :: binary() | coap_content().
--type response() :: {ok, success_code(), coap_content(), optionset()} | 
+-type response() :: {ok, success_code(), coap_content()} | 
 					{error, timeout} |
 					{error, error_code()} | 
 					{error, error_code(), coap_content()}.
@@ -75,11 +75,11 @@ ping(Uri) ->
 
 -spec request(coap_method(), string()) -> response().
 request(Method, Uri) ->
-	request(Method, Uri, <<>>, []).
+	request(Method, Uri, <<>>, #{}).
 
 -spec request(coap_method(), string(), request_content()) -> response().
 request(Method, Uri, Content) ->
-	request(Method, Uri, Content, []).	
+	request(Method, Uri, Content, #{}).	
 
 -spec request(coap_method(), string(), request_content(), optionset()) -> response().
 request(Method, Uri, Content, Options) ->
@@ -97,7 +97,7 @@ init([]) ->
 handle_call({send_request, EpID, ping}, From, State) -> 
 	{ok, SockPid} = ecoap_udp_socket:start_link(),
 	{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpID),
-	{ok, Ref} = coap_endpoint:ping(EndpointPid),
+	{ok, Ref} = ecoap_endpoint:ping(EndpointPid),
 	{noreply, State#state{sock_pid=SockPid, endpoint_pid=EndpointPid, ref=Ref, from=From}};
 
 handle_call({send_request, EpID, {Method, Options, Content}}, From, State) ->
@@ -152,7 +152,7 @@ request_block(EndpointPid, Method, ROpt, Content) ->
     request_block(EndpointPid, Method, ROpt, undefined, Content).
 
 request_block(EndpointPid, Method, ROpt, Block1, Content) ->
-    coap_endpoint:send(EndpointPid, coap_utils:set_content(Content, Block1,
+    ecoap_endpoint:send(EndpointPid, coap_utils:set_content(Content, Block1,
         coap_utils:request('CON', Method, <<>>, ROpt))).
 
 handle_response(EndpointPid, _Message=#coap_message{code={ok, 'Continue'}, options=Options1}, 
@@ -168,7 +168,7 @@ handle_response(EndpointPid, Message=#coap_message{code={ok, Code}, options=Opti
         {Num, true, Size} ->
          	% more blocks follow, ask for more
             % no payload for requests with Block2 with NUM != 0
-        	{ok, Ref2} = coap_endpoint:send(EndpointPid,
+        	{ok, Ref2} = ecoap_endpoint:send(EndpointPid,
             	coap_utils:request('CON', Method, <<>>, coap_utils:add_option('Block2', {Num+1, false, Size}, Options2))),
 				{noreply, State#state{ref=Ref2, req=Req#req{fragment= <<Fragment/binary, Data/binary>>}}};
 		 _Else ->
@@ -188,13 +188,13 @@ send_response(From, Res) ->
 	ok.
 
 return_response({ok, Code}, Message) ->
-    {ok, Code, coap_utils:get_content(Message), coap_utils:get_extra_options(Message)};
+    {ok, Code, coap_utils:get_content(Message, extended)};
 return_response({error, Code}, #coap_message{payload= <<>>}) ->
     {error, Code};
 return_response({error, Code}, Message) ->
     {error, Code, coap_utils:get_content(Message)}.
 
 close_transport(SockPid, EndpointPid) ->
-	coap_endpoint:close(EndpointPid),
+	ecoap_endpoint:close(EndpointPid),
 	ecoap_udp_socket:close(SockPid).
 

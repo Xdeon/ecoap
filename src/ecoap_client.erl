@@ -34,7 +34,7 @@
 
 -record(req, {
 	method = undefined :: undefined | coap_method(),
-	options = [] :: optionset(),
+	options = #{} :: optionset(),
 	% token is only used for observe/unobserve
 	token = <<>> :: binary(),
 	content = undefined :: undefined | coap_content(),
@@ -44,7 +44,7 @@
 	client_pid = undefined :: pid(),
 	block_obseq = undefined :: undefined | non_neg_integer(),
 	obs_key = undefined :: undefined | observe_key(),
-	ep_id = undefined :: ecoap_udp_socket:coap_endpoint_id()
+	ep_id = undefined :: ecoap_udp_socket:ecoap_endpoint_id()
 }).
 
 -include_lib("ecoap_common/include/coap_def.hrl").
@@ -52,7 +52,7 @@
 -type from() :: {pid(), term()}.
 -type req() :: #req{}.
 -type request_content() :: binary() | coap_content().
--type response() :: {ok, success_code(), coap_content(), optionset()} | 
+-type response() :: {ok, success_code(), coap_content()} | 
 					{error, timeout} |
 					{error, error_code()} | 
 					{error, error_code(), coap_content()} | 
@@ -96,7 +96,7 @@ ping(Pid, Uri) ->
 
 -spec observe(pid(), string()) -> observe_response().
 observe(Pid, Uri) ->
-	observe(Pid, Uri, []).
+	observe(Pid, Uri, #{}).
 
 -spec observe(pid(), string(), optionset()) -> observe_response().
 observe(Pid, Uri, Options) ->
@@ -161,11 +161,11 @@ unobserve(Pid, Ref, ETag) ->
 
 -spec request(pid(), coap_method(), string()) -> response().
 request(Pid, Method, Uri) ->
-	request(Pid, Method, Uri, <<>>, []).
+	request(Pid, Method, Uri, <<>>, #{}).
 
 -spec request(pid(), coap_method(), string(), request_content()) -> response().
 request(Pid, Method, Uri, Content) -> 
-	request(Pid, Method, Uri, Content, []).
+	request(Pid, Method, Uri, Content, #{}).
 
 -spec request(pid(), coap_method(), string(), request_content(), optionset()) -> response().
 request(Pid, Method, Uri, Content, Options) ->
@@ -184,11 +184,11 @@ request(Pid, Method, Uri, Content, Options) ->
 
 -spec async_request(pid(), coap_method(), string()) -> {ok, reference()}.
 async_request(Pid, Method, Uri) ->
-	async_request(Pid, Method, Uri, <<>>, []).
+	async_request(Pid, Method, Uri, <<>>, #{}).
 
 -spec async_request(pid(), coap_method(), string(), request_content()) -> {ok, reference()}.
 async_request(Pid, Method, Uri, Content) -> 
-	async_request(Pid, Method, Uri, Content, []).
+	async_request(Pid, Method, Uri, Content, #{}).
 
 -spec async_request(pid(), coap_method(), string(), request_content(), optionset()) -> {ok, reference()}.
 async_request(Pid, Method, Uri, Content, Options) ->
@@ -230,7 +230,7 @@ convert_content(Content=#coap_content{}) -> Content;
 convert_content(Content) when is_binary(Content) -> #coap_content{payload=Content}.
 
 send_request(Pid, EpID, Req, ClientPid) ->
-	% set timeout to infinity because coap_endpoint will always return a response, 
+	% set timeout to infinity because ecoap_endpoint will always return a response, 
 	% i.e. an ordinary response or {error, timeout} when server does not respond to a confirmable request
 	gen_server:call(Pid, {send_request, EpID, Req, ClientPid}, infinity).
 
@@ -248,7 +248,7 @@ init([]) ->
 
 handle_call({send_request, EpID, ping, ClientPid}, From, State=#state{sock_pid=SockPid, req_refs=ReqRefs}) ->
 	{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpID),
-	{ok, Ref} = coap_endpoint:ping(EndpointPid),
+	{ok, Ref} = ecoap_endpoint:ping(EndpointPid),
 	{noreply, State#state{req_refs=store_ref(Ref, #req{from=From, client_pid=ClientPid, ep_id=EpID}, ReqRefs)}};
 
 handle_call({send_request, EpID, {Method, Options, Content}, ClientPid}, From, State=#state{sock_pid=SockPid, req_refs=ReqRefs, msg_type=Type}) ->
@@ -276,18 +276,18 @@ handle_call({cancel_async_request, Ref}, _From, State=#state{sock_pid=SockPid, r
 			% found ordinary blockwise transfer
 			#req{ep_id=EpID} = find_ref(SubRef, ReqRefs),
 			{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpID),
-			ok = coap_endpoint:cancel_request(EndpointPid, SubRef),
+			ok = ecoap_endpoint:cancel_request(EndpointPid, SubRef),
 			{reply, ok, State#state{req_refs=delete_ref(SubRef, ReqRefs), block_refs=delete_ref(Ref, BlockRefs)}};
 		{#req{ep_id=EpID, obs_key=Key}, undefined} ->
 			% found ordinary req or observe req without blockwise transfer
 			{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpID),
-			ok = coap_endpoint:cancel_request(EndpointPid, Ref),
+			ok = ecoap_endpoint:cancel_request(EndpointPid, Ref),
 			{reply, ok, State#state{req_refs=delete_ref(Ref, ReqRefs), obs_regs=delete_ref(Key, ObsRegs)}};
 		{#req{ep_id=EpID, obs_key=Key}, SubRef} ->
 			% found observe req with blockwise transfer
 			{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpID),
-			ok = coap_endpoint:cancel_request(EndpointPid, Ref),
-			ok = coap_endpoint:cancel_request(EndpointPid, SubRef),
+			ok = ecoap_endpoint:cancel_request(EndpointPid, Ref),
+			ok = ecoap_endpoint:cancel_request(EndpointPid, SubRef),
 			{reply, ok, State#state{req_refs=delete_ref(Ref, delete_ref(SubRef, ReqRefs)), block_refs=delete_ref(Ref, BlockRefs), obs_regs=delete_ref(Key, ObsRegs)}}
 	end;
 
@@ -295,11 +295,11 @@ handle_call({start_observe, Key, EpID, {Method, Options, _Content}, ClientPid}, 
 	State=#state{sock_pid=SockPid, req_refs=ReqRefs, obs_regs=ObsRegs, msg_type=Type}) ->
 	OldRef = find_ref(Key, ObsRegs),
 	Token = case find_ref(OldRef, ReqRefs) of
-				undefined -> coap_endpoint:generate_token();
+				undefined -> ecoap_endpoint:generate_token();
 				#req{token=OldToken} -> OldToken
 			end,
 	{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpID),
-	{ok, Ref} = coap_endpoint:send(EndpointPid,  
+	{ok, Ref} = ecoap_endpoint:send(EndpointPid,  
 					coap_utils:set_token(Token,
 						coap_utils:request(Type, Method, <<>>, Options))),	
 	Options2 = coap_utils:remove_option('Observe', Options),
@@ -310,9 +310,9 @@ handle_call({cancel_observe, Ref, ETag}, _From, State=#state{sock_pid=SockPid, r
 	case find_ref(Ref, ReqRefs) of
 		undefined -> {reply, {error, no_observe}, State};
 		#req{method=Method, options=Options, token=Token, obs_key=Key, ep_id=EpID, client_pid=ClientPid} ->
-			Options2 = coap_utils:put_option('ETag', ETag, Options),
+			Options2 = coap_utils:add_option('ETag', ETag, Options),
 			{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpID),
-			{ok, Ref2} = coap_endpoint:send(EndpointPid,  
+			{ok, Ref2} = ecoap_endpoint:send(EndpointPid,  
 							coap_utils:set_token(Token, 
 								coap_utils:request(Type, Method, <<>>, Options2))),
 			Options3 = coap_utils:remove_option('Observe', Options2),
@@ -346,7 +346,7 @@ handle_cast(_Msg, State) ->
 
 % response arrived as a separate CON msg
 handle_info({coap_response, _EpID, EndpointPid, Ref, Message=#coap_message{type='CON'}}, State) ->
-	{ok, _} = coap_endpoint:send(EndpointPid, coap_utils:ack(Message)),
+	{ok, _} = ecoap_endpoint:send(EndpointPid, coap_utils:ack(Message)),
 	handle_response(Ref, EndpointPid, Message, State);
 
 handle_info({coap_response, _EpID, EndpointPid, Ref, Message}, State) ->
@@ -364,7 +364,7 @@ handle_info(_Info, State) ->
 	{noreply, State}.
 
 terminate(_Reason, #state{sock_pid=SockPid}) ->
-	[coap_endpoint:close(Pid) || Pid <- ecoap_udp_socket:get_all_endpoints(SockPid)],
+	[ecoap_endpoint:close(Pid) || Pid <- ecoap_udp_socket:get_all_endpoints(SockPid)],
 	ok = ecoap_udp_socket:close(SockPid),
 	ok.
 
@@ -377,7 +377,7 @@ request_block(EndpointPid, Type, Method, ROpt, Content) ->
     request_block(EndpointPid, Type, Method, ROpt, undefined, Content).
 
 request_block(EndpointPid, Type, Method, ROpt, Block1, Content) ->
-    coap_endpoint:send(EndpointPid, coap_utils:set_content(Content, Block1,
+    ecoap_endpoint:send(EndpointPid, coap_utils:set_content(Content, Block1,
         coap_utils:request(Type, Method, <<>>, ROpt))).
 
 % TODO (Solved):
@@ -441,7 +441,7 @@ handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options
 		        {Num, true, Size} ->
 		            % more blocks follow, ask for more
 		            % no payload for requests with Block2 with NUM != 0
-		            {ok, Ref2} = coap_endpoint:send(EndpointPid,
+		            {ok, Ref2} = ecoap_endpoint:send(EndpointPid,
 		            	coap_utils:request(Type, Method, <<>>, coap_utils:add_option('Block2', {Num+1, false, Size}, Options2))),
 		            NewFragment = <<Fragment/binary, Data/binary>>,
 		            case coap_utils:get_option('Observe', Options1) of
@@ -529,7 +529,7 @@ send_response(From, _, _, _, _, Res) ->
     ok.
 
 return_response({ok, Code}, Message) ->
-    {ok, Code, coap_utils:get_content(Message), coap_utils:get_extra_options(Message)};
+    {ok, Code, coap_utils:get_content(Message, extended)};
 return_response({error, Code}, #coap_message{payload= <<>>}) ->
     {error, Code};
 return_response({error, Code}, Message) ->
