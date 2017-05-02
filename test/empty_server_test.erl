@@ -38,7 +38,7 @@ empty_server(_State) ->
     % discovery
     ?_assertEqual({error, 'NotFound'}, ecoap_simple_client:request('GET', "coap://127.0.0.1")),
     ?_assertEqual({error, 'NotFound'}, ecoap_simple_client:request('GET', "coap://127.0.0.1/.well-known")),
-    ?_assertMatch({ok, 'Content', #coap_content{payload= <<>>}, []}, ecoap_simple_client:request('GET', "coap://127.0.0.1/.well-known/core")),
+    ?_assertMatch({ok, 'Content', #coap_content{payload= <<>>}}, ecoap_simple_client:request('GET', "coap://127.0.0.1/.well-known/core")),
     % other methods
     ?_assertEqual({error,'MethodNotAllowed'}, ecoap_simple_client:request('POST', "coap://127.0.0.1/.well-known/core")),
     ?_assertEqual({error,'MethodNotAllowed'}, ecoap_simple_client:request('PUT', "coap://127.0.0.1/.well-known/core")),
@@ -60,7 +60,7 @@ unknown_handler_test_() ->
 unknown_handler(_State) ->
     [
     % provoked reset
-    ?_assertMatch({ok, 'Content', #coap_content{payload= <<>>}, []}, ecoap_simple_client:request('GET', "coap://127.0.0.1/.well-known/core")),
+    ?_assertMatch({ok, 'Content', #coap_content{payload= <<>>}}, ecoap_simple_client:request('GET', "coap://127.0.0.1/.well-known/core")),
     ?_assertEqual({error,'InternalServerError'}, ecoap_simple_client:request('GET', "coap://127.0.0.1/unknown"))
     ].
 

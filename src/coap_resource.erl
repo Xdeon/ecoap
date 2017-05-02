@@ -2,7 +2,7 @@
 
 -include_lib("ecoap_common/include/coap_def.hrl").
 
--type coap_endpoint_id() :: ecoap_udp_socket:coap_endpoint_id().
+-type ecoap_endpoint_id() :: ecoap_udp_socket:ecoap_endpoint_id().
 -type coap_uri() :: core_link:coap_uri().
 
 % called when a client asks for .well-known/core resources
@@ -12,32 +12,30 @@
 	Uri :: coap_uri().
 
 % GET handler
--callback coap_get(EpID, Prefix, Name, Query, Request) -> {ok, Content, Options} | {error, Error} | {error, Error, Reason} when
-	EpID :: coap_endpoint_id(),
+-callback coap_get(EpID, Prefix, Name, Query, Request) -> {ok, Content} | {error, Error} | {error, Error, Reason} when
+	EpID :: ecoap_endpoint_id(),
 	Prefix :: [binary()],
 	Name :: [binary()],
 	Query :: [binary()],
 	Request :: coap_message(),
 	Content :: coap_content(),
-	Options :: optionset(),
 	Error :: error_code(),
 	Reason :: binary().
 
 % POST handler
--callback coap_post(EpID, Prefix, Name, Request) -> {ok, Code, Content, Options} | {error, Error} | {error, Error, Reason} when
-	EpID :: coap_endpoint_id(),
+-callback coap_post(EpID, Prefix, Name, Request) -> {ok, Code, Content} | {error, Error} | {error, Error, Reason} when
+	EpID :: ecoap_endpoint_id(),
 	Prefix :: [binary()],
 	Name :: [binary()],
 	Request :: coap_message(),
 	Code :: success_code(),
 	Content :: coap_content(),
-	Options :: optionset(),
 	Error :: error_code(),
 	Reason :: binary().
 
 % PUT handler
 -callback coap_put(EpID, Prefix, Name, Request) -> ok | {error, Error} | {error, Error, Reason} when
-	EpID :: coap_endpoint_id(),
+	EpID :: ecoap_endpoint_id(),
 	Prefix :: [binary()],
 	Name :: [binary()],
 	Request :: coap_message(),
@@ -46,7 +44,7 @@
 
 % DELETE handler
 -callback coap_delete(EpID, Prefix, Name, Request) -> ok | {error, Error} | {error, Error, Reason} when
-	EpID :: coap_endpoint_id(),
+	EpID :: ecoap_endpoint_id(),
 	Prefix :: [binary()],
 	Name :: [binary()],
 	Request :: coap_message(),
@@ -55,7 +53,7 @@
 
 % observe request handler
 -callback coap_observe(EpID, Prefix, Name, Request) -> {ok, Obstate} | {error, Error} | {error, Error, Reason} when
-	EpID :: coap_endpoint_id(),
+	EpID :: ecoap_endpoint_id(),
 	Prefix :: [binary()],
 	Name :: [binary()],
 	Request :: coap_message(),
@@ -69,18 +67,16 @@
 
 % payload adapter for observe notifications
 % used to change payload format of a notification to fit the current client's requirement
-% called by coap_handler:notify/2, notify/3
--callback coap_payload_adapter(Content, Options, Accept) -> {ok, NewContent, NewOptions} when
+% called by ecoap_handler:notify/2
+-callback coap_payload_adapter(Content, Accept) -> {ok, NewContent} when
 	Content :: coap_content(),
-	Options :: optionset(),
 	Accept :: binary() | non_neg_integer(),
-	NewContent :: coap_content(),
-	NewOptions :: optionset().
+	NewContent :: coap_content().
 
 % handler for messages sent to the responder process
 % used to generate notifications
 -callback handle_info(Info, Obstate) -> 
-	{notify, Ref, Content, Options, NewObstate} | 
+	{notify, Ref, Content, NewObstate} | 
 	{notify, Ref, {error, Error}, NewObstate} | 
 	{noreply, NewObstate} | 
 	{stop, NewObstate} when
@@ -88,7 +84,6 @@
 	Obstate :: any(),
 	Ref :: any(),
 	Content :: coap_content(),
-	Options :: optionset(),
 	Error :: error_code(),
 	NewObstate :: any().
 
