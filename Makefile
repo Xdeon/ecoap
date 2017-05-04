@@ -8,12 +8,14 @@ LOCAL_DEPS = crypto
 DEPS = ecoap_common
 dep_ecoap_common = git https://Xdeon@bitbucket.org/Xdeon/ecoap_common.git map
 
-include erlang.mk
-
-app:: rebar.config
-
 EUNIT_OPTS = verbose
 
 ERLC_OPTS += +report +verbose +warn_deprecated_function +warn_deprecated_type +warn_export_all +warn_untyped_record +warn_unused_import
 
-# ERLC_OPTS += -Dnodedup
+# ERLC_OPTS += -DNODEDUP
+
+# SHELL_OPTS = +K true +spp true 
+
+include erlang.mk
+
+app:: rebar.config
