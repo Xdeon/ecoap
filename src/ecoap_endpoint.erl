@@ -18,8 +18,11 @@
 -define(VERSION, 1).
 -define(MAX_MESSAGE_ID, 65535). % 16-bit number
 
--ifdef(nodedup).
--define(SCAN_INTERVAL, 86400000). % last for 24hr when nodedup flag is set
+-ifdef(NODEDUP).
+% TODO: instead of defining a long SCAN_INTERVAL
+% let it be a customized timer which gets 'kicked' if any message comes in
+% and we only check if a timer has ever been 'kicked' or not to determine whether to renew it
+-define(SCAN_INTERVAL, 86400000). % last for 24hr when NODEDUP flag is set
 -else.
 -define(SCAN_INTERVAL, 10000). % scan every 10s
 -endif.

@@ -316,7 +316,7 @@ timeout_after(Time, EndpointPid, TrId, Event) ->
     erlang:send_after(Time, EndpointPid, {timeout, TrId, Event}).
 
 % check deduplication flag to decide whether clean up state
--ifdef(nodedup).
+-ifdef(NODEDUP).
 check_next_state(_, State) -> next_state(undefined, State).
 -else.
 check_next_state(Stage, State) -> next_state(Stage, State).
