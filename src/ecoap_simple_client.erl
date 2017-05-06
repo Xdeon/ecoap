@@ -4,9 +4,7 @@
 % It aims at simplicity for use without need for starting, terminating and managing process manually
 % Thus it can not be used as an OTP-compliant component
 % It also does not support separate response in favour of simplicity and to avoid race condition
-% The result of a separate responsed resource is, however, depends on the time it takes to finish
-% If it is finished within 247s than it will appear as a synchronous response that just takes a bit longer to complete
-% If it is beyond 247s than the request will finally times out
+% The result of a separate responsed resource is, however, depends on the time it takes to finish (may lead up to an infinity waiting)
 % But note that there will not be any empty ACK to a separate CON response since everything has been shutdown after receiving
 % This module only supports sending confirmable requests
 
