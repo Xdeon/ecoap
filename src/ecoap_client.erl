@@ -12,8 +12,9 @@
 -export([async_request/3, async_request/4, async_request/5, cancel_async_request/2]).
 %% observe
 -export([observe/2, observe/3, unobserve/2, unobserve/3]).
+-export([async_observe/2, async_observe/3, async_unobserve/2, async_unobserve/3]).
 %% utilities
--export([set_con/1, set_non/1, get_reqrefs/1, get_obsregs/1, get_blockrefs/1]).
+-export([get_reqrefs/1, get_obsregs/1, get_blockrefs/1]).
 
 %% gen_server.
 -export([init/1]).
@@ -29,7 +30,7 @@
 	obs_regs = undefined :: #{observe_key() => reference()},
 	% block_refs maps origin req reference with subsequent req reference within the same blockwise transfer
 	block_refs = undefined :: #{reference() => reference()},
-	msg_type = 'CON' :: 'CON' | 'NON'
+	msg_type = 'CON' :: 'CON'
 }).
 
 -record(req, {
@@ -75,10 +76,69 @@ close(Pid) ->
 -spec ping(pid(), string()) -> ok | error.
 ping(Pid, Uri) ->
 	{_Scheme, EpID, _Path, _Query} = coap_utils:decode_uri(Uri),
-	case send_request(Pid, EpID, ping, self()) of
+	case send_request_sync(Pid, EpID, ping, self()) of
 		{error, 'RST'} -> ok;
 		_Else -> error
 	end.
+
+% Send a request synchronously
+
+% Returns response of the sent request in the following format:
+% Sucess response: {ok, Code, Content, ExtraOptions} where ExtraOptions is a list of options that are not covered by the ones in Content
+% Error response: {error, Code}; {error, Code, Content}
+% When server decides to respond with a separate response, returns {separate, Reference} where Reference can be used to match response later or cancel the request
+% The separate response will be sent as message in format of {async_response, Reference, Pid, Response} where Pid is the process ID of ecoap_client, Response is any of the Success/Error Response
+% When sending a confirmable request and server is not responsive, returns {error, timeout}
+
+% Note the synchronous request function always behave in a synchronous way no matter what the message type is
+% Therefore one should always use the asynchronous request function to send a non-confirmable request 
+% if there is a risk that the response gets lost and we wait forever
+
+-spec request(pid(), coap_method(), string()) -> response().
+request(Pid, Method, Uri) ->
+	request(Pid, Method, Uri, #coap_content{}, #{}).
+
+-spec request(pid(), coap_method(), string(), request_content()) -> response().
+request(Pid, Method, Uri, Content) -> 
+	request(Pid, Method, Uri, Content, #{}).
+
+-spec request(pid(), coap_method(), string(), request_content(), optionset()) -> response().
+request(Pid, Method, Uri, Content, Options) ->
+	{EpID, Req} = assemble_request(Method, Uri, Options, Content),
+	send_request_sync(Pid, EpID, Req, self()).
+
+% Send a request asynchronously
+
+% Returns {ok, Reference} where Reference can be used to match response later or cancel the request
+% The asynchronous response will be sent as message in format of {async_response, Reference, Pid, Response} 
+% where Pid is the process ID of ecoap_client, Response is any of the Success/Error Response (including {error, timeout}), same as in synchronous request function
+
+% Specially, when combined with separate response, two asychronous responses will be sent as messages 
+% The first one is in format of {async_response, Reference, Pid, {separate, Reference}} 
+% and the second one, a.k.a. the real response is in normal form: {async_response, Reference, Pid, Response}
+
+-spec async_request(pid(), coap_method(), string()) -> {ok, reference()}.
+async_request(Pid, Method, Uri) ->
+	async_request(Pid, Method, Uri, #coap_content{}, #{}).
+
+-spec async_request(pid(), coap_method(), string(), request_content()) -> {ok, reference()}.
+async_request(Pid, Method, Uri, Content) -> 
+	async_request(Pid, Method, Uri, Content, #{}).
+
+-spec async_request(pid(), coap_method(), string(), request_content(), optionset()) -> {ok, reference()}.
+async_request(Pid, Method, Uri, Content, Options) ->
+	{EpID, Req} = assemble_request(Method, Uri, Options, Content),
+	send_request_async(Pid, EpID, Req, self()).
+
+% Note this function can cancel an async request that has not been responded yet, e.g. a long term seperate response
+% It can also be used to cancel an observe relation reactively, 
+% i.e. cancel it by removing token info and let next notification be rejected
+% Blockwise transfer is cancelled by removing the origin request token and its record completely
+% so that if the cancellation occurs before a blockwise transfer finish, next block response will be discarded and no new request will be sent
+
+-spec cancel_async_request(pid(), reference()) -> ok | {error, no_request}.
+cancel_async_request(Pid, Ref) ->
+	gen_server:call(Pid, {cancel_async_request, Ref}).
 
 % Start an observe relation to a specific resource
 
@@ -100,11 +160,10 @@ observe(Pid, Uri) ->
 
 -spec observe(pid(), string(), optionset()) -> observe_response().
 observe(Pid, Uri, Options) ->
-	{EpID, Req} = assemble_request('GET', Uri, coap_utils:add_option('Observe', 0, Options), <<>>),
-	Accpet = coap_utils:get_option('Accpet', Options),
-	Key = {Uri, Accpet},
+	{EpID, Key, Req} = assemble_observe_request(Uri, Options),
+	% start monitor after we got ClientRef in case the gen_server call crash and we are left with the unused monitor
+	{ok, ClientRef} = gen_server:call(Pid, {start_observe, EpID, Key, Req, self()}),
 	MonitorRef = erlang:monitor(process, Pid),
-	{ok, ClientRef} = gen_server:call(Pid, {start_observe, Key, EpID, Req, self()}),
 	receive 
 		% Server does not support observing the resource or an error happened
 		{coap_notify, ClientRef, Pid, undefined, Res} ->
@@ -118,6 +177,15 @@ observe(Pid, Uri, Options) ->
 		{'DOWN', MonitorRef, process, _Pid, _Reason} ->
 			exit(noproc)
 	end.
+
+-spec async_observe(pid(), string()) -> {ok, reference()}.
+async_observe(Pid, Uri) ->
+	async_observe(Pid, Uri, #{}).
+
+-spec async_observe(pid(), string(), optionset()) -> {ok, reference()}.
+async_observe(Pid, Uri, Options) ->
+	{EpID, Key, Req} = assemble_observe_request(Uri, Options),
+	gen_server:call(Pid, {start_observe, EpID, Key, Req, self()}).
 
 % Cancel an observe relation to a specific resource
 
@@ -133,9 +201,9 @@ unobserve(Pid, Ref) ->
 
 -spec unobserve(pid(), reference(), binary()) -> response() | {error, no_observe}.
 unobserve(Pid, Ref, ETag) ->
-	MonitorRef = erlang:monitor(process, Pid),
 	case gen_server:call(Pid, {cancel_observe, Ref, ETag}) of
 		{ok, ClientRef} ->
+			MonitorRef = erlang:monitor(process, Pid),
 			receive 
 				{async_response, ClientRef, Pid, Res} -> 
 					erlang:demonitor(MonitorRef, [flush]),
@@ -146,70 +214,19 @@ unobserve(Pid, Ref, ETag) ->
 		Else -> Else
 	end.
 
-% Send a request synchronously
+-spec async_unobserve(pid(), reference()) -> {ok, reference()} | {error, no_observe}.
+async_unobserve(Pid, Ref) ->
+	async_unobserve(Pid, Ref, <<>>).
 
-% Returns response of the sent request in the following format:
-% Sucess response: {ok, Code, Content, ExtraOptions} where ExtraOptions is a list of options that are not covered by the ones in Content
-% Error response: {error, Code}; {error, Code, Content}
-% When server decides to respond with a separate response, returns {separate, Reference} where Reference can be used to match response later or cancel the request
-% The separate response will be sent as message in format of {async_response, Reference, Pid, Response} where Pid is the process ID of ecoap_client, Response is any of the Success/Error Response
-% When sending a confirmable request and server is not responsive, returns {error, timeout}
+-spec async_unobserve(pid(), reference(), binary()) -> {ok, reference()} | {error, no_observe}.
+async_unobserve(Pid, Ref, ETag) ->
+	gen_server:call(Pid, {cancel_observe, Ref, ETag}).
 
-% Note the synchronous request function always behave in a synchronous way no matter what the message type is
-% Therefore one should always use the asynchronous request function to send a non-confirmable request 
-% if there is a risk that the response gets lost and we wait forever
+% -spec set_con(pid()) -> ok.
+% set_con(Pid) -> gen_server:call(Pid, {set_msg_type, 'CON'}).
 
--spec request(pid(), coap_method(), string()) -> response().
-request(Pid, Method, Uri) ->
-	request(Pid, Method, Uri, <<>>, #{}).
-
--spec request(pid(), coap_method(), string(), request_content()) -> response().
-request(Pid, Method, Uri, Content) -> 
-	request(Pid, Method, Uri, Content, #{}).
-
--spec request(pid(), coap_method(), string(), request_content(), optionset()) -> response().
-request(Pid, Method, Uri, Content, Options) ->
-	{EpID, Req} = assemble_request(Method, Uri, Options, Content),
-	send_request(Pid, EpID, Req, self()).
-
-% Send a request asynchronously
-
-% Returns {ok, Reference} where Reference can be used to match response later or cancel the request
-% The asynchronous response will be sent as message in format of {async_response, Reference, Pid, Response} 
-% where Pid is the process ID of ecoap_client, Response is any of the Success/Error Response (including {error, timeout}), same as in synchronous request function
-
-% Specially, when combined with separate response, two asychronous responses will be sent as messages 
-% The first one is in format of {async_response, Reference, Pid, {separate, Reference}} 
-% and the second one, a.k.a. the real response is in normal form: {async_response, Reference, Pid, Response}
-
--spec async_request(pid(), coap_method(), string()) -> {ok, reference()}.
-async_request(Pid, Method, Uri) ->
-	async_request(Pid, Method, Uri, <<>>, #{}).
-
--spec async_request(pid(), coap_method(), string(), request_content()) -> {ok, reference()}.
-async_request(Pid, Method, Uri, Content) -> 
-	async_request(Pid, Method, Uri, Content, #{}).
-
--spec async_request(pid(), coap_method(), string(), request_content(), optionset()) -> {ok, reference()}.
-async_request(Pid, Method, Uri, Content, Options) ->
-	{EpID, Req} = assemble_request(Method, Uri, Options, Content),
-	send_request_async(Pid, EpID, Req, self()).
-
-% Note this function can cancel an async request that has not been responded yet, e.g. a long term seperate response
-% It can also be used to cancel an observe relation reactively, 
-% i.e. cancel it by removing token info and let next notification be rejected
-% Blockwise transfer is cancelled by removing the origin request token and its record completely
-% so that if the cancellation occurs before a blockwise transfer finish, next block response will be discarded and no new request will be sent
-
--spec cancel_async_request(pid(), reference()) -> ok | {error, no_request}.
-cancel_async_request(Pid, Ref) ->
-	gen_server:call(Pid, {cancel_async_request, Ref}).
-
--spec set_con(pid()) -> ok.
-set_con(Pid) -> gen_server:call(Pid, {set_msg_type, 'CON'}).
-
--spec set_non(pid()) -> ok.
-set_non(Pid) -> gen_server:call(Pid, {set_msg_type, 'NON'}).
+% -spec set_non(pid()) -> ok.
+% set_non(Pid) -> gen_server:call(Pid, {set_msg_type, 'NON'}).
 
 % utility function for test purpose
 -spec get_reqrefs(pid()) -> map().
@@ -226,13 +243,19 @@ assemble_request(Method, Uri, Options, Content) ->
 	Options2 = coap_utils:add_option('Uri-Query', Query, coap_utils:add_option('Uri-Path', Path, Options)),
 	{EpID, {Method, Options2, convert_content(Content)}}.
 
+assemble_observe_request(Uri, Options) ->
+	{EpID, Req} = assemble_request('GET', Uri, coap_utils:add_option('Observe', 0, Options), #coap_content{}),
+	Accpet = coap_utils:get_option('Accpet', Options),
+	Key = {Uri, Accpet},
+	{EpID, Key, Req}.
+
 convert_content(Content=#coap_content{}) -> Content;
 convert_content(Content) when is_binary(Content) -> #coap_content{payload=Content}.
 
-send_request(Pid, EpID, Req, ClientPid) ->
+send_request_sync(Pid, EpID, Req, ClientPid) ->
 	% set timeout to infinity because ecoap_endpoint will always return a response, 
 	% i.e. an ordinary response or {error, timeout} when server does not respond to a confirmable request
-	gen_server:call(Pid, {send_request, EpID, Req, ClientPid}, infinity).
+	gen_server:call(Pid, {send_request_sync, EpID, Req, ClientPid}, infinity).
 
 send_request_async(Pid, EpID, Req, ClientPid) -> 
 	gen_server:call(Pid, {send_request_async, EpID, Req, ClientPid}).
@@ -246,12 +269,12 @@ init([]) ->
 	{ok, SockPid} = ecoap_udp_socket:start_link(),
 	{ok, #state{sock_pid=SockPid, req_refs=maps:new(), obs_regs=maps:new(), block_refs=maps:new()}}.
 
-handle_call({send_request, EpID, ping, ClientPid}, From, State=#state{sock_pid=SockPid, req_refs=ReqRefs}) ->
+handle_call({send_request_sync, EpID, ping, ClientPid}, From, State=#state{sock_pid=SockPid, req_refs=ReqRefs}) ->
 	{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpID),
 	{ok, Ref} = ecoap_endpoint:ping(EndpointPid),
 	{noreply, State#state{req_refs=store_ref(Ref, #req{from=From, client_pid=ClientPid, ep_id=EpID}, ReqRefs)}};
 
-handle_call({send_request, EpID, {Method, Options, Content}, ClientPid}, From, State=#state{sock_pid=SockPid, req_refs=ReqRefs, msg_type=Type}) ->
+handle_call({send_request_sync, EpID, {Method, Options, Content}, ClientPid}, From, State=#state{sock_pid=SockPid, req_refs=ReqRefs, msg_type=Type}) ->
 	{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpID),
 	{ok, Ref} = request_block(EndpointPid, Type, Method, Options, Content),
 	Req = #req{method=Method, options=Options, content=Content, from=From, client_pid=ClientPid, ep_id=EpID},
@@ -291,7 +314,7 @@ handle_call({cancel_async_request, Ref}, _From, State=#state{sock_pid=SockPid, r
 			{reply, ok, State#state{req_refs=delete_ref(Ref, delete_ref(SubRef, ReqRefs)), block_refs=delete_ref(Ref, BlockRefs), obs_regs=delete_ref(Key, ObsRegs)}}
 	end;
 
-handle_call({start_observe, Key, EpID, {Method, Options, _Content}, ClientPid}, _From,
+handle_call({start_observe, EpID, Key, {Method, Options, _Content}, ClientPid}, _From,
 	State=#state{sock_pid=SockPid, req_refs=ReqRefs, obs_regs=ObsRegs, msg_type=Type}) ->
 	OldRef = find_ref(Key, ObsRegs),
 	Token = case find_ref(OldRef, ReqRefs) of
