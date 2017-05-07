@@ -58,7 +58,7 @@ start_link() ->
 
 -spec close(pid()) -> ok.
 close(Pid) -> 
-	gen_server:cast(Pid, shutdown).
+	gen_server:stop(Pid).
 
 -spec ping(string()) -> ok | error.
 ping(Uri) ->
@@ -108,8 +108,6 @@ handle_call({send_request, EpID, {Method, Options, Content}}, From, State) ->
 handle_call(_Request, _From, State) ->
 	{noreply, State}.
 
-handle_cast(shutdown, State) ->
-	{stop, normal, State};
 handle_cast(_Msg, State) ->
 	{noreply, State}.
 

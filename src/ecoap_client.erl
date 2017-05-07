@@ -71,7 +71,7 @@ start_link() ->
 
 -spec close(pid()) -> ok.
 close(Pid) ->
-	gen_server:cast(Pid, shutdown).
+	gen_server:stop(Pid).
 
 -spec ping(pid(), string()) -> ok | error.
 ping(Pid, Uri) ->
@@ -360,9 +360,6 @@ handle_call(_Request, _From, State) ->
 
 handle_cast({remove_observe_ref, Key}, State=#state{obs_regs=ObsRegs, req_refs=ReqRefs}) ->
 	{noreply, State#state{obs_regs=delete_ref(Key, ObsRegs), req_refs=delete_ref(find_ref(Key, ObsRegs), ReqRefs)}};
-
-handle_cast(shutdown, State) ->
-	{stop, normal, State};
 	
 handle_cast(_Msg, State) ->
 	{noreply, State}.
