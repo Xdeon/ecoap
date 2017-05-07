@@ -44,7 +44,7 @@ send_empty(Pid, Type, MsgId) ->
 	gen_server:cast(Pid, {send_empty, Type, MsgId}).
 
 close(Pid) ->
-	gen_server:cast(Pid, shutdown).
+	gen_server:stop(Pid).
 
 %% gen_server.
 
@@ -71,8 +71,6 @@ handle_cast({send_empty, Type, MsgId}, #state{socket=Socket, peer_addr={PeerIP, 
 handle_cast({send_response, Response}, #state{socket=Socket, peer_addr={PeerIP, PeerPortNo}}=State) ->
 	ok = gen_udp:send(Socket, PeerIP, PeerPortNo, coap_message:encode(Response)),
 	{noreply, State};
-handle_cast(shutdown, State) ->
-	{stop, normal, State};
 handle_cast(_Msg, State) ->
 	{noreply, State}.
 
