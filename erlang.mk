@@ -16,7 +16,7 @@
 
 ERLANG_MK_FILENAME := $(realpath $(lastword $(MAKEFILE_LIST)))
 
-ERLANG_MK_VERSION = 2017.04.25-6-g5922969
+ERLANG_MK_VERSION = 2017.04.25-9-g0c2ca82
 
 # Make 3.81 and 3.82 are deprecated.
 
@@ -3732,6 +3732,14 @@ pkg_tirerl_fetch = git
 pkg_tirerl_repo = https://github.com/inaka/tirerl
 pkg_tirerl_commit = master
 
+PACKAGES += toml
+pkg_toml_name = toml
+pkg_toml_description = TOML (0.4.0) config parser
+pkg_toml_homepage = http://dozzie.jarowit.net/trac/wiki/TOML
+pkg_toml_fetch = git
+pkg_toml_repo = https://github.com/dozzie/toml
+pkg_toml_commit = v0.2.0
+
 PACKAGES += traffic_tools
 pkg_traffic_tools_name = traffic_tools
 pkg_traffic_tools_description = Simple traffic limiting library
@@ -4710,10 +4718,9 @@ endef
 
 define compile_proto.erl
 	[begin
-		Dir = filename:dirname(filename:dirname(F)),
 		protobuffs_compile:generate_source(F,
-			[{output_include_dir, Dir ++ "/include"},
-				{output_src_dir, Dir ++ "/ebin"}])
+			[{output_include_dir, "./include"},
+				{output_src_dir, "./ebin"}])
 	end || F <- string:tokens("$(1)", " ")],
 	halt().
 endef
@@ -6576,9 +6583,9 @@ XREFR_URL ?= https://github.com/inaka/xref_runner/releases/download/0.2.2/xrefr
 # Core targets.
 
 help::
-	$(verbose) printf "%s\n" "" \
-		"Xref targets:" \
-		"  xref        Run Xrefr using $XREF_CONFIG as config file if defined"
+	$(verbose) printf '%s\n' '' \
+		'Xref targets:' \
+		'  xref        Run Xrefr using $$XREF_CONFIG as config file if defined'
 
 distclean:: distclean-xref
 
