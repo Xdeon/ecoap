@@ -35,7 +35,7 @@
 
 -record(req, {
 	method = undefined :: undefined | coap_method(),
-	options = #{} :: optionset(),
+	options = [] :: optionset(),
 	% token is only used for observe/unobserve
 	token = <<>> :: binary(),
 	content = undefined :: undefined | coap_content(),
@@ -96,11 +96,11 @@ ping(Pid, Uri) ->
 
 -spec request(pid(), coap_method(), string()) -> response().
 request(Pid, Method, Uri) ->
-	request(Pid, Method, Uri, #coap_content{}, #{}).
+	request(Pid, Method, Uri, #coap_content{}, []).
 
 -spec request(pid(), coap_method(), string(), request_content()) -> response().
 request(Pid, Method, Uri, Content) -> 
-	request(Pid, Method, Uri, Content, #{}).
+	request(Pid, Method, Uri, Content, []).
 
 -spec request(pid(), coap_method(), string(), request_content(), optionset()) -> response().
 request(Pid, Method, Uri, Content, Options) ->
@@ -119,11 +119,11 @@ request(Pid, Method, Uri, Content, Options) ->
 
 -spec async_request(pid(), coap_method(), string()) -> {ok, reference()}.
 async_request(Pid, Method, Uri) ->
-	async_request(Pid, Method, Uri, #coap_content{}, #{}).
+	async_request(Pid, Method, Uri, #coap_content{}, []).
 
 -spec async_request(pid(), coap_method(), string(), request_content()) -> {ok, reference()}.
 async_request(Pid, Method, Uri, Content) -> 
-	async_request(Pid, Method, Uri, Content, #{}).
+	async_request(Pid, Method, Uri, Content, []).
 
 -spec async_request(pid(), coap_method(), string(), request_content(), optionset()) -> {ok, reference()}.
 async_request(Pid, Method, Uri, Content, Options) ->
@@ -156,7 +156,7 @@ cancel_async_request(Pid, Ref) ->
 
 -spec observe(pid(), string()) -> observe_response().
 observe(Pid, Uri) ->
-	observe(Pid, Uri, #{}).
+	observe(Pid, Uri, []).
 
 -spec observe(pid(), string(), optionset()) -> observe_response().
 observe(Pid, Uri, Options) ->
@@ -180,7 +180,7 @@ observe(Pid, Uri, Options) ->
 
 -spec async_observe(pid(), string()) -> {ok, reference()}.
 async_observe(Pid, Uri) ->
-	async_observe(Pid, Uri, #{}).
+	async_observe(Pid, Uri, []).
 
 -spec async_observe(pid(), string(), optionset()) -> {ok, reference()}.
 async_observe(Pid, Uri, Options) ->

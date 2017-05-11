@@ -9,7 +9,7 @@ basic_test_() ->
 			ecoap_simple_client:request('GET', "coap://coap.me:5683/hello")),
 		?_assertEqual({error, 'InternalServerError', #coap_content{format = <<"text/plain">>, payload = <<"Oops: broken">>}}, 
 			ecoap_simple_client:request('GET', "coap://coap.me:5683/broken")),
-		?_assertEqual({ok, 'Created', #coap_content{options=#{'Location-Path' => [<<"large-create">>]}}},
+		?_assertEqual({ok, 'Created', #coap_content{options=[{'Location-Path', [<<"large-create">>]}]}},
             ecoap_simple_client:request('POST', "coap://coap.me:5683/large-create", <<"Test">>)),
         ?_assertEqual({ok, 'Changed', #coap_content{}}, 
             ecoap_simple_client:request('PUT', "coap://coap.me:5683/large-update", <<"Test">>)),

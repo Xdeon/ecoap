@@ -21,7 +21,7 @@ basic(Pid) ->
 			ecoap_client:request(Pid, 'GET', "coap://coap.me:5683/hello")),
 		?_assertEqual({error, 'InternalServerError', #coap_content{format = <<"text/plain">>, payload = <<"Oops: broken">>}}, 
 			ecoap_client:request(Pid, 'GET', "coap://coap.me:5683/broken")),
-        ?_assertEqual({ok, 'Created', #coap_content{options=#{'Location-Path' => [<<"large-create">>]}}},
+        ?_assertEqual({ok, 'Created', #coap_content{options=[{'Location-Path', [<<"large-create">>]}]}},
             ecoap_client:request(Pid, 'POST', "coap://coap.me:5683/large-create", <<"Test">>)),
         ?_assertEqual({ok, 'Changed', #coap_content{}}, 
             ecoap_client:request(Pid, 'PUT', "coap://coap.me:5683/large-update", <<"Test">>)),
@@ -54,7 +54,7 @@ blockwise_test_() ->
     ].
 
 blockwise(Pid) ->
-    Response = ecoap_client:request(Pid, 'GET', "coap://californium.eclipse.org:5683/large", <<>>, #{'Block2' => {0, false, 512}}),
+    Response = ecoap_client:request(Pid, 'GET', "coap://californium.eclipse.org:5683/large", <<>>, [{'Block2', {0, false, 512}}]),
     [
         ?_assertMatch({ok, 'Content', #coap_content{}}, Response), 
         ?_assertEqual(1280, begin {_, _, #coap_content{payload=Payload}} = Response, byte_size(Payload) end)
@@ -63,24 +63,24 @@ blockwise(Pid) ->
 % verify that ecoap_client clean up its state in this case
 error_while_observe_block({Server, Client}) ->
     _ = spawn_link(ecoap_client, observe, [Client, "coap://localhost:5683/test"]),
-    ExpectReq = coap_utils:request('CON', 'GET', <<>>, #{'Uri-Path' => [<<"test">>], 'Observe' => 0}),
+    ExpectReq = coap_utils:request('CON', 'GET', <<>>, [{'Uri-Path', [<<"test">>]}, {'Observe', 0}]),
     timer:sleep(50),
     {match, BlockReqMsgId, BlockReqToken} = server_stub:expect_request(Server, ExpectReq),
     server_stub:send_response(Server, 
-        #coap_message{type='ACK', id=BlockReqMsgId, code={ok, 'Content'}, options=#{'Observe' => 1, 'Block2' => {0, true, 64}}, token=BlockReqToken,
+        #coap_message{type='ACK', id=BlockReqMsgId, code={ok, 'Content'}, options=[{'Observe', 1}, {'Block2', {0, true, 64}}], token=BlockReqToken,
         payload= <<"|                 RESOURCE BLOCK NO. 1 OF 5                   |\n">>}),
     timer:sleep(50),
-    {match, BlockReqMsgId2, BlockReqToken2} = server_stub:expect_request(Server, ExpectReq#coap_message{options=#{'Block2' => {1, false, 64}, 'Uri-Path' => [<<"test">>]}}),
+    {match, BlockReqMsgId2, BlockReqToken2} = server_stub:expect_request(Server, ExpectReq#coap_message{options=[{'Block2', {1, false, 64}}, {'Uri-Path', [<<"test">>]}]}),
     server_stub:send_response(Server, 
-        #coap_message{type='ACK', id=BlockReqMsgId2, code={ok, 'Content'}, options=#{'Block2' => {1, true, 64}}, token=BlockReqToken2,
+        #coap_message{type='ACK', id=BlockReqMsgId2, code={ok, 'Content'}, options=[{'Block2', {1, true, 64}}], token=BlockReqToken2,
         payload= <<"|                 RESOURCE BLOCK NO. 2 OF 5                   |\n">>}),
     timer:sleep(50),
-    {match, BlockReqMsgId3, BlockReqToken3} = server_stub:expect_request(Server, ExpectReq#coap_message{options=#{'Block2' => {2, false, 64}, 'Uri-Path' => [<<"test">>]}}),
+    {match, BlockReqMsgId3, BlockReqToken3} = server_stub:expect_request(Server, ExpectReq#coap_message{options=[{'Block2', {2, false, 64}}, {'Uri-Path', [<<"test">>]}]}),
     server_stub:send_response(Server, 
-        #coap_message{type='ACK', id=BlockReqMsgId3, code={ok, 'Content'}, options=#{'Block2' => {2, true, 64}}, token=BlockReqToken3,
+        #coap_message{type='ACK', id=BlockReqMsgId3, code={ok, 'Content'}, options=[{'Block2', {2, true, 64}}], token=BlockReqToken3,
         payload= <<"|                 RESOURCE BLOCK NO. 3 OF 5                   |\n">>}),
     timer:sleep(50),
-    {match, BlockReqMsgId4, _} = server_stub:expect_request(Server, ExpectReq#coap_message{options=#{'Block2' => {3, false, 64}, 'Uri-Path' => [<<"test">>]}}),
+    {match, BlockReqMsgId4, _} = server_stub:expect_request(Server, ExpectReq#coap_message{options=[{'Block2', {3, false, 64}}, {'Uri-Path', [<<"test">>]}]}),
     server_stub:send_response(Server, #coap_message{type='RST', id=BlockReqMsgId4}),
     timer:sleep(50),
     ReqRefs = ecoap_client:get_reqrefs(Client),
