@@ -22,7 +22,7 @@
 % TODO: instead of defining a long SCAN_INTERVAL
 % let it be a customized timer which gets 'kicked' if any message comes in
 % and we only check if a timer has ever been 'kicked' or not to determine whether to renew it
--define(SCAN_INTERVAL, 86400000). % last for 24hr when NODEDUP flag is set
+-define(SCAN_INTERVAL, 65000). % last for 65s for test use
 -else.
 -define(SCAN_INTERVAL, 10000). % scan every 10s
 -endif.
