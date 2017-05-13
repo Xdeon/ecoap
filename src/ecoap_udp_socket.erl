@@ -32,6 +32,7 @@
 -record(state, {
 	sock = undefined :: inet:socket(),
 	endpoints = undefined :: ecoap_endpoints(),
+	endpoints_cnt = undefined :: non_neg_integer(),
 	endpoint_refs = undefined :: ecoap_endpoint_refs(),
 	endpoint_pool = undefined :: undefined | pid()
 }).
@@ -82,7 +83,7 @@ init([InPort, Opts]) ->
 	% process_flag(trap_exit, true),
 	{ok, Socket} = gen_udp:open(InPort, merge_opts(?DEFAULT_SOCK_OPTS, Opts)),
 	io:format("socket setting: ~p~n", [inet:getopts(Socket, [recbuf, sndbuf, buffer])]),
-	{ok, #state{sock=Socket, endpoints=maps:new(), endpoint_refs=maps:new()}}.
+	{ok, #state{sock=Socket, endpoints=maps:new(), endpoints_cnt=0, endpoint_refs=maps:new()}}.
 
 init(SupPid, InPort, Opts) ->
 	{ok, State} = init([InPort, Opts]),
@@ -161,9 +162,8 @@ handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{endpoint_refs=En
  		error ->	
  			{noreply, State}
  	end;
-handle_info({udp_passive, Socket}, State=#state{sock=Socket, endpoints=EndPoints}) ->
-	Concurrency = maps:size(EndPoints),
-	ActivePackets = if Concurrency < 1000 -> ?LOW_ACTIVE_PACKETS; true -> ?HIGH_ACTIVE_PACKETS end,
+handle_info({udp_passive, Socket}, State=#state{sock=Socket, endpoints_cnt=EndPointsCnt}) ->
+	ActivePackets = if EndPointsCnt < 1000 -> ?LOW_ACTIVE_PACKETS; true -> ?HIGH_ACTIVE_PACKETS end,
 	ok = inet:setopts(Socket, [{active, ActivePackets}]),
 	{noreply, State};
 
@@ -201,12 +201,16 @@ find_endpoint(EpID, EndPoints) ->
 find_endpoint_ref(Ref, EndPointsRefs) ->
 	maps:find(Ref, EndPointsRefs).
 
-store_endpoint(EpID, EpPid, State=#state{endpoints=EndPoints, endpoint_refs=EndPointsRefs}) ->
+store_endpoint(EpID, EpPid, State=#state{endpoints=EndPoints, endpoint_refs=EndPointsRefs, endpoints_cnt = EndPointsCnt}) ->
 	Ref = erlang:monitor(process, EpPid),
-	State#state{endpoints=maps:put(EpID, EpPid, EndPoints), endpoint_refs=maps:put(Ref, EpID, EndPointsRefs)}.
+	State#state{endpoints=maps:put(EpID, EpPid, EndPoints), 
+				endpoint_refs=maps:put(Ref, EpID, EndPointsRefs), 
+				endpoints_cnt=EndPointsCnt + 1}.
 
-erase_endpoint(EpID, Ref, State=#state{endpoints=EndPoints, endpoint_refs=EndPointsRefs}) ->
-	State#state{endpoints=maps:remove(EpID, EndPoints), endpoint_refs=maps:remove(Ref, EndPointsRefs)}.
+erase_endpoint(EpID, Ref, State=#state{endpoints=EndPoints, endpoint_refs=EndPointsRefs, endpoints_cnt = EndPointsCnt}) ->
+	State#state{endpoints=maps:remove(EpID, EndPoints), 
+				endpoint_refs=maps:remove(Ref, EndPointsRefs),
+				endpoints_cnt=EndPointsCnt - 1}.
 
 -ifdef(TEST).
 
