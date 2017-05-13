@@ -218,7 +218,7 @@ erase_endpoint(EpID, Ref, State=#state{endpoints=EndPoints, endpoint_refs=EndPoi
 
 store_endpoint_test() ->
 	EpID = {{127,0,0,1}, 5683},
-	State = store_endpoint(EpID, self(), #state{endpoints=maps:new(), endpoint_refs=maps:new()}),
+	State = store_endpoint(EpID, self(), #state{endpoints=maps:new(), endpoint_refs=maps:new(), endpoints_cnt=0}),
 	[Ref] = maps:keys(State#state.endpoint_refs),
 	State1 = erase_endpoint(EpID, Ref, State),
 	?assertEqual({ok, self()}, find_endpoint(EpID, State#state.endpoints)),
