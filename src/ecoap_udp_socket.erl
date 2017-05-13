@@ -24,7 +24,7 @@
     [endpoint_sup_sup]}).
 
 -define(LOW_ACTIVE_PACKETS, 100).
--define(HIGH_ACTIVE_PACKETS, 500).
+-define(HIGH_ACTIVE_PACKETS, 300).
 
 -define(DEFAULT_SOCK_OPTS,
 	[binary, {active, ?LOW_ACTIVE_PACKETS}, {reuseaddr, true}]).
