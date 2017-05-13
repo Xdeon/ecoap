@@ -23,10 +23,11 @@
     supervisor,
     [endpoint_sup_sup]}).
 
--define(ACTIVE_PACKETS, 500).
+-define(LOW_ACTIVE_PACKETS, 100).
+-define(HIGH_ACTIVE_PACKETS, 500).
 
 -define(DEFAULT_SOCK_OPTS,
-	[binary, {active, ?ACTIVE_PACKETS}, {reuseaddr, true}]).
+	[binary, {active, ?LOW_ACTIVE_PACKETS}, {reuseaddr, true}]).
 
 -record(state, {
 	sock = undefined :: inet:socket(),
@@ -160,8 +161,10 @@ handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{endpoint_refs=En
  		error ->	
  			{noreply, State}
  	end;
-handle_info({udp_passive, Socket}, State=#state{sock=Socket}) ->
-	ok = inet:setopts(Socket, [{active, ?ACTIVE_PACKETS}]),
+handle_info({udp_passive, Socket}, State=#state{sock=Socket, endpoints=EndPoints}) ->
+	Concurrency = maps:size(EndPoints),
+	ActivePackets = if Concurrency < 1000 -> ?LOW_ACTIVE_PACKETS; true -> ?HIGH_ACTIVE_PACKETS end,
+	ok = inet:setopts(Socket, [{active, ActivePackets}]),
 	{noreply, State};
 
 % handle_info({datagram, {PeerIP, PeerPortNo}, Data}, State=#state{sock=Socket}) ->
