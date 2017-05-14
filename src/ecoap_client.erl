@@ -27,17 +27,16 @@
 -record(state, {
 	sock_pid = undefined :: pid(),
 	req_refs = #{} :: #{reference() => req()},
-	obs_regs = #{} :: #{observe_key() => binary()},
-	subscribers = [] :: [{{pid(), observe_key()}, reference(), reference()}],
 	% block_refs maps origin req reference with subsequent req reference within the same blockwise transfer
 	block_refs = #{} :: #{reference() => reference()},
+	obs_regs = #{} :: #{observe_key() => binary()},
+	subscribers = [] :: [{{pid(), observe_key()}, reference(), reference()}],
 	msg_type = 'CON' :: 'CON'
 }).
 
 -record(req, {
 	method = undefined :: undefined | coap_method(),
 	options = [] :: optionset(),
-	% token is only used for observe/unobserve
 	token = <<>> :: binary(),
 	content = undefined :: undefined | coap_content(),
 	fragment = <<>> :: binary(),
@@ -143,15 +142,15 @@ cancel_async_request(Pid, Ref) ->
 
 % Start an observe relation to a specific resource
 
-% If the observe relation is established sucessfully, this function returns the first notification as {ClientRef, N, Res}
-% where ClientRef is the reference used to identify following notifications, N is the initial observe sequence number and Res is the response content.
+% If the observe relation is established sucessfully, this function returns the first notification as {ReplyRef, N, Res}
+% where ReplyRef is the reference used to identify following notifications, N is the initial observe sequence number and Res is the response content.
 % If the resource is not observable, the function just returns the response as if it was from a plain GET request.
 % If the request time out, this function returns {error, timeout}.
 
-% Following notifications will be sent to the caller process as messages in form of {coap_notify, ClientRef, Pid, N, Res}
-% where ClientRef is the reference, Pid is the ecoap_client pid, N is the observe sequence number and Res is the response content.
+% Following notifications will be sent to the caller process as messages in form of {coap_notify, ReplyRef, Pid, N, Res}
+% where ReplyRef is the reference, Pid is the ecoap_client pid, N is the observe sequence number and Res is the response content.
 % If some error happened in server side, e.g. a reset/error code is received during observing
-% the response is sent to the caller process as message in form of {coap_notify, ClientRef, Pid, undefined, Res} where Res is {error, _}.
+% the response is sent to the caller process as message in form of {coap_notify, ReplyRef, Pid, undefined, Res} where Res is {error, _}.
 
 % If the ecoap_client process crashed during the calll, the call fails with reason noproc.
 
@@ -162,19 +161,17 @@ observe(Pid, Uri) ->
 -spec observe(pid(), string(), optionset()) -> observe_response().
 observe(Pid, Uri, Options) ->
 	{EpID, Key, Req} = assemble_observe_request(Uri, Options),
-	% start monitor after we got ClientRef in case the gen_server call crash and we are left with the unused monitor
-	{ok, ClientRef} = gen_server:call(Pid, {start_observe, EpID, Key, Req, self()}),
+	% start monitor after we got ReplyRef in case the gen_server call crash and we are left with the unused monitor
+	{ok, ReplyRef} = gen_server:call(Pid, {start_observe, EpID, Key, Req, self()}),
 	MonitorRef = erlang:monitor(process, Pid),
 	receive 
 		% Server does not support observing the resource or an error happened
-		{coap_notify, ClientRef, Pid, undefined, Res} ->
+		{coap_notify, ReplyRef, Pid, undefined, Res} ->
 			erlang:demonitor(MonitorRef, [flush]),
-			% We need to remove the observe reference 
-			remove_observe_ref(Pid, Key),
 			Res;
-		{coap_notify, ClientRef, Pid, N, Res} -> 
+		{coap_notify, ReplyRef, Pid, N, Res} -> 
 			erlang:demonitor(MonitorRef, [flush]),
-			{ClientRef, N, Res};
+			{ReplyRef, N, Res};
 		{'DOWN', MonitorRef, process, _Pid, _Reason} ->
 			exit(noproc)
 	end.
@@ -203,10 +200,10 @@ unobserve(Pid, Ref) ->
 -spec unobserve(pid(), reference(), binary()) -> response() | {error, no_observe}.
 unobserve(Pid, Ref, ETag) ->
 	case gen_server:call(Pid, {cancel_observe, Ref, ETag}) of
-		{ok, ClientRef} ->
+		{ok, ReplyRef} ->
 			MonitorRef = erlang:monitor(process, Pid),
 			receive 
-				{async_response, ClientRef, Pid, Res} -> 
+				{async_response, ReplyRef, Pid, Res} -> 
 					erlang:demonitor(MonitorRef, [flush]),
 					Res;
 				{'DOWN', MonitorRef, process, _Pid, _Reason} -> 
@@ -260,9 +257,6 @@ send_request_sync(Pid, EpID, Req, ReplyPid) ->
 
 send_request_async(Pid, EpID, Req, ReplyPid) -> 
 	gen_server:call(Pid, {send_request_async, EpID, Req, ReplyPid}).
-
-remove_observe_ref(Pid, Key) ->
-	gen_server:cast(Pid, {remove_observe_ref, Key, self()}).
 
 %% gen_server.
 
@@ -346,12 +340,6 @@ handle_call(get_blockrefs, _From, State=#state{block_refs=BlockRefs}) ->
 
 handle_call(_Request, _From, State) ->
 	{noreply, State}.
-
-handle_cast({remove_observe_ref, Key, ReplyPid}, State=#state{obs_regs=ObsRegs, req_refs=ReqRefs, subscribers=Subscribers}) ->
-	{{ReplyPid, Key}, _MonRef ,ReqRef} = Sub = lists:keyfind({ReplyPid, Key}, 1, Subscribers),
-	{noreply, State#state{obs_regs=delete_ref(Key, ObsRegs), 
-						  req_refs=delete_ref(ReqRef, ReqRefs),
-						  subscribers=lists:delete(Sub, Subscribers)}};
 	
 handle_cast(_Msg, State) ->
 	{noreply, State}.
@@ -371,6 +359,12 @@ handle_info({coap_ack, _EpID, _EndpointPid, Ref}, State) ->
 % handle RST and timeout
 handle_info({coap_error, _EpID, _EndpointPid, Ref, Error}, State) ->
 	handle_error(Ref, Error, State);
+
+handle_info({remove_observe_ref, Key, ReplyPid}, State=#state{obs_regs=ObsRegs, req_refs=ReqRefs, subscribers=Subscribers}) ->
+	{{ReplyPid, Key}, _MonRef ,ReqRef} = Sub = lists:keyfind({ReplyPid, Key}, 1, Subscribers),
+	{noreply, State#state{obs_regs=delete_ref(Key, ObsRegs), 
+						  req_refs=delete_ref(ReqRef, ReqRefs),
+						  subscribers=lists:delete(Sub, Subscribers)}};
 
 handle_info({'DOWN', MonRef, process, ReplyPid, _Reason}, State=#state{subscribers=Subscribers}) ->
 	case lists:keyfind(MonRef, 2, Subscribers) of
@@ -490,7 +484,7 @@ handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options
 		undefined -> 
 			io:format("unknown response: ~p~n", [Message]),
 			{noreply, State};
-		#req{method=Method, options=Options2, fragment=Fragment, reply_ref=ClientRef, 
+		#req{method=Method, options=Options2, fragment=Fragment, reply_ref=ReplyRef, 
 			reply_pid=ReplyPid, from=From, block_obseq=Obseq, obs_key=Key} = Req ->
 			case coap_utils:get_option('Block2', Options1) of
 		        {Num, true, Size} ->
@@ -503,7 +497,7 @@ handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options
 		            	undefined ->
 		            		% We need to clean up intermediate requests info during a blockwise transfer and only keep the newest one
 		            		{noreply, State#state{req_refs=store_ref(Ref2, Req#req{fragment=NewFragment}, delete_ref(Ref, ReqRefs)), 
-		            							  block_refs=update_block_refs(ClientRef, Ref2, BlockRefs)}};
+		            							  block_refs=update_block_refs(ReplyRef, Ref2, BlockRefs)}};
 		            	N ->
 		            		% This is the first response of a blockwise transfer when observing certain resource
 		            		% We remember the observe seq number here because following requests will be normal ones
@@ -511,8 +505,8 @@ handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options
 		            		% (info of the last request with block option) before continuing and always start a fresh block transfer
 		            		% This eliminates the possiblilty that multiple block transfers exist 
 		            		% and thus a potential mix up of old & new blocks of the (changed) resource
-		            		{noreply, State#state{req_refs=store_ref(Ref2, Req#req{fragment=NewFragment, block_obseq=N}, delete_ref(find_ref(ClientRef, BlockRefs), ReqRefs)), 
-		            					          block_refs=update_block_refs(ClientRef, Ref2, BlockRefs)}}	
+		            		{noreply, State#state{req_refs=store_ref(Ref2, Req#req{fragment=NewFragment, block_obseq=N}, delete_ref(find_ref(ReplyRef, BlockRefs), ReqRefs)), 
+		            					          block_refs=update_block_refs(ReplyRef, Ref2, BlockRefs)}}	
 		            end;
 		        _Else ->
 		            % not segmented	
@@ -521,15 +515,15 @@ handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options
 			        case coap_utils:get_option('Observe', Options1) of
 			        	undefined ->
 			        		% It will be a blockwise transfer observe notification if Obseq != undefined
-			        		ok = send_response(From, ReplyPid, ClientRef, Key, Obseq, SubPids, Res),
+			        		ok = send_response(From, ReplyPid, ReplyRef, Key, Obseq, SubPids, Res),
 			        		{noreply, State#state{req_refs=delete_ref(Ref, ReqRefs), 
-			        							  block_refs=delete_ref(ClientRef, BlockRefs)}};
+			        							  block_refs=delete_ref(ReplyRef, BlockRefs)}};
 			        	Num ->
-			        		ok = send_response(From, ReplyPid, ClientRef, Key, Num, SubPids, Res),
+			        		ok = send_response(From, ReplyPid, ReplyRef, Key, Num, SubPids, Res),
 			        		% Clean ReqRefs and BlockRefs in case we receive a non-block observe notification in the middle of a block notification
 			        		% In this case the ongoing blockwise transfer is discarded			     
-			        		{noreply, State#state{req_refs=delete_ref(find_ref(ClientRef, BlockRefs), ReqRefs), 
-			        							  block_refs=delete_ref(ClientRef, BlockRefs)}}
+			        		{noreply, State#state{req_refs=delete_ref(find_ref(ReplyRef, BlockRefs), ReqRefs), 
+			        							  block_refs=delete_ref(ReplyRef, BlockRefs)}}
 			        end
 		    end
     end;
@@ -540,28 +534,28 @@ handle_response(Ref, _EndpointPid, Message=#coap_message{code={error, _Code}}, S
 handle_error(Ref, Error, State=#state{req_refs=ReqRefs, obs_regs=ObsRegs, block_refs=BlockRefs, subscribers=Subscribers}) ->
 	case find_ref(Ref, ReqRefs) of
 		undefined -> {noreply, State};
-		#req{reply_ref=ClientRef, from=From, reply_pid=ReplyPid, obs_key=Key} ->
+		#req{reply_ref=ReplyRef, from=From, reply_pid=ReplyPid, obs_key=Key} ->
 			Res = case Error of
 					#coap_message{code={error, Code}} -> return_response({error, Code}, Error);
 					_ -> {error, Error}
 			end,
 			SubPids = get_sub_pids(Key, Subscribers),
-		    ok = send_response(From, ReplyPid, ClientRef, Key, undefined, SubPids, Res),
+		    ok = send_response(From, ReplyPid, ReplyRef, Key, undefined, SubPids, Res),
 			% Make sure we remove any observe relation and info of request related to the error
 			% Note: Though it is enough to remove req info just using Ref as key, since for any ordinary message exchange
 			% info of last req is always cleaned. Howerver one exception is observe as info of origin observe req is kept until
 			% it get cancelled. Therefore when receiving an error during an observe notification blockwise transfer, we need to clean 
-			% both info of last req (referenced by Ref) and info of origin observe req (referenced by ClientRef).
-			{noreply, State#state{req_refs=delete_ref(Ref, delete_ref(ClientRef, ReqRefs)), 
-								  obs_regs=delete_ref(Key, ObsRegs), block_refs=delete_ref(ClientRef, BlockRefs)}}
+			% both info of last req (referenced by Ref) and info of origin observe req (referenced by ReplyRef).
+			{noreply, State#state{req_refs=delete_ref(Ref, delete_ref(ReplyRef, ReqRefs)), 
+								  obs_regs=delete_ref(Key, ObsRegs), block_refs=delete_ref(ReplyRef, BlockRefs)}}
 	end.
 
 handle_ack(Ref, State=#state{req_refs=ReqRefs, subscribers=Subscribers}) ->
 	case find_ref(Ref, ReqRefs) of
 		undefined -> {noreply, State};
-		#req{reply_ref=ClientRef, from=From, reply_pid=ReplyPid, obs_key=Key} = Req ->
+		#req{reply_ref=ReplyRef, from=From, reply_pid=ReplyPid, obs_key=Key} = Req ->
 			SubPids = get_sub_pids(Key, Subscribers),
-			ok = send_response(From, ReplyPid, ClientRef, Key, undefined, SubPids, {separate, Ref}),
+			ok = send_response(From, ReplyPid, ReplyRef, Key, undefined, SubPids, {separate, Ref}),
 			{noreply, State#state{req_refs=store_ref(Ref, Req#req{from=undefined, reply_ref=Ref}, ReqRefs)}}
 	end.
 
@@ -586,20 +580,24 @@ get_sub_pids(Key, Subscribers) ->
 					if ObsKey =:= Key -> [Pid | Acc]; true -> Acc end
 			end, [], Subscribers).
 
--spec send_response(From, ReplyPid, ClientRef, ObsKey, Obseq, SubPids, Res) -> ok when
+-spec send_response(From, ReplyPid, ReplyRef, ObsKey, Obseq, SubPids, Res) -> ok when
 		From :: gen_server:from(),
 		ReplyPid :: pid(),
-		ClientRef :: reference(),
+		ReplyRef :: reference(),
 		ObsKey :: observe_key(),
 		Obseq :: non_neg_integer() | undefined,
 		SubPids :: [pid()],
 		Res :: response().
 
-send_response(undefined, ReplyPid, ClientRef, undefined, _Obseq, _SubPids, Res) ->
-	ReplyPid ! {async_response, ClientRef, self(), Res},
+send_response(undefined, ReplyPid, ReplyRef, undefined, _Obseq, _SubPids, Res) ->
+	ReplyPid ! {async_response, ReplyRef, self(), Res},
 	ok;
-send_response(undefined, _ReplyPid, ClientRef, _ObsKey, Obseq, SubPids, Res) ->
-	[begin Pid ! {coap_notify, ClientRef, self(), Obseq, Res}, ok end || Pid <- SubPids],
+send_response(undefined, ReplyPid, ReplyRef, ObsKey, Obseq, SubPids, Res) ->
+	case Obseq of
+		undefined -> self() ! {remove_observe_ref, ObsKey, ReplyPid}, ok;
+		_Else -> ok
+	end,
+	[begin Pid ! {coap_notify, ReplyRef, self(), Obseq, Res}, ok end || Pid <- SubPids],
 	ok;
 send_response(From, _, _, _, _, _, Res) ->
     gen_server:reply(From, Res),
