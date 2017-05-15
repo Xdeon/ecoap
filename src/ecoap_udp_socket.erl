@@ -23,16 +23,14 @@
     supervisor,
     [endpoint_sup_sup]}).
 
--define(LOW_ACTIVE_PACKETS, 100).
--define(HIGH_ACTIVE_PACKETS, 300).
+-define(ACTIVE_PACKETS, 200).
 
 -define(DEFAULT_SOCK_OPTS,
-	[binary, {active, ?LOW_ACTIVE_PACKETS}, {reuseaddr, true}]).
+	[binary, {active, ?ACTIVE_PACKETS}, {reuseaddr, true}]).
 
 -record(state, {
 	sock = undefined :: inet:socket(),
 	endpoints = undefined :: ecoap_endpoints(),
-	endpoints_cnt = undefined :: non_neg_integer(),
 	endpoint_refs = undefined :: ecoap_endpoint_refs(),
 	endpoint_pool = undefined :: undefined | pid()
 }).
@@ -83,7 +81,7 @@ init([InPort, Opts]) ->
 	% process_flag(trap_exit, true),
 	{ok, Socket} = gen_udp:open(InPort, merge_opts(?DEFAULT_SOCK_OPTS, Opts)),
 	io:format("socket setting: ~p~n", [inet:getopts(Socket, [recbuf, sndbuf, buffer])]),
-	{ok, #state{sock=Socket, endpoints=maps:new(), endpoints_cnt=0, endpoint_refs=maps:new()}}.
+	{ok, #state{sock=Socket, endpoints=maps:new(), endpoint_refs=maps:new()}}.
 
 init(SupPid, InPort, Opts) ->
 	{ok, State} = init([InPort, Opts]),
@@ -162,9 +160,8 @@ handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{endpoint_refs=En
  		error ->	
  			{noreply, State}
  	end;
-handle_info({udp_passive, Socket}, State=#state{sock=Socket, endpoints_cnt=EndPointsCnt}) ->
-	ActivePackets = if EndPointsCnt < 1000 -> ?LOW_ACTIVE_PACKETS; true -> ?HIGH_ACTIVE_PACKETS end,
-	ok = inet:setopts(Socket, [{active, ActivePackets}]),
+handle_info({udp_passive, Socket}, State=#state{sock=Socket}) ->
+	ok = inet:setopts(Socket, [{active, ?ACTIVE_PACKETS}]),
 	{noreply, State};
 
 % handle_info({datagram, {PeerIP, PeerPortNo}, Data}, State=#state{sock=Socket}) ->
@@ -201,16 +198,14 @@ find_endpoint(EpID, EndPoints) ->
 find_endpoint_ref(Ref, EndPointsRefs) ->
 	maps:find(Ref, EndPointsRefs).
 
-store_endpoint(EpID, EpPid, State=#state{endpoints=EndPoints, endpoint_refs=EndPointsRefs, endpoints_cnt = EndPointsCnt}) ->
+store_endpoint(EpID, EpPid, State=#state{endpoints=EndPoints, endpoint_refs=EndPointsRefs}) ->
 	Ref = erlang:monitor(process, EpPid),
 	State#state{endpoints=maps:put(EpID, EpPid, EndPoints), 
-				endpoint_refs=maps:put(Ref, EpID, EndPointsRefs), 
-				endpoints_cnt=EndPointsCnt + 1}.
+				endpoint_refs=maps:put(Ref, EpID, EndPointsRefs)}.
 
-erase_endpoint(EpID, Ref, State=#state{endpoints=EndPoints, endpoint_refs=EndPointsRefs, endpoints_cnt = EndPointsCnt}) ->
+erase_endpoint(EpID, Ref, State=#state{endpoints=EndPoints, endpoint_refs=EndPointsRefs}) ->
 	State#state{endpoints=maps:remove(EpID, EndPoints), 
-				endpoint_refs=maps:remove(Ref, EndPointsRefs),
-				endpoints_cnt=EndPointsCnt - 1}.
+				endpoint_refs=maps:remove(Ref, EndPointsRefs)}.
 
 -ifdef(TEST).
 
@@ -218,7 +213,7 @@ erase_endpoint(EpID, Ref, State=#state{endpoints=EndPoints, endpoint_refs=EndPoi
 
 store_endpoint_test() ->
 	EpID = {{127,0,0,1}, 5683},
-	State = store_endpoint(EpID, self(), #state{endpoints=maps:new(), endpoint_refs=maps:new(), endpoints_cnt=0}),
+	State = store_endpoint(EpID, self(), #state{endpoints=maps:new(), endpoint_refs=maps:new()}),
 	[Ref] = maps:keys(State#state.endpoint_refs),
 	State1 = erase_endpoint(EpID, Ref, State),
 	?assertEqual({ok, self()}, find_endpoint(EpID, State#state.endpoints)),
