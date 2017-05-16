@@ -8,7 +8,7 @@
 
 %% gen_server.
 -export([init/1]).
-% -export([init/3]).
+% -export([init/4]).
 -export([handle_call/3]).
 -export([handle_cast/2]).
 -export([handle_info/2]).
@@ -31,9 +31,9 @@
 
 -record(state, {
     trans_args = undefined :: trans_args(),
-	tokens = undefined :: #{binary() => receiver()},
-	trans = undefined :: #{trid() => ecoap_exchange:exchange()},
-    receivers = undefined :: #{receiver() => {binary(), trid()}},
+	tokens = #{} :: #{binary() => receiver()},
+	trans = #{} :: #{trid() => ecoap_exchange:exchange()},
+    receivers = #{} :: #{receiver() => {binary(), trid()}},
 	nextmid = undefined :: msg_id(),
 	rescnt = undefined :: non_neg_integer(),
     handler_refs = undefined :: undefined | #{reference() => tuple()},
@@ -63,18 +63,11 @@
 % Should we make trid as another field in trans_arg instead of putting trid in each exchange record?
 
 %% API.
+-spec start_link(pid(), module(), inet:socket(), ecoap_udp_socket:ecoap_endpoint_id()) -> {ok, pid()}.
+start_link(SupPid, SocketModule, Socket, EpID) ->
+	proc_lib:start_link(?MODULE, init, [[SupPid, SocketModule, Socket, EpID]]).
 
-% start_link(SupPid, Socket, EpID) ->
-% 	proc_lib:start_link(?MODULE, init, [SupPid, Socket, EpID]).
-% start_link(HdlSupPid, Socket, EpID) ->
-%     % gen_server:start_link(?MODULE, [HdlSupPid, Socket, EpID], []).
-%     start_link(HdlSupPid, Socket, EpID, server).
-
--spec start_link(pid(), atom(), inet:socket(), ecoap_udp_socket:ecoap_endpoint_id()) -> {ok, pid()}.
-start_link(HdlSupPid, SocketModule, Socket, EpID) ->
-    gen_server:start_link(?MODULE, [HdlSupPid, SocketModule, Socket, EpID], []).
-
--spec start_link(atom(), inet:socket(), ecoap_udp_socket:ecoap_endpoint_id()) -> {ok, pid()}.
+-spec start_link(module(), inet:socket(), ecoap_udp_socket:ecoap_endpoint_id()) -> {ok, pid()}.
 start_link(SocketModule, Socket, EpID) ->
     gen_server:start_link(?MODULE, [undefined, SocketModule, Socket, EpID], []).
 
@@ -128,15 +121,23 @@ generate_token(TKL) ->
 
 % client
 init([undefined, SocketModule, Socket, EpID]) ->
-    TRef = erlang:start_timer(?SCAN_INTERVAL, self(), scan),
     TransArgs = #{sock=>Socket, sock_module=>SocketModule, ep_id=>EpID, endpoint_pid=>self()},
-    {ok, #state{tokens=maps:new(), trans=maps:new(), receivers=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs}};
+    TRef = erlang:start_timer(?SCAN_INTERVAL, self(), scan),
+    {ok, #state{nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs}};
 
 % server 
-init([HdlSupPid, SocketModule, Socket, EpID]) ->
+init([SupPid, SocketModule, Socket, EpID]) ->
+    ok = proc_lib:init_ack({ok, self()}),
+    {ok, HdlSupPid} = supervisor:start_child(SupPid, 
+        #{id => ecoap_handler_sup,
+            start => {ecoap_handler_sup, start_link, []},
+            restart => permanent, 
+          shutdown => infinity, 
+          type => supervisor, 
+          modules => [ecoap_handler_sup]}),
+    TransArgs = #{sock=>Socket, sock_module=>SocketModule, ep_id=>EpID, endpoint_pid=>self(), handler_sup=>HdlSupPid, handler_regs=>#{}},
     TRef = erlang:start_timer(?SCAN_INTERVAL, self(), scan),
-    TransArgs = #{sock=>Socket, sock_module=>SocketModule, ep_id=>EpID, endpoint_pid=>self(), handler_sup=>HdlSupPid, handler_regs=>maps:new()},
-    {ok, #state{tokens=maps:new(), trans=maps:new(), receivers=maps:new(), nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs, handler_refs=maps:new()}}.
+    gen_server:enter_loop(?MODULE, [], #state{nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs, handler_refs=#{}}).
 
 handle_call(_Request, _From, State) ->
     error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
