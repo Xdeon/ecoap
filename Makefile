@@ -14,7 +14,7 @@ ERLC_OPTS += +report +verbose +warn_deprecated_function +warn_deprecated_type +w
 
 # ERLC_OPTS += -DNODEDUP
 
-# SHELL_OPTS = +K true +spp true 
+# SHELL_OPTS = +K true +spp true +sbt s
 
 include erlang.mk
 
