@@ -30,15 +30,13 @@
 
 -record(state, {
 	sock = undefined :: inet:socket(),
-	endpoints = undefined :: ecoap_endpoints(),
-	endpoint_refs = undefined :: ecoap_endpoint_refs(),
+	endpoints = #{} :: ecoap_endpoints(),
 	endpoint_pool = undefined :: undefined | pid()
 }).
 
 -opaque state() :: #state{}.
 -type ecoap_endpoint_id() :: {inet:ip_address(), inet:port_number()}.
 -type ecoap_endpoints() :: #{ecoap_endpoint_id() => pid()}.
--type ecoap_endpoint_refs() :: #{reference() => ecoap_endpoint_id()}.
 
 -export_type([state/0]).
 -export_type([ecoap_endpoint_id/0]).
@@ -81,7 +79,7 @@ init([InPort, Opts]) ->
 	% process_flag(trap_exit, true),
 	{ok, Socket} = gen_udp:open(InPort, merge_opts(?DEFAULT_SOCK_OPTS, Opts)),
 	io:format("socket setting: ~p~n", [inet:getopts(Socket, [recbuf, sndbuf, buffer])]),
-	{ok, #state{sock=Socket, endpoints=maps:new(), endpoint_refs=maps:new()}}.
+	{ok, #state{sock=Socket}}.
 
 init(SupPid, InPort, Opts) ->
 	{ok, State} = init([InPort, Opts]),
@@ -143,6 +141,7 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, en
 				{ok, _, EpPid} -> 
 					%io:fwrite("start endpoint ~p~n", [EpID]),
 					EpPid ! {datagram, Bin},
+					put(erlang:monitor(process, EpPid), EpID),
 					{noreply, store_endpoint(EpID, EpPid, State)};
 				{error, _Reason} -> 
 					%io:fwrite("start_endpoint failed: ~p~n", [_Reason]),
@@ -153,12 +152,10 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, en
 			%io:fwrite("client recv unexpected packet~n"),
 			{noreply, State}
 	end;
-handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{endpoint_refs=EndPointsRefs}) ->
- 	case find_endpoint_ref(Ref, EndPointsRefs) of
- 		{ok, EpID} ->
- 			{noreply, erase_endpoint(EpID, Ref, State)};
- 		error ->	
- 			{noreply, State}
+handle_info({'DOWN', Ref, process, _Pid, _Reason}, State) ->
+ 	case get(Ref) of
+ 		undefined -> {noreply, State};
+ 		EpID -> erase(Ref), {noreply, erase_endpoint(EpID, State)}
  	end;
 handle_info({udp_passive, Socket}, State=#state{sock=Socket}) ->
 	ok = inet:setopts(Socket, [{active, ?ACTIVE_PACKETS}]),
@@ -195,17 +192,11 @@ merge_opts(Defaults, Options) ->
 find_endpoint(EpID, EndPoints) ->
 	maps:find(EpID, EndPoints).
 
-find_endpoint_ref(Ref, EndPointsRefs) ->
-	maps:find(Ref, EndPointsRefs).
+store_endpoint(EpID, EpPid, State=#state{endpoints=EndPoints}) ->
+	State#state{endpoints=maps:put(EpID, EpPid, EndPoints)}.
 
-store_endpoint(EpID, EpPid, State=#state{endpoints=EndPoints, endpoint_refs=EndPointsRefs}) ->
-	Ref = erlang:monitor(process, EpPid),
-	State#state{endpoints=maps:put(EpID, EpPid, EndPoints), 
-				endpoint_refs=maps:put(Ref, EpID, EndPointsRefs)}.
-
-erase_endpoint(EpID, Ref, State=#state{endpoints=EndPoints, endpoint_refs=EndPointsRefs}) ->
-	State#state{endpoints=maps:remove(EpID, EndPoints), 
-				endpoint_refs=maps:remove(Ref, EndPointsRefs)}.
+erase_endpoint(EpID, State=#state{endpoints=EndPoints}) ->
+	State#state{endpoints=maps:remove(EpID, EndPoints)}.
 
 -ifdef(TEST).
 
@@ -213,12 +204,9 @@ erase_endpoint(EpID, Ref, State=#state{endpoints=EndPoints, endpoint_refs=EndPoi
 
 store_endpoint_test() ->
 	EpID = {{127,0,0,1}, 5683},
-	State = store_endpoint(EpID, self(), #state{endpoints=maps:new(), endpoint_refs=maps:new()}),
-	[Ref] = maps:keys(State#state.endpoint_refs),
-	State1 = erase_endpoint(EpID, Ref, State),
+	State = store_endpoint(EpID, self(), #state{}),
+	State1 = erase_endpoint(EpID, State),
 	?assertEqual({ok, self()}, find_endpoint(EpID, State#state.endpoints)),
-	?assertEqual({ok, EpID}, find_endpoint_ref(Ref, State#state.endpoint_refs)),
-    ?assertEqual(error, find_endpoint(EpID, State1#state.endpoints)),
-    ?assertEqual(error, find_endpoint_ref(Ref, State1#state.endpoint_refs)).
-
+    ?assertEqual(error, find_endpoint(EpID, State1#state.endpoints)).
+    
 -endif.
