@@ -9,7 +9,7 @@
 -define(MAX_RETRANSMIT, 4).
 
 % -define(PROCESSING_DELAY, 1500). % standard allows 2000
--define(PROCESSING_DELAY, 1500).
+-define(PROCESSING_DELAY, 1000).
 % -define(EXCHANGE_LIFETIME, 247000).
 -define(EXCHANGE_LIFETIME, 1500).
 -define(NON_LIFETIME, 145000).
