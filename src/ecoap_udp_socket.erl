@@ -23,7 +23,7 @@
     supervisor,
     [endpoint_sup_sup]}).
 
--define(ACTIVE_PACKETS, 100).
+-define(ACTIVE_PACKETS, 200).
 
 -define(DEFAULT_SOCK_OPTS,
 	[binary, {active, ?ACTIVE_PACKETS}, {reuseaddr, true}]).
@@ -36,7 +36,7 @@
 
 -opaque state() :: #state{}.
 -type ecoap_endpoint_id() :: {inet:ip_address(), inet:port_number()}.
--type ecoap_endpoints() :: #{ecoap_endpoint_id() => pid()}.
+-type ecoap_endpoints() :: #{reference() => ecoap_endpoint_id()}.
 
 -export_type([state/0]).
 -export_type([ecoap_endpoint_id/0]).
@@ -91,33 +91,33 @@ init(SupPid, InPort, Opts) ->
     gen_server:enter_loop(?MODULE, [], State#state{endpoint_pool=Pid}, {local, ?MODULE}).
 
 % get an endpoint when being as a client
-handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoints=EndPoints, endpoint_pool=undefined}) ->
-    case find_endpoint(EpID, EndPoints) of
-        {ok, EpPid} ->
-            {reply, {ok, EpPid}, State};
-        error ->
-            % {ok, EpSupPid, EpPid} = endpoint_sup:start_link(Socket, EpID),
-            % %io:fwrite("EpSupPid: ~p EpPid: ~p~n", [EpSupPid, EpPid]),
-            {ok, EpPid} = ecoap_endpoint:start_link(?MODULE, Socket, EpID),
-            %io:fwrite("client started~n"),
-            {reply, {ok, EpPid}, store_endpoint(EpID, EpPid, State)}
+handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoint_pool=undefined}) ->
+    case get(EpID) of
+    	undefined ->
+    		{ok, EpPid} = ecoap_endpoint:start_link(?MODULE, Socket, EpID),
+    		put(EpID, EpPid),
+    		{reply, {ok, EpPid}, store_endpoint(EpID, EpPid, State)};
+    	EpPid ->
+    		{reply, {ok, EpPid}, State}
     end;
 % get an endpoint when being as a server
-handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoints=EndPoints, endpoint_pool=PoolPid}) ->
-	case find_endpoint(EpID, EndPoints) of
-		{ok, EpPid} ->
-			{reply, {ok, EpPid}, State};
-		error ->
-		    case endpoint_sup_sup:start_endpoint(PoolPid, [?MODULE, Socket, EpID]) of
+handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoint_pool=PoolPid}) ->
+	case get(EpID) of
+		undefined ->
+			case endpoint_sup_sup:start_endpoint(PoolPid, [?MODULE, Socket, EpID]) of
 		        {ok, _, EpPid} ->
+		        	put(EpID, EpPid),
 		            {reply, {ok, EpPid}, store_endpoint(EpID, EpPid, State)};
 		        Error ->
 		            {reply, Error, State}
-		    end
-    end;
+		    end;
+		EpPid ->
+			{reply, {ok, EpPid}, State}
+	end;
 % only for debug use
 handle_call(get_all_endpoints, _From, State=#state{endpoints=EndPoints}) ->
-	{reply, maps:values(EndPoints), State};
+	EpPids = [get(EpID) || EpID <- maps:values(EndPoints)],
+	{reply, EpPids, State};
 handle_call(_Request, _From, State) ->
 	error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
 	{noreply, State}.
@@ -128,34 +128,32 @@ handle_cast(_Msg, State) ->
 	error_logger:error_msg("unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
 	{noreply, State}.
 
-handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, endpoints=EndPoints, endpoint_pool=PoolPid}) ->
+handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, endpoint_pool=PoolPid}) ->
 	EpID = {PeerIP, PeerPortNo},
-	% ok = inet:setopts(Socket, [{active, once}]),
-	case find_endpoint(EpID, EndPoints) of
-		{ok, EpPid} -> 
-			%io:fwrite("found endpoint ~p~n", [EpID]),
-			EpPid ! {datagram, Bin},
-			{noreply, State};
-		error when is_pid(PoolPid) -> 
+	case get(EpID) of
+		undefined when is_pid(PoolPid) ->
 			case endpoint_sup_sup:start_endpoint(PoolPid, [?MODULE, Socket, EpID]) of
 				{ok, _, EpPid} -> 
 					%io:fwrite("start endpoint ~p~n", [EpID]),
 					EpPid ! {datagram, Bin},
-					put(erlang:monitor(process, EpPid), EpID),
+					put(EpID, EpPid),
 					{noreply, store_endpoint(EpID, EpPid, State)};
 				{error, _Reason} -> 
 					%io:fwrite("start_endpoint failed: ~p~n", [_Reason]),
 					{noreply, State}
 			end;
-		error ->
+		undefined ->
 			% ignore unexpected message received by a client
 			%io:fwrite("client recv unexpected packet~n"),
+			{noreply, State};
+		EpPid ->
+			EpPid ! {datagram, Bin},
 			{noreply, State}
 	end;
-handle_info({'DOWN', Ref, process, _Pid, _Reason}, State) ->
- 	case get(Ref) of
- 		undefined -> {noreply, State};
- 		EpID -> erase(Ref), {noreply, erase_endpoint(EpID, State)}
+handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{endpoints=EndPoints}) ->
+ 	case find_endpoint(Ref, EndPoints) of
+ 		{ok, EpID} -> erase(EpID), {noreply, erase_endpoint(Ref, State)};
+ 		error -> {noreply, State}
  	end;
 handle_info({udp_passive, Socket}, State=#state{sock=Socket}) ->
 	ok = inet:setopts(Socket, [{active, ?ACTIVE_PACKETS}]),
@@ -189,24 +187,12 @@ merge_opts(Defaults, Options) ->
                 end
     end, Defaults, Options).
 
-find_endpoint(EpID, EndPoints) ->
-	maps:find(EpID, EndPoints).
+find_endpoint(Ref, EndPoints) ->
+	maps:find(Ref, EndPoints).
 
 store_endpoint(EpID, EpPid, State=#state{endpoints=EndPoints}) ->
-	State#state{endpoints=maps:put(EpID, EpPid, EndPoints)}.
+	State#state{endpoints=maps:put(erlang:monitor(process, EpPid), EpID, EndPoints)}.
 
-erase_endpoint(EpID, State=#state{endpoints=EndPoints}) ->
-	State#state{endpoints=maps:remove(EpID, EndPoints)}.
+erase_endpoint(Ref, State=#state{endpoints=EndPoints}) ->
+	State#state{endpoints=maps:remove(Ref, EndPoints)}.
 
--ifdef(TEST).
-
--include_lib("eunit/include/eunit.hrl").
-
-store_endpoint_test() ->
-	EpID = {{127,0,0,1}, 5683},
-	State = store_endpoint(EpID, self(), #state{}),
-	State1 = erase_endpoint(EpID, State),
-	?assertEqual({ok, self()}, find_endpoint(EpID, State#state.endpoints)),
-    ?assertEqual(error, find_endpoint(EpID, State1#state.endpoints)).
-    
--endif.
