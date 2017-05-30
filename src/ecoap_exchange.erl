@@ -1,7 +1,7 @@
 -module(ecoap_exchange).
 
 %% API
--export([init/2, received/3, send/3, timeout/3, awaits_response/1, not_expired/1]).
+-export([init/2, received/3, send/3, timeout/3, awaits_response/1, in_transit/1, not_expired/1]).
 -export([idle/3, got_non/3, sent_non/3, got_rst/3, await_aack/3, pack_sent/3, await_pack/3, aack_sent/3]).
 
 -define(ACK_TIMEOUT, 2000).
@@ -60,6 +60,13 @@ timeout(Event, TransArgs, State=#exchange{stage=Stage}) ->
 awaits_response(#exchange{stage=await_aack}) ->
     true;
 awaits_response(_State) ->
+    false.
+
+% A CON is in transit as long as it has not been acknowledged, rejected, or timed out.
+-spec in_transit(exchange()) -> boolean().
+in_transit(#exchange{stage=await_pack}) -> 
+    true;
+in_transit(_State) -> 
     false.
 
 % ->NON

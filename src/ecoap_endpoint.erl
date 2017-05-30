@@ -320,6 +320,8 @@ make_new_response(Message=#coap_message{id=MsgId}, Receiver, State=#state{trans=
                 false ->
                     % Note by wilbur:
                     % send separate response or observe notification
+                    % TODO: decide whether to send a CON notification considering other notifications may be in transit
+                    %       and how to keep the retransimit counter for a newer notification when the former one timed out
                     make_new_message(Message, Receiver, State)
             end;
             %% Note by wilbur: why is the separate response by default a CON msg? 
