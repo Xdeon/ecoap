@@ -54,10 +54,10 @@ blockwise_test_() ->
     ].
 
 blockwise(Pid) ->
-    Response = ecoap_client:request(Pid, 'GET', "coap://californium.eclipse.org:5683/large", <<>>, [{'Block2', {0, false, 512}}]),
+    Response = ecoap_client:request(Pid, 'GET', "coap://coap.me:5683/large"),
     [
         ?_assertMatch({ok, 'Content', #coap_content{}}, Response), 
-        ?_assertEqual(1280, begin {_, _, #coap_content{payload=Payload}} = Response, byte_size(Payload) end)
+        ?_assertEqual(1700, begin {_, _, #coap_content{payload=Payload}} = Response, byte_size(Payload) end)
     ].
 
 % verify that ecoap_client clean up its state in this case

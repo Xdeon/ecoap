@@ -18,14 +18,14 @@
 -define(VERSION, 1).
 -define(MAX_MESSAGE_ID, 65535). % 16-bit number
 
--ifdef(NODEDUP).
+% -ifdef(NODEDUP).
 % TODO: instead of defining a long SCAN_INTERVAL
 % let it be a customized timer which gets 'kicked' if any message comes in
 % and we only check if a timer has ever been 'kicked' or not to determine whether to renew it
--define(SCAN_INTERVAL, 65000). % last for 65s for test use
--else.
+% -define(SCAN_INTERVAL, 65000). % last for 65s for test use
+% -else.
 -define(SCAN_INTERVAL, 10000). % scan every 10s
--endif.
+% -endif.
 
 -define(TOKEN_LENGTH, 4). % shall be at least 32 random bits
 
@@ -37,7 +37,7 @@
 	nextmid = undefined :: msg_id(),
 	rescnt = undefined :: non_neg_integer(),
     handler_refs = undefined :: undefined | #{reference() => tuple()},
-    timer = undefined :: reference()
+    timer = undefined :: endpoint_timer:timer_state()
     % mode = server :: server | client
 }).
 
@@ -122,8 +122,9 @@ generate_token(TKL) ->
 % client
 init([undefined, SocketModule, Socket, EpID]) ->
     TransArgs = #{sock=>Socket, sock_module=>SocketModule, ep_id=>EpID, endpoint_pid=>self()},
-    TRef = erlang:start_timer(?SCAN_INTERVAL, self(), scan),
-    {ok, #state{nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs}};
+    % TRef = erlang:start_timer(?SCAN_INTERVAL, self(), scan),
+    Timer = endpoint_timer:start_timer(?SCAN_INTERVAL, start_scan),
+    {ok, #state{nextmid=first_mid(), rescnt=0, timer=Timer, trans_args=TransArgs}};
 
 % server 
 init([SupPid, SocketModule, Socket, EpID]) ->
@@ -136,8 +137,9 @@ init([SupPid, SocketModule, Socket, EpID]) ->
           type => supervisor, 
           modules => [ecoap_handler_sup]}),
     TransArgs = #{sock=>Socket, sock_module=>SocketModule, ep_id=>EpID, endpoint_pid=>self(), handler_sup=>HdlSupPid, handler_regs=>#{}},
-    TRef = erlang:start_timer(?SCAN_INTERVAL, self(), scan),
-    gen_server:enter_loop(?MODULE, [], #state{nextmid=first_mid(), rescnt=0, timer=TRef, trans_args=TransArgs, handler_refs=#{}}).
+    % TRef = erlang:start_timer(?SCAN_INTERVAL, self(), scan),
+    Timer = endpoint_timer:start_timer(?SCAN_INTERVAL, start_scan),
+    gen_server:enter_loop(?MODULE, [], #state{nextmid=first_mid(), rescnt=0, timer=Timer, trans_args=TransArgs, handler_refs=#{}}).
 
 handle_call(_Request, _From, State) ->
     error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
@@ -242,12 +244,12 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 2:2, TKL:4, _Code:8, MsgId:16,
 handle_info({datagram, <<Ver:2, _/bytes>>}, State) when Ver /= ?VERSION ->
     % %io:format("unknown CoAP version~n"),
     {noreply, State};
-handle_info({timeout, TRef, scan}, State=#state{timer=TRef, trans=Trans}) ->
-    NewTrans = maps:filter(fun(_TrId, TrState) -> ecoap_exchange:not_expired(TrState) end, Trans),
-    % Because timer will be automatically cancelled if the destination pid exits or is not alive, we can safely start new timer here.
-    % %io:format("scanning~n"),
-    NewTRef = erlang:start_timer(?SCAN_INTERVAL, self(), scan),
-    purge_state(State#state{timer = NewTRef, trans = NewTrans});
+
+handle_info(start_scan, State=#state{trans=Trans}) ->
+    Trans2 = maps:filter(fun(_TrId, TrState) -> ecoap_exchange:not_expired(TrState) end, Trans),
+    % io:format("scanning~n"),
+    purge_state(State#state{trans=Trans2});
+
 handle_info({timeout, TrId, Event}, State=#state{trans=Trans, trans_args=TransArgs}) ->
     %% code added by wilbur
     % %io:format("timeout, TrId:~p Event:~p~n", [TrId, Event]),
@@ -256,10 +258,12 @@ handle_info({timeout, TrId, Event}, State=#state{trans=Trans, trans_args=TransAr
         {ok, TrState} -> update_state(State, TrId, ecoap_exchange:timeout(Event, TransArgs, TrState));
         error -> {noreply, State} % ignore unexpected responses
     end;
+
 handle_info({request_complete, Receiver}, State=#state{tokens=Tokens, receivers=Receivers}) ->
     %io:format("request_complete~n"),
     {Token, _} = maps:get(Receiver, Receivers, {undefined, undefined}),
     {noreply, State#state{tokens=maps:remove(Token, Tokens), receivers=maps:remove(Receiver, Receivers)}};
+
 % Only monitor possible observe handlers instead of every new spawned handler
 % so that we can save some extra message traffic
 handle_info({register_handler, ID, Pid}, State=#state{rescnt=Count, trans_args=TransArgs=#{handler_regs:=Regs}, handler_refs=Refs}) ->
@@ -270,6 +274,7 @@ handle_info({register_handler, ID, Pid}, State=#state{rescnt=Count, trans_args=T
             Ref = erlang:monitor(process, Pid),
             {noreply, State#state{rescnt=Count+1, trans_args=TransArgs#{handler_regs:=maps:put(ID, Pid, Regs)}, handler_refs=maps:put(Ref, ID, Refs)}}
     end;
+
 handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{rescnt=Count, trans_args=TransArgs=#{handler_regs:=Regs}, handler_refs=Refs}) ->
     case maps:find(Ref, Refs) of
         {ok, ID} -> 
@@ -280,6 +285,7 @@ handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{rescnt=Count, tr
         error -> 
             {noreply, State}
     end;
+    
 handle_info(_Info, State) ->
     error_logger:error_msg("unexpected info ~p received by ~p as ~p~n", [_Info, self(), ?MODULE]),
 	{noreply, State}.
@@ -359,18 +365,24 @@ update_state(State=#state{trans=Trans}, TrId, undefined) ->
     Trans2 = maps:remove(TrId, Trans),
     {noreply, State#state{trans=Trans2}};
     % purge_state(State#state{trans=Trans2});
-update_state(State=#state{trans=Trans}, TrId, TrState) ->
+update_state(State=#state{trans=Trans, timer=Timer}, TrId, TrState) ->
+    Timer2 = endpoint_timer:kick_timer(Timer),
     Trans2 = maps:put(TrId, TrState, Trans),
-    {noreply, State#state{trans=Trans2}}.
+    {noreply, State#state{trans=Trans2, timer=Timer2}}.
 
-% purge_state(State=#state{mode=client}) ->
-%     {noreply, State};
-purge_state(State=#state{tokens=Tokens, trans=Trans, rescnt=Count}) ->
-    case maps:size(Tokens) + maps:size(Trans) + Count of
+is_timeout(Timer) ->
+    case endpoint_timer:is_timeout(Timer) of
+        true -> 0;
+        false -> 1
+    end.
+
+purge_state(State=#state{tokens=Tokens, trans=Trans, rescnt=Count, timer=Timer}) ->
+    case maps:size(Tokens) + maps:size(Trans) + Count + is_timeout(Timer) of
         0 -> 
-            % %io:format("All trans expired~n"),
+            % io:format("All trans expired~n"),
             {stop, normal, State};
         _Else -> 
-            % %io:format("Ongoing trans exist~n"),
-            {noreply, State}
+            Timer2 = endpoint_timer:restart_timer(Timer),
+            % io:format("Ongoing trans exist~n"),
+            {noreply, State#state{timer=Timer2}}
     end.
