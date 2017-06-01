@@ -330,7 +330,7 @@ timeout_after(Time, EndpointPid, TrId, Event) ->
     erlang:send_after(Time, EndpointPid, {timeout, TrId, Event}).
 
 cancel_timer(Timer) ->
-    erlang:cancel_timer(Timer1, [{async, true}, {info, false}]).
+    erlang:cancel_timer(Timer, [{async, true}, {info, false}]).
 
 % check deduplication flag to decide whether clean up state
 -ifdef(NODEDUP).
