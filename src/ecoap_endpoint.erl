@@ -357,9 +357,8 @@ update_state(State=#state{trans=Trans}, TrId, undefined) ->
     {noreply, State#state{trans=Trans2}};
     % purge_state(State#state{trans=Trans2});
 update_state(State=#state{trans=Trans, timer=Timer}, TrId, TrState) ->
-    Timer2 = endpoint_timer:kick_timer(Timer),
     Trans2 = maps:put(TrId, TrState, Trans),
-    {noreply, State#state{trans=Trans2, timer=Timer2}}.
+    {noreply, State#state{trans=Trans2, timer=endpoint_timer:kick_timer(Timer)}}.
 
 purge_state(State=#state{tokens=Tokens, trans=Trans, rescnt=Count, timer=Timer}) ->
     case {maps:size(Tokens) + maps:size(Trans) + Count, endpoint_timer:is_timeout(Timer)} of

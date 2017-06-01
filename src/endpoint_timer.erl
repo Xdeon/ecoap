@@ -36,7 +36,7 @@ restart_timer(State=#timer_state{interval=Time, msg=Msg}) ->
 -spec kick_timer(timer_state()) -> timer_state().
 kick_timer(State=#timer_state{kicked=false}) ->
 	State#timer_state{kicked=true};
-kick_timer(State) ->
+kick_timer(State=#timer_state{kicked=true}) ->
 	State.
 
 -spec is_timeout(timer_state()) -> boolean().
