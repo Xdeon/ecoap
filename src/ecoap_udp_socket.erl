@@ -93,27 +93,25 @@ init(SupPid, InPort, Opts) ->
 
 % get an endpoint when being as a client
 handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoint_pool=undefined}) ->
-    case get(EpID) of
-    	undefined ->
+    case find_endpoint(EpID) of
+    	{ok, EpPid} ->
+    		{reply, {ok, EpPid}, State};
+    	error ->
     		{ok, EpPid} = ecoap_endpoint:start_link(?MODULE, Socket, EpID),
-    		put(EpID, EpPid),
-    		{reply, {ok, EpPid}, store_endpoint(EpID, EpPid, State)};
-    	EpPid ->
-    		{reply, {ok, EpPid}, State}
+    		{reply, {ok, EpPid}, store_endpoint(EpID, EpPid, State)}
     end;
 % get an endpoint when being as a server
 handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoint_pool=PoolPid}) ->
-	case get(EpID) of
-		undefined ->
+	case find_endpoint(EpID) of
+		{ok, EpPid} ->
+			{reply, {ok, EpPid}, State};
+		error ->
 			case endpoint_sup_sup:start_endpoint(PoolPid, [?MODULE, Socket, EpID]) of
 		        {ok, _, EpPid} ->
-		        	put(EpID, EpPid),
 		            {reply, {ok, EpPid}, store_endpoint(EpID, EpPid, State)};
 		        Error ->
 		            {reply, Error, State}
-		    end;
-		EpPid ->
-			{reply, {ok, EpPid}, State}
+		    end
 	end;
 % only for debug use
 handle_call(get_all_endpoints, _From, State=#state{endpoints=EndPoints}) ->
@@ -131,29 +129,28 @@ handle_cast(_Msg, State) ->
 
 handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, endpoint_pool=PoolPid}) ->
 	EpID = {PeerIP, PeerPortNo},
-	case get(EpID) of
-		undefined when is_pid(PoolPid) ->
+	case find_endpoint(EpID) of
+		{ok, EpPid} ->
+			EpPid ! {datagram, Bin},
+			{noreply, State};
+		error when is_pid(PoolPid) ->
 			case endpoint_sup_sup:start_endpoint(PoolPid, [?MODULE, Socket, EpID]) of
 				{ok, _, EpPid} -> 
 					%io:fwrite("start endpoint ~p~n", [EpID]),
 					EpPid ! {datagram, Bin},
-					put(EpID, EpPid),
 					{noreply, store_endpoint(EpID, EpPid, State)};
 				{error, _Reason} -> 
 					%io:fwrite("start_endpoint failed: ~p~n", [_Reason]),
 					{noreply, State}
 			end;
-		undefined ->
+		error ->
 			% ignore unexpected message received by a client
 			%io:fwrite("client recv unexpected packet~n"),
-			{noreply, State};
-		EpPid ->
-			EpPid ! {datagram, Bin},
 			{noreply, State}
 	end;
 handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{endpoints=EndPoints}) ->
  	case find_endpoint(Ref, EndPoints) of
- 		{ok, EpID} -> erase(EpID), {noreply, erase_endpoint(Ref, State)};
+ 		{ok, EpID} -> {noreply, erase_endpoint(EpID, Ref, State)};
  		error -> {noreply, State}
  	end;
 handle_info({udp_passive, Socket}, State=#state{sock=Socket, endpoints=EndPoints}) ->
@@ -192,12 +189,35 @@ merge_opts(Defaults, Options) ->
                 end
     end, Defaults, Options).
 
+find_endpoint(EpID) ->
+	case get(EpID) of
+		undefined -> error;
+		EpPid -> {ok, EpPid}
+	end.
+
 find_endpoint(Ref, EndPoints) ->
 	maps:find(Ref, EndPoints).
 
 store_endpoint(EpID, EpPid, State=#state{endpoints=EndPoints}) ->
+	put(EpID, EpPid),
 	State#state{endpoints=maps:put(erlang:monitor(process, EpPid), EpID, EndPoints)}.
 
-erase_endpoint(Ref, State=#state{endpoints=EndPoints}) ->
+erase_endpoint(EpID, Ref, State=#state{endpoints=EndPoints}) ->
+	erase(EpID),
 	State#state{endpoints=maps:remove(Ref, EndPoints)}.
+
+-ifdef(TEST).
+
+-include_lib("eunit/include/eunit.hrl").
+
+store_endpoint_test() ->
+	State = store_endpoint({{127,0,0,1}, 5683}, self(), #state{}),
+	[Ref] = maps:keys(State#state.endpoints),
+	?assertEqual({ok, self()}, find_endpoint({{127,0,0,1}, 5683})),
+	?assertEqual({ok, {{127,0,0,1}, 5683}}, find_endpoint(Ref, State#state.endpoints)),
+	State1 = erase_endpoint({{127,0,0,1}, 5683}, Ref, State),
+	?assertEqual(error, find_endpoint({{127,0,0,1}, 5683})),
+	?assertEqual(error, find_endpoint(Ref, State1#state.endpoints)).
+
+-endif.
 
