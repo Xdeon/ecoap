@@ -306,20 +306,20 @@ handle_delete(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=M
 return_resource(Request, Content, State) ->
     return_resource([], Request, {ok, 'Content'}, Content, State).
 
-return_resource(Ref, Request=#coap_message{options=Options}, {ok, Code}, Content=#coap_content{etag=ETag}, State) ->
-    Response = case lists:member(ETag, coap_utils:get_option('ETag', Options, [])) of
+return_resource(Ref, Request, {ok, Code}, Content=#coap_content{etag=ETag}, State) ->
+    Response = case lists:member(ETag, coap_utils:get_option('ETag', Request, [])) of
             true ->
                 coap_utils:set_content(#coap_content{etag=ETag},
                     coap_utils:response({ok, 'Valid'}, Request));
             false ->
-                coap_utils:set_content(Content, coap_utils:get_option('Block2', Options),
+                coap_utils:set_content(Content, coap_utils:get_option('Block2', Request),
                     coap_utils:response({ok, Code}, Request))
     end,
     send_observable(Ref, Request, Response, State#state{last_response={ok, Code, Content}}).
 
-send_observable(Ref, #coap_message{token=Token, options=Options}, Response,
+send_observable(Ref, Request=#coap_message{token=Token}, Response,
         State=#state{observer=Observer, obseq=Seq}) ->
-    case {coap_utils:get_option('Observe', Options), Observer} of
+    case {coap_utils:get_option('Observe', Request), Observer} of
         % when requested observe and is observing, return the sequence number
         {0, #coap_message{token=Token}} ->
             send_response(Ref, coap_utils:set_option('Observe', Seq, Response), State#state{obseq=next_seq(Seq)});
