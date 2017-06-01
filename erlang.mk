@@ -17,7 +17,7 @@
 ERLANG_MK_FILENAME := $(realpath $(lastword $(MAKEFILE_LIST)))
 export ERLANG_MK_FILENAME
 
-ERLANG_MK_VERSION = 2017.05.18-5-g381adec
+ERLANG_MK_VERSION = 2017.05.18-6-gb0d3c70
 ERLANG_MK_WITHOUT = 
 
 # Make 3.81 and 3.82 are deprecated.
