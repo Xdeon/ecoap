@@ -17,16 +17,7 @@
 
 -define(VERSION, 1).
 -define(MAX_MESSAGE_ID, 65535). % 16-bit number
-
-% -ifdef(NODEDUP).
-% TODO: instead of defining a long SCAN_INTERVAL
-% let it be a customized timer which gets 'kicked' if any message comes in
-% and we only check if a timer has ever been 'kicked' or not to determine whether to renew it
-% -define(SCAN_INTERVAL, 65000). % last for 65s for test use
-% -else.
 -define(SCAN_INTERVAL, 10000). % scan every 10s
-% -endif.
-
 -define(TOKEN_LENGTH, 4). % shall be at least 32 random bits
 
 -record(state, {
@@ -370,15 +361,9 @@ update_state(State=#state{trans=Trans, timer=Timer}, TrId, TrState) ->
     Trans2 = maps:put(TrId, TrState, Trans),
     {noreply, State#state{trans=Trans2, timer=Timer2}}.
 
-is_timeout(Timer) ->
-    case endpoint_timer:is_timeout(Timer) of
-        true -> 0;
-        false -> 1
-    end.
-
 purge_state(State=#state{tokens=Tokens, trans=Trans, rescnt=Count, timer=Timer}) ->
-    case maps:size(Tokens) + maps:size(Trans) + Count + is_timeout(Timer) of
-        0 -> 
+    case {maps:size(Tokens) + maps:size(Trans) + Count, endpoint_timer:is_timeout(Timer)} of
+        {0, true} -> 
             % io:format("All trans expired~n"),
             {stop, normal, State};
         _Else -> 
