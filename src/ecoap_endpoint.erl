@@ -8,7 +8,6 @@
 
 %% gen_server.
 -export([init/1]).
-% -export([init/4]).
 -export([handle_call/3]).
 -export([handle_cast/2]).
 -export([handle_info/2]).
@@ -29,7 +28,6 @@
 	rescnt = undefined :: non_neg_integer(),
     handler_refs = undefined :: undefined | #{reference() => tuple()},
     timer = undefined :: endpoint_timer:timer_state()
-    % mode = server :: server | client
 }).
 
 -type trid() :: {in | out, msg_id()}.
@@ -49,9 +47,6 @@
 -export_type([trans_args/0]).
 
 -include_lib("ecoap_common/include/coap_def.hrl").
-
-% TODO:
-% Should we make trid as another field in trans_arg instead of putting trid in each exchange record?
 
 %% API.
 -spec start_link(pid(), module(), inet:socket(), ecoap_udp_socket:ecoap_endpoint_id()) -> {ok, pid()}.
@@ -113,7 +108,6 @@ generate_token(TKL) ->
 % client
 init([undefined, SocketModule, Socket, EpID]) ->
     TransArgs = #{sock=>Socket, sock_module=>SocketModule, ep_id=>EpID, endpoint_pid=>self()},
-    % TRef = erlang:start_timer(?SCAN_INTERVAL, self(), scan),
     Timer = endpoint_timer:start_timer(?SCAN_INTERVAL, start_scan),
     {ok, #state{nextmid=first_mid(), rescnt=0, timer=Timer, trans_args=TransArgs}};
 
@@ -123,12 +117,12 @@ init([SupPid, SocketModule, Socket, EpID]) ->
     {ok, HdlSupPid} = supervisor:start_child(SupPid, 
         #{id => ecoap_handler_sup,
             start => {ecoap_handler_sup, start_link, []},
-            restart => permanent, 
+            restart => temporary, 
           shutdown => infinity, 
           type => supervisor, 
           modules => [ecoap_handler_sup]}),
+    link(HdlSupPid),
     TransArgs = #{sock=>Socket, sock_module=>SocketModule, ep_id=>EpID, endpoint_pid=>self(), handler_sup=>HdlSupPid, handler_regs=>#{}},
-    % TRef = erlang:start_timer(?SCAN_INTERVAL, self(), scan),
     Timer = endpoint_timer:start_timer(?SCAN_INTERVAL, start_scan),
     gen_server:enter_loop(?MODULE, [], #state{nextmid=first_mid(), rescnt=0, timer=Timer, trans_args=TransArgs, handler_refs=#{}}).
 
@@ -174,20 +168,12 @@ handle_cast(_Msg, State) ->
 handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, _TKL:4, 0:3, _CodeDetail:5, MsgId:16, _/bytes>>}, 
     State=#state{trans_args=TransArgs}) ->
 	TrId = {in, MsgId},
-    % debug
-    %io:format("incoming CON/NON request, TrId:~p~n", [TrId]),
-    %io:format("MsgBin: ~p~n", [BinMessage]),
-    % end of debug
     update_state(State, TrId,
         ecoap_exchange:received(BinMessage, TransArgs, create_exchange(TrId, undefined, State)));
 % incoming CON(0) or NON(1) response
 handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgId:16, Token:TKL/bytes, _/bytes>>},
     State=#state{trans=Trans, tokens=Tokens, trans_args=TransArgs=#{sock:=Socket, sock_module:=SocketModule, ep_id:=EpID}}) ->
 	TrId = {in, MsgId},
-    % debug
-	%io:format("incoming CON/NON response, TrId:~p~n", [TrId]),
-    %io:format("MsgBin: ~p~n", [BinMessage]),
-    % end of debug
     case maps:find(TrId, Trans) of
         % this is a duplicate msg, i.e. a retransmitted CON response
         {ok, TrState} ->
@@ -228,7 +214,7 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 2:2, TKL:4, _Code:8, MsgId:16,
                     {noreply, State}
             end;
         error ->
-            % ignore unexpected responses; ignore ack retransmission because the exchange has been removed
+            % ignore unexpected responses;
             {noreply, State}
     end;
 % silently ignore other versions
@@ -242,9 +228,6 @@ handle_info(start_scan, State=#state{trans=Trans}) ->
     purge_state(State#state{trans=Trans2});
 
 handle_info({timeout, TrId, Event}, State=#state{trans=Trans, trans_args=TransArgs}) ->
-    %% code added by wilbur
-    % %io:format("timeout, TrId:~p Event:~p~n", [TrId, Event]),
-    %% end
     case maps:find(TrId, Trans) of
         {ok, TrState} -> update_state(State, TrId, ecoap_exchange:timeout(Event, TransArgs, TrState));
         error -> {noreply, State} % ignore unexpected responses
@@ -261,7 +244,7 @@ handle_info({register_handler, ID, Pid}, State=#state{rescnt=Count, trans_args=T
     case maps:is_key(ID, Regs) of
         true -> {noreply, State};
         false ->
-            io:format("register_ecoap_handler ~p for ~p~n", [Pid, ID]),
+            % io:format("register_ecoap_handler ~p for ~p~n", [Pid, ID]),
             Ref = erlang:monitor(process, Pid),
             {noreply, State#state{rescnt=Count+1, trans_args=TransArgs#{handler_regs:=maps:put(ID, Pid, Regs)}, handler_refs=maps:put(Ref, ID, Refs)}}
     end;
@@ -269,9 +252,7 @@ handle_info({register_handler, ID, Pid}, State=#state{rescnt=Count, trans_args=T
 handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{rescnt=Count, trans_args=TransArgs=#{handler_regs:=Regs}, handler_refs=Refs}) ->
     case maps:find(Ref, Refs) of
         {ok, ID} -> 
-            %% Code added by wilbur
-            io:format("ecoap_handler_completed~n"),
-            %% end
+            % io:format("ecoap_handler_completed~n"),
             {noreply, State#state{rescnt=Count-1, trans_args=TransArgs#{handler_regs:=maps:remove(ID, Regs)}, handler_refs=maps:remove(Ref, Refs)}};
         error -> 
             {noreply, State}
@@ -302,30 +283,24 @@ make_message(TrId, Message, Receiver, State=#state{trans_args=TransArgs}) ->
         ecoap_exchange:send(Message, TransArgs, init_exchange(TrId, Receiver))).
 
 make_new_response(Message=#coap_message{id=MsgId}, Receiver, State=#state{trans=Trans, trans_args=TransArgs}) ->
-    %io:format("The response: ~p~n", [Message]),
+    % io:format("The response: ~p~n", [Message]),
     case maps:find({in, MsgId}, Trans) of
         {ok, TrState} ->
-            %% Note by wilbur: coap_transport:awaits_response is used to 
-            %% check if we are in the case that
-            %% we received a CON request, have its state stored, but did not send its ACK yet
+            % coap_transport:awaits_response is used to 
+            % check if we are in the case that
+            % we received a CON request, have its state stored, but did not send its ACK yet
             case ecoap_exchange:awaits_response(TrState) of
                 true ->
-                %% Note by wilbur: we are about to send ACK
-                %% By calling coap_transport:send, we make the state change to pack_sent
+                % we are about to send ACK by calling coap_exchange:send, we make the state change to pack_sent
                     update_state(State, {in, MsgId},
                         ecoap_exchange:send(Message, TransArgs, TrState));
                 false ->
-                    % Note by wilbur:
                     % send separate response or observe notification
                     % TODO: decide whether to send a CON notification considering other notifications may be in transit
                     %       and how to keep the retransimit counter for a newer notification when the former one timed out
                     make_new_message(Message, Receiver, State)
             end;
-            %% Note by wilbur: why is the separate response by default a CON msg? 
-            %% Because in this implementation a response for CON req uses the same msg type 
-            %% until it is modified before being sent as an ACK
         error ->
-            % Note by wilbur:
             % send NON response
             make_new_message(Message, Receiver, State)
     end.
@@ -347,15 +322,12 @@ create_exchange(TrId, Receiver, #state{trans=Trans}) ->
         error -> init_exchange(TrId, Receiver)
     end.
 
-% init_exchange(TrId, undefined) ->
-%     ecoap_exchange:init(TrId, undefined);
 init_exchange(TrId, Receiver) ->
     ecoap_exchange:init(TrId, Receiver).
 
 update_state(State=#state{trans=Trans}, TrId, undefined) ->
     Trans2 = maps:remove(TrId, Trans),
     {noreply, State#state{trans=Trans2}};
-    % purge_state(State#state{trans=Trans2});
 update_state(State=#state{trans=Trans, timer=Timer}, TrId, TrState) ->
     Trans2 = maps:put(TrId, TrState, Trans),
     {noreply, State#state{trans=Trans2, timer=endpoint_timer:kick_timer(Timer)}}.

@@ -15,14 +15,6 @@
 -export([terminate/2]).
 -export([code_change/3]).
 
--define(SPEC(MFA),
-    {endpoint_sup_sup,
-    {endpoint_sup_sup, start_link, [MFA]},
-    temporary,
-    infinity,
-    supervisor,
-    [endpoint_sup_sup]}).
-
 -define(LOW_ACTIVE_PACKETS, 200).
 -define(HIGH_ACTIVE_PACKETS, 400).
 
@@ -31,13 +23,13 @@
 
 -record(state, {
 	sock = undefined :: inet:socket(),
-	endpoints = #{} :: ecoap_endpoints(),
+	endpoint_refs = #{} :: ecoap_endpoint_refs(),
 	endpoint_pool = undefined :: undefined | pid()
 }).
 
 -opaque state() :: #state{}.
 -type ecoap_endpoint_id() :: {inet:ip_address(), inet:port_number()}.
--type ecoap_endpoints() :: #{reference() => ecoap_endpoint_id()}.
+-type ecoap_endpoint_refs() :: #{reference() => ecoap_endpoint_id()}.
 
 -export_type([state/0]).
 -export_type([ecoap_endpoint_id/0]).
@@ -87,7 +79,13 @@ init(SupPid, InPort, Opts) ->
 	error_logger:info_msg("coap listen on *:~p~n", [InPort]),
 	register(?MODULE, self()),
 	ok = proc_lib:init_ack({ok, self()}),
-	{ok, Pid} = supervisor:start_child(SupPid, ?SPEC({endpoint_sup, start_link, []})),
+	{ok, Pid} = supervisor:start_child(SupPid, 
+		#{id => endpoint_sup_sup,
+      	  start =>{endpoint_sup_sup, start_link, []},
+		  restart => temporary,
+		  shutdown => infinity,
+		  type => supervisor,
+		  modules => [endpoint_sup_sup]}),
     link(Pid),
     gen_server:enter_loop(?MODULE, [], State#state{endpoint_pool=Pid}, {local, ?MODULE}).
 
@@ -114,8 +112,8 @@ handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoint_pool
 		    end
 	end;
 % only for debug use
-handle_call(get_all_endpoints, _From, State=#state{endpoints=EndPoints}) ->
-	EpPids = [get(EpID) || EpID <- maps:values(EndPoints)],
+handle_call(get_all_endpoints, _From, State=#state{endpoint_refs=EndPointRefs}) ->
+	EpPids = [get(EpID) || EpID <- maps:values(EndPointRefs)],
 	{reply, EpPids, State};
 handle_call(_Request, _From, State) ->
 	error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
@@ -148,23 +146,19 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, en
 			%io:fwrite("client recv unexpected packet~n"),
 			{noreply, State}
 	end;
-handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{endpoints=EndPoints}) ->
- 	case find_endpoint(Ref, EndPoints) of
+handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{endpoint_refs=EndPointRefs}) ->
+ 	case find_endpoint(Ref, EndPointRefs) of
  		{ok, EpID} -> {noreply, erase_endpoint(EpID, Ref, State)};
  		error -> {noreply, State}
  	end;
-handle_info({udp_passive, Socket}, State=#state{sock=Socket, endpoints=EndPoints}) ->
-	Concurrency = maps:size(EndPoints),
+handle_info({udp_passive, Socket}, State=#state{sock=Socket, endpoint_refs=EndPointRefs}) ->
+	Concurrency = maps:size(EndPointRefs),
 	ActivePackets = if Concurrency < 2000 -> ?LOW_ACTIVE_PACKETS; 
 					   true -> ?HIGH_ACTIVE_PACKETS 
 					end,
 	ok = inet:setopts(Socket, [{active, ActivePackets}]),
 	{noreply, State};
-
-% handle_info({datagram, {PeerIP, PeerPortNo}, Data}, State=#state{sock=Socket}) ->
-% 	 ok = gen_udp:send(Socket, PeerIP, PeerPortNo, Data),
-%     {noreply, State};
-
+	
 handle_info(_Info, State) ->
     error_logger:error_msg("unexpected info ~p received by ~p as ~p~n", [_Info, self(), ?MODULE]),
 	{noreply, State}.
@@ -195,16 +189,16 @@ find_endpoint(EpID) ->
 		EpPid -> {ok, EpPid}
 	end.
 
-find_endpoint(Ref, EndPoints) ->
-	maps:find(Ref, EndPoints).
+find_endpoint(Ref, EndPointRefs) ->
+	maps:find(Ref, EndPointRefs).
 
-store_endpoint(EpID, EpPid, State=#state{endpoints=EndPoints}) ->
+store_endpoint(EpID, EpPid, State=#state{endpoint_refs=EndPointRefs}) ->
 	put(EpID, EpPid),
-	State#state{endpoints=maps:put(erlang:monitor(process, EpPid), EpID, EndPoints)}.
+	State#state{endpoint_refs=maps:put(erlang:monitor(process, EpPid), EpID, EndPointRefs)}.
 
-erase_endpoint(EpID, Ref, State=#state{endpoints=EndPoints}) ->
+erase_endpoint(EpID, Ref, State=#state{endpoint_refs=EndPointRefs}) ->
 	erase(EpID),
-	State#state{endpoints=maps:remove(Ref, EndPoints)}.
+	State#state{endpoint_refs=maps:remove(Ref, EndPointRefs)}.
 
 -ifdef(TEST).
 
@@ -212,12 +206,12 @@ erase_endpoint(EpID, Ref, State=#state{endpoints=EndPoints}) ->
 
 store_endpoint_test() ->
 	State = store_endpoint({{127,0,0,1}, 5683}, self(), #state{}),
-	[Ref] = maps:keys(State#state.endpoints),
+	[Ref] = maps:keys(State#state.endpoint_refs),
 	?assertEqual({ok, self()}, find_endpoint({{127,0,0,1}, 5683})),
-	?assertEqual({ok, {{127,0,0,1}, 5683}}, find_endpoint(Ref, State#state.endpoints)),
+	?assertEqual({ok, {{127,0,0,1}, 5683}}, find_endpoint(Ref, State#state.endpoint_refs)),
 	State1 = erase_endpoint({{127,0,0,1}, 5683}, Ref, State),
 	?assertEqual(error, find_endpoint({{127,0,0,1}, 5683})),
-	?assertEqual(error, find_endpoint(Ref, State1#state.endpoints)).
+	?assertEqual(error, find_endpoint(Ref, State1#state.endpoint_refs)).
 
 -endif.
 

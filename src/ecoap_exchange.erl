@@ -229,7 +229,7 @@ out_con({out, Message}, TransArgs=#{sock:=Socket, sock_module:=SocketModule, ep_
 -spec await_pack({in, binary()} | {timeout, await_pack}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
 await_pack({in, BinAck}, TransArgs, State) ->
     case catch coap_message:decode(BinAck) of
-    	% this is an empty ack for separate response
+    	% this is an empty ack for separate response or observe notification
         #coap_message{type='ACK', code=undefined} = Ack ->
             handle_ack(Ack, TransArgs, State),
             % since we can confirm when an outgoing confirmable message
@@ -269,8 +269,7 @@ aack_sent({timeout, await_pack}, _TransArgs, State) ->
 % utility functions
 
 handle_request(Message=#coap_message{code=Method, options=Options}, 
-    #{ep_id:=EpID, handler_sup:=HdlSupPid, endpoint_pid:=EndpointPid, handler_regs:=HandlerRegs}, 
-    #exchange{receiver=undefined}) ->
+    #{ep_id:=EpID, handler_sup:=HdlSupPid, endpoint_pid:=EndpointPid, handler_regs:=HandlerRegs}, #exchange{receiver=undefined}) ->
     %io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
     Uri = coap_utils:get_option('Uri-Path', Options, []),
     Query = coap_utils:get_option('Uri-Query', Options, []),
