@@ -1,6 +1,6 @@
 -module(benchmark).
 -export([coap_discover/2, coap_get/5, coap_post/4, coap_put/4, coap_delete/4, 
-        coap_observe/4, coap_unobserve/1, coap_payload_adapter/2, handle_info/2, coap_ack/2]).
+        coap_observe/4, coap_unobserve/1, handle_info/3, coap_ack/2]).
 -export([start/0, stop/0]).
 -export([fib/1]).
 
@@ -59,9 +59,7 @@ coap_observe(_EpID, _Prefix, _Name, _Request) ->
 coap_unobserve(_Obstate) ->
     ok.
 
-coap_payload_adapter(Content, _Accept) -> {ok, Content}.
-
-handle_info(_Message, State) -> {noreply, State}.
+handle_info(_Info, _ObsReq, State) -> {noreply, State}.
 
 coap_ack(_Ref, State) -> {ok, State}.
 

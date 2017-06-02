@@ -42,7 +42,7 @@ start_link(EndpointPid, ID) ->
 notify(Uri, Content) ->
     case pg2:get_members({coap_observer, Uri}) of
         {error, _} -> ok;
-        List -> [gen_server:cast(Pid, {obs_notify, Content}) || Pid <- List], ok
+        List -> lists:foreach(fun(Pid) -> Pid ! {coap_notify, Content} end, List), ok
     end.
 
 %% gen_server.
@@ -63,15 +63,6 @@ handle_call(_Request, _From, State) ->
     error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
 	{noreply, State}.
 
-handle_cast({obs_notify, _Content}, State=#state{observer=undefined}) ->
-    % ignore unexpected notification
-    {noreply, State};
-handle_cast({obs_notify, Content=#coap_content{}}, State=#state{observer=Observer, module=Module}) ->
-    {ok, Content2} = invoke_callback(Module, coap_payload_adapter, [Content, coap_utils:get_option('Accept', Observer)]),
-    return_resource(Observer, Content2, State);
-handle_cast({obs_notify, {error, Code}}, State=#state{observer=Observer}) ->
-    {ok, State2} = cancel_observer(Observer, State),
-    return_response(Observer, {error, Code}, State2);
 handle_cast(_Msg, State) ->
     error_logger:error_msg("unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
 	{noreply, State}.
@@ -94,7 +85,7 @@ handle_info({coap_error, _EpID, _EndpointPid, _Ref, _Error}, State=#state{observ
     {ok, State2} = cancel_observer(Observer, State),
     {stop, normal, State2};
 handle_info(Info, State=#state{module=Module, observer=Observer, obstate=ObState}) ->
-    case invoke_callback(Module, handle_info, [Info, ObState]) of
+    case invoke_callback(Module, handle_info, [Info, Observer, ObState]) of
         {notify, Ref, Content=#coap_content{}, ObState2} ->
             return_resource(Ref, Observer, {ok, 'Content'}, Content, State#state{obstate=ObState2});
         {notify, Ref, {error, Code}, ObState2} ->

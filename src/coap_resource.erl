@@ -65,26 +65,22 @@
 -callback coap_unobserve(Obstate) -> ok when
 	Obstate :: any().
 
-% payload adapter for observe notifications
-% used to change payload format of a notification to fit the current client's requirement
-% called by ecoap_handler:notify/2
--callback coap_payload_adapter(Content, Accept) -> {ok, NewContent} when
-	Content :: coap_content(),
-	Accept :: binary() | non_neg_integer(),
-	NewContent :: coap_content().
+% handler for messages sent to the coap_handler process
+% could be used to generate notifications
 
-% handler for messages sent to the responder process
-% used to generate notifications
--callback handle_info(Info, Obstate) -> 
-	{notify, Ref, Content, NewObstate} | 
-	{notify, Ref, {error, Error}, NewObstate} | 
-	{noreply, NewObstate} | 
-	{stop, NewObstate} when
-	Info :: any(),
+% particularly, when other coap_handler process(es) call coap_handler:notify/2, 
+% the coap_handler process will receive a message {coap_notify, Notification} with this handler function invoked
+
+% the function can be used to generate tags which correlate outgoing CON notifications with incoming ACKs
+% it can also check Content-Format of notifications according to original observe request ObsReq 
+% and may return {notify, Ref, {error, 'NotAcceptable'}, State} if we can not provide the format anymore
+-callback handle_info(Info, ObsReq, Obstate) -> 
+	{notify, Ref, Notification, NewObstate} | {noreply, NewObstate} | {stop, NewObstate} when
+	Info :: {coap_notify, coap_content() | coap_error()} | any(),
+	ObsReq :: coap_message(),
 	Obstate :: any(),
 	Ref :: any(),
-	Content :: coap_content(),
-	Error :: error_code(),
+	Notification :: coap_content() | {error, error_code()},
 	NewObstate :: any().
 
 % response to notifications
