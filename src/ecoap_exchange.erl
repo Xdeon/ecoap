@@ -273,7 +273,7 @@ handle_request(Message=#coap_message{code=Method, options=Options},
     %io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
     Uri = coap_utils:get_option('Uri-Path', Options, []),
     Query = coap_utils:get_option('Uri-Query', Options, []),
-    case get_handler(HdlSupPid, {Method, Uri, Query}, HandlerRegs) of
+    case get_handler(HdlSupPid, EndpointPid, {Method, Uri, Query}, HandlerRegs) of
         {ok, Pid} ->
             Pid ! {coap_request, EpID, EndpointPid, undefined, Message},
             ok;
@@ -304,10 +304,10 @@ handle_ack(_Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiv
 	Sender ! {coap_ack, EpID, EndpointPid, Ref},
 	ok.
 
-get_handler(SupPid, HandlerID, HandlerRegs) ->
+get_handler(SupPid, EndpointPid, HandlerID, HandlerRegs) ->
     case maps:find(HandlerID, HandlerRegs) of
         error ->          
-            ecoap_handler_sup:start_handler(SupPid, HandlerID);
+            ecoap_handler_sup:start_handler(SupPid, EndpointPid, HandlerID);
         {ok, Pid} ->
             {ok, Pid}
     end.
