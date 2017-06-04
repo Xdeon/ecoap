@@ -39,10 +39,10 @@ start_link(EndpointPid, ID) ->
 	gen_server:start_link(?MODULE, [EndpointPid, ID], []).
 
 -spec notify([binary()], coap_content() | coap_error()) -> ok.
-notify(Uri, Content) ->
+notify(Uri, Notification) ->
     case pg2:get_members({coap_observer, Uri}) of
         {error, _} -> ok;
-        List -> lists:foreach(fun(Pid) -> Pid ! {coap_notify, Content} end, List), ok
+        List -> lists:foreach(fun(Pid) -> Pid ! {coap_notify, Notification} end, List), ok
     end.
 
 %% gen_server.
