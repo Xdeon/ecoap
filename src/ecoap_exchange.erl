@@ -34,7 +34,7 @@
 % -record(state, {phase, sock, cid, channel, tid, resp, receiver, msg, timer, retry_time, retry_count}).
 -spec not_expired(exchange()) -> boolean().
 not_expired(#exchange{timestamp=Timestamp, expire_time=ExpireTime}) ->
-    erlang:convert_time_unit(erlang:monotonic_time() - Timestamp, native, milli_seconds) < ExpireTime.
+    erlang:monotonic_time() - Timestamp < ExpireTime.
 
 -spec init(ecoap_endpoint:trid(), undefined | ecoap_endpoint:receiver()) -> exchange().
 init(TrId, Receiver) ->
@@ -72,16 +72,16 @@ in_transit(_State) ->
 % ->NON
 -spec idle({in | out, binary()}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
 idle(Msg={in, <<1:2, 1:2, _:12, _Tail/bytes>>}, TransArgs, State=#exchange{}) ->
-    in_non(Msg, TransArgs, State#exchange{expire_time=?NON_LIFETIME});
+    in_non(Msg, TransArgs, State#exchange{expire_time=native_time(?NON_LIFETIME)});
 % ->CON
 idle(Msg={in, <<1:2, 0:2, _:12, _Tail/bytes>>}, TransArgs, State=#exchange{}) ->
-    in_con(Msg, TransArgs, State#exchange{expire_time=?EXCHANGE_LIFETIME});
+    in_con(Msg, TransArgs, State#exchange{expire_time=native_time(?EXCHANGE_LIFETIME)});
 % NON->
 idle(Msg={out, #coap_message{type='NON'}}, TransArgs, State=#exchange{}) ->
-    out_non(Msg, TransArgs, State#exchange{expire_time=?NON_LIFETIME});
+    out_non(Msg, TransArgs, State#exchange{expire_time=native_time(?NON_LIFETIME)});
 % CON->
 idle(Msg={out, #coap_message{type='CON'}}, TransArgs, State=#exchange{}) ->
-    out_con(Msg, TransArgs, State#exchange{expire_time=?EXCHANGE_LIFETIME}).
+    out_con(Msg, TransArgs, State#exchange{expire_time=native_time(?EXCHANGE_LIFETIME)}).
 
 
 % --- incoming NON
@@ -330,6 +330,9 @@ timeout_after(Time, EndpointPid, TrId, Event) ->
 
 cancel_timer(Timer) ->
     erlang:cancel_timer(Timer, [{async, true}, {info, false}]).
+
+native_time(Time) ->
+    erlang:convert_time_unit(Time, millisecond, native).
 
 % check deduplication flag to decide whether clean up state
 -ifdef(NODEDUP).
