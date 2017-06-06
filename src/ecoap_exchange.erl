@@ -1,7 +1,7 @@
 -module(ecoap_exchange).
 
 %% API
--export([init/2, received/3, send/3, timeout/3, awaits_response/1, in_transit/1, not_expired/1]).
+-export([init/2, received/3, send/3, timeout/3, awaits_response/1, in_transit/1, not_expired/2]).
 -export([idle/3, got_non/3, sent_non/3, got_rst/3, await_aack/3, pack_sent/3, await_pack/3, aack_sent/3]).
 
 -define(ACK_TIMEOUT, 2000).
@@ -32,9 +32,9 @@
 -include_lib("ecoap_common/include/coap_def.hrl").
 
 % -record(state, {phase, sock, cid, channel, tid, resp, receiver, msg, timer, retry_time, retry_count}).
--spec not_expired(exchange()) -> boolean().
-not_expired(#exchange{timestamp=Timestamp, expire_time=ExpireTime}) ->
-    erlang:monotonic_time() - Timestamp < ExpireTime.
+-spec not_expired(integer(), exchange()) -> boolean().
+not_expired(CurrentTime, #exchange{timestamp=Timestamp, expire_time=ExpireTime}) ->
+    CurrentTime - Timestamp < ExpireTime.
 
 -spec init(ecoap_endpoint:trid(), undefined | ecoap_endpoint:receiver()) -> exchange().
 init(TrId, Receiver) ->

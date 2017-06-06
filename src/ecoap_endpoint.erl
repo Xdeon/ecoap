@@ -223,7 +223,8 @@ handle_info({datagram, <<Ver:2, _/bytes>>}, State) when Ver /= ?VERSION ->
     {noreply, State};
 
 handle_info(start_scan, State=#state{trans=Trans}) ->
-    Trans2 = maps:filter(fun(_TrId, TrState) -> ecoap_exchange:not_expired(TrState) end, Trans),
+    CurrentTime = erlang:monotonic_time(),
+    Trans2 = maps:filter(fun(_TrId, TrState) -> ecoap_exchange:not_expired(CurrentTime, TrState) end, Trans),
     % io:format("scanning~n"),
     purge_state(State#state{trans=Trans2});
 
