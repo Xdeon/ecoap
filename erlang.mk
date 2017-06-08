@@ -17,7 +17,7 @@
 ERLANG_MK_FILENAME := $(realpath $(lastword $(MAKEFILE_LIST)))
 export ERLANG_MK_FILENAME
 
-ERLANG_MK_VERSION = 2017.05.18-6-gb0d3c70
+ERLANG_MK_VERSION = 2017.05.18-7-gb5d014d
 ERLANG_MK_WITHOUT = 
 
 # Make 3.81 and 3.82 are deprecated.
@@ -2306,9 +2306,9 @@ pkg_kvs_commit = master
 PACKAGES += lager
 pkg_lager_name = lager
 pkg_lager_description = A logging framework for Erlang/OTP.
-pkg_lager_homepage = https://github.com/basho/lager
+pkg_lager_homepage = https://github.com/erlang-lager/lager
 pkg_lager_fetch = git
-pkg_lager_repo = https://github.com/basho/lager
+pkg_lager_repo = https://github.com/erlang-lager/lager
 pkg_lager_commit = master
 
 PACKAGES += lager_amqp_backend
@@ -2322,9 +2322,9 @@ pkg_lager_amqp_backend_commit = master
 PACKAGES += lager_syslog
 pkg_lager_syslog_name = lager_syslog
 pkg_lager_syslog_description = Syslog backend for lager
-pkg_lager_syslog_homepage = https://github.com/basho/lager_syslog
+pkg_lager_syslog_homepage = https://github.com/erlang-lager/lager_syslog
 pkg_lager_syslog_fetch = git
-pkg_lager_syslog_repo = https://github.com/basho/lager_syslog
+pkg_lager_syslog_repo = https://github.com/erlang-lager/lager_syslog
 pkg_lager_syslog_commit = master
 
 PACKAGES += lambdapad
