@@ -237,9 +237,12 @@ get_obsregs(Pid) -> gen_server:call(Pid, get_obsregs).
 get_blockrefs(Pid) -> gen_server:call(Pid, get_blockrefs).
 
 assemble_request(Method, Uri, Options, Content) ->
-	{_Scheme, EpID, Path, Query} = coap_utils:decode_uri(Uri),
-	Options2 = coap_utils:add_option('Uri-Query', Query, coap_utils:add_option('Uri-Path', Path, Options)),
-	{EpID, {Method, Options2, convert_content(Content)}}.
+	{_Scheme, Host, {PeerIP, PortNo}, Path, Query} = coap_utils:decode_uri(Uri),
+	Options2 = coap_utils:add_option('Uri-Path', Path, 
+					coap_utils:add_option('Uri-Query', Query,
+						coap_utils:add_option('Uri-Host', Host, 
+							coap_utils:add_option('Uri-Port', PortNo, Options)))),
+	{{PeerIP, PortNo}, {Method, Options2, convert_content(Content)}}.
 
 assemble_observe_request(Uri, Options) ->
 	{EpID, Req} = assemble_request('GET', Uri, coap_utils:add_option('Observe', 0, Options), #coap_content{}),
