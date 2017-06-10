@@ -86,10 +86,15 @@ handle_info({coap_error, _EpID, _EndpointPid, _Ref, _Error}, State=#state{observ
     {stop, normal, State2};
 handle_info(Info, State=#state{module=Module, observer=Observer, obstate=ObState}) ->
     case invoke_callback(Module, handle_info, [Info, Observer, ObState]) of
+        {notify, Content=#coap_content{}, ObState2} ->
+            return_resource(Observer, Content, State#state{obstate=ObState2});
+        {notify, {error, Code}, ObState2} ->
+            % should we wait for ack (of the error response, if applicable) before terminate?
+            {ok, State2} = cancel_observer(Observer, State#state{obstate=ObState2}),
+            return_response(Observer, {error, Code}, State2);
         {notify, Ref, Content=#coap_content{}, ObState2} ->
             return_resource(Ref, Observer, {ok, 'Content'}, Content, State#state{obstate=ObState2});
         {notify, Ref, {error, Code}, ObState2} ->
-            % should we wait for ack (of the error response, if applicable) before terminate?
             {ok, State2} = cancel_observer(Observer, State#state{obstate=ObState2}),
             return_response(Ref, Observer, {error, Code}, <<>>, State2);
         {noreply, ObState2} ->
