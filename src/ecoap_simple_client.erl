@@ -63,7 +63,7 @@ close(Pid) ->
 -spec ping(string()) -> ok | error.
 ping(Uri) ->
 	{ok, Pid} = start_link(),
-	{_Scheme, EpID, _Path, _Query} = coap_utils:decode_uri(Uri),
+	{_Scheme, _Host, EpID, _Path, _Query} = coap_utils:decode_uri(Uri),
 	Res = case send_request(Pid, EpID, ping) of
 		{error, 'RST'} -> ok;
 		_Else -> error
@@ -137,9 +137,12 @@ send_request(Pid, EpID, Req) ->
 	gen_server:call(Pid, {send_request, EpID, Req}, infinity).
 
 assemble_request(Method, Uri, Options, Content) ->
-	{_Scheme, EpID, Path, Query} = coap_utils:decode_uri(Uri),
-	Options2 = coap_utils:add_option('Uri-Query', Query, coap_utils:add_option('Uri-Path', Path, Options)),
-	{EpID, {Method, Options2, convert_content(Content)}}.
+	{_Scheme, Host, {PeerIP, PortNo}, Path, Query} = coap_utils:decode_uri(Uri),
+	Options2 = coap_utils:add_option('Uri-Path', Path, 
+					coap_utils:add_option('Uri-Query', Query,
+						coap_utils:add_option('Uri-Host', Host, 
+							coap_utils:add_option('Uri-Port', PortNo, Options)))),
+	{{PeerIP, PortNo}, {Method, Options2, convert_content(Content)}}.
 
 convert_content(Content=#coap_content{}) -> Content;
 convert_content(Content) when is_binary(Content) -> #coap_content{payload=Content}.

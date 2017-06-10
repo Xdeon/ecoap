@@ -75,8 +75,11 @@
 % it can also check Content-Format of notifications according to original observe request ObsReq 
 % and may return {notify, Ref, {error, 'NotAcceptable'}, State} if we can not provide the format anymore
 -callback handle_info(Info, ObsReq, Obstate) -> 
-	{notify, Ref, Notification, NewObstate} | {noreply, NewObstate} | {stop, NewObstate} when
-	Info :: {coap_notify, coap_content() | coap_error()} | any(),
+	{notify, Notification, NewObstate} |
+	{notify, Ref, Notification, NewObstate} | 
+	{noreply, NewObstate} | 
+	{stop, NewObstate} when
+	Info :: {coap_notify, any()} | any(),
 	ObsReq :: coap_message(),
 	Obstate :: any(),
 	Ref :: any(),

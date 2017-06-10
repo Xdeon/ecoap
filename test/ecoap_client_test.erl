@@ -62,7 +62,7 @@ blockwise(Pid) ->
 
 % verify that ecoap_client clean up its state in this case
 error_while_observe_block({Server, Client}) ->
-    _ = spawn_link(ecoap_client, observe, [Client, "coap://localhost:5683/test"]),
+    _ = spawn_link(ecoap_client, observe, [Client, "coap://127.0.0.1:5683/test"]),
     ExpectReq = coap_utils:request('CON', 'GET', <<>>, [{'Uri-Path', [<<"test">>]}, {'Observe', 0}]),
     timer:sleep(50),
     {match, BlockReqMsgId, BlockReqToken} = server_stub:expect_request(Server, ExpectReq),

@@ -38,7 +38,7 @@
 start_link(EndpointPid, ID) ->
 	gen_server:start_link(?MODULE, [EndpointPid, ID], []).
 
--spec notify([binary()], coap_content() | coap_error()) -> ok.
+-spec notify([binary()], any()) -> ok.
 notify(Uri, Notification) ->
     case pg2:get_members({coap_observer, Uri}) of
         {error, _} -> ok;

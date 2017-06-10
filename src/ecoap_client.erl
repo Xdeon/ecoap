@@ -75,7 +75,7 @@ close(Pid) ->
 
 -spec ping(pid(), string()) -> ok | error.
 ping(Pid, Uri) ->
-	{_Scheme, EpID, _Path, _Query} = coap_utils:decode_uri(Uri),
+	{_Scheme, _Host, EpID, _Path, _Query} = coap_utils:decode_uri(Uri),
 	case send_request_sync(Pid, EpID, ping, self()) of
 		{error, 'RST'} -> ok;
 		_Else -> error
