@@ -1,7 +1,7 @@
 -module(resource_directory).
 
 -export([coap_discover/2, coap_get/5, coap_post/4, coap_put/4, coap_delete/4,
-        coap_observe/4, coap_unobserve/1, handle_info/3, coap_ack/2]).
+        coap_observe/4, coap_unobserve/1, handle_notify/3, handle_info/3, coap_ack/2]).
 
 -behaviour(coap_resource).
 
@@ -25,6 +25,7 @@ coap_delete(_EpID, _Prefix, _Suffix, _Request) -> {error, 'MethodNotAllowed'}.
 
 coap_observe(_EpID, _Prefix, _Suffix, _Request) -> {error, 'MethodNotAllowed'}.
 coap_unobserve(_State) -> ok.
+handle_notify(Notification, _ObsReq, State) -> {ok, Notification, State}.
 handle_info(_Info, _ObsReq, State) -> {noreply, State}.
 coap_ack(_Ref, State) -> {ok, State}.
 

@@ -39,10 +39,10 @@ start_link(EndpointPid, ID) ->
 	gen_server:start_link(?MODULE, [EndpointPid, ID], []).
 
 -spec notify([binary()], any()) -> ok.
-notify(Uri, Notification) ->
+notify(Uri, Info) ->
     case pg2:get_members({coap_observer, Uri}) of
         {error, _} -> ok;
-        List -> lists:foreach(fun(Pid) -> Pid ! {coap_notify, Notification} end, List), ok
+        List -> [gen_server:cast(Pid, {coap_notify, Info}) || Pid <- List], ok
     end.
 
 %% gen_server.
@@ -63,6 +63,21 @@ handle_call(_Request, _From, State) ->
     error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
 	{noreply, State}.
 
+handle_cast({coap_notify, _Info}, State=#state{observer=undefined}) ->
+    % ignore unexpected notification
+    {noreply, State};
+handle_cast({coap_notify, Info}, State=#state{observer=Observer, module=Module, obstate=ObState}) ->
+    case invoke_callback(Module, handle_notify, [Info, Observer, ObState]) of
+        {ok, Content=#coap_content{}, ObState2} ->
+            return_resource(Observer, Content, State#state{obstate=ObState2});
+        {ok, {error, Code}, ObState2} ->
+            {ok, State2} = cancel_observer(Observer, State#state{obstate=ObState2}),
+            return_response(Observer, {error, Code}, State2);
+        % server internal error
+        {error, Error} ->
+            {ok, State2} = cancel_observer(Observer, State),
+            return_response(Observer, {error, Error}, State2)
+    end;
 handle_cast(_Msg, State) ->
     error_logger:error_msg("unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
 	{noreply, State}.
@@ -77,31 +92,28 @@ handle_info({timeout, TRef, cache_expired}, State=#state{timer=TRef}) ->
 handle_info(_Info, State=#state{observer=undefined}) ->
     {noreply, State};
 handle_info({coap_ack, _EpID, _EndpointPid, Ref}, State=#state{module=Module, obstate=ObState}) ->
-    case invoke_callback(Module, coap_ack, [Ref, ObState]) of
-        {ok, ObState2} ->
-            {noreply, State#state{obstate=ObState2}}
-    end;
+    {ok, ObState2} = Module:coap_ack(Ref, ObState),
+    {noreply, State#state{obstate=ObState2}};
 handle_info({coap_error, _EpID, _EndpointPid, _Ref, _Error}, State=#state{observer=Observer}) ->
     {ok, State2} = cancel_observer(Observer, State),
     {stop, normal, State2};
 handle_info(Info, State=#state{module=Module, observer=Observer, obstate=ObState}) ->
     case invoke_callback(Module, handle_info, [Info, Observer, ObState]) of
-        {notify, Content=#coap_content{}, ObState2} ->
-            return_resource(Observer, Content, State#state{obstate=ObState2});
-        {notify, {error, Code}, ObState2} ->
-            % should we wait for ack (of the error response, if applicable) before terminate?
-            {ok, State2} = cancel_observer(Observer, State#state{obstate=ObState2}),
-            return_response(Observer, {error, Code}, State2);
         {notify, Ref, Content=#coap_content{}, ObState2} ->
             return_resource(Ref, Observer, {ok, 'Content'}, Content, State#state{obstate=ObState2});
         {notify, Ref, {error, Code}, ObState2} ->
+            % should we wait for ack (of the error response, if applicable) before terminate?
             {ok, State2} = cancel_observer(Observer, State#state{obstate=ObState2}),
             return_response(Ref, Observer, {error, Code}, <<>>, State2);
         {noreply, ObState2} ->
             {noreply, State#state{obstate=ObState2}};
         {stop, ObState2} ->
             {ok, State2} = cancel_observer(Observer, State#state{obstate=ObState2}),
-            return_response(Observer, {error, 'ServiceUnavailable'}, State2)
+            return_response(Observer, {error, 'ServiceUnavailable'}, State2);
+        % server internal error
+        {error, Error} ->
+            {ok, State2} = cancel_observer(Observer, State),
+            return_response(Observer, {error, Error}, State2)
     end.
 
 terminate(_Reason, _State) ->
@@ -253,7 +265,7 @@ handle_unobserve(_EpID, Request, Content, State) ->
     return_resource(Request, Content, State).
 
 cancel_observer(#coap_message{}, State=#state{uri=Uri, module=Module, obstate=ObState}) ->
-    ok = invoke_callback(Module, coap_unobserve, [ObState]),
+    ok = Module:coap_unobserve(ObState),
     ok = pg2:leave({coap_observer, Uri}, self()),
     % will the last observer to leave this group please turn out the lights
     case pg2:get_members({coap_observer, Uri}) of
@@ -378,7 +390,6 @@ next_seq(Seq) ->
 uri_suffix(Prefix, Uri) ->
 	lists:nthtail(length(Prefix), Uri).
 
-% should we patter match the error every time?
 invoke_callback(Module, Fun, Args) ->
     case catch {ok, apply(Module, Fun, Args)} of
         {ok, Response} ->

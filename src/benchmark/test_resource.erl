@@ -1,6 +1,6 @@
 -module(test_resource).
 -export([coap_discover/2, coap_get/5, coap_post/4, coap_put/4, coap_delete/4, 
-        coap_observe/4, coap_unobserve/1, handle_info/3, coap_ack/2]).
+        coap_observe/4, coap_unobserve/1, handle_notify/3, handle_info/3, coap_ack/2]).
 -export([start/0, stop/0]).
 
 -include_lib("ecoap_common/include/coap_def.hrl").
@@ -60,9 +60,9 @@ coap_unobserve({state, Prefix, Name}) ->
     io:format("unobserve ~p ~p~n", [Prefix, Name]),
     ok.
 
-handle_info({coap_notify, Notification}, _ObsReq, State) -> 
-    Ref = make_ref(),
-    {notify, Ref, Notification, State};
+handle_notify(Notification, _ObsReq, State) ->
+    {ok, Notification, State}.
+
 handle_info(_Info, _ObsReq, State) -> 
     {noreply, State}.
 
