@@ -58,7 +58,7 @@
 					{error, error_code()} | 
 					{error, error_code(), coap_content()} | 
 					{separate, reference()}.
--type observe_response() :: {reference(), non_neg_integer(), response()} | response().
+-type observe_response() :: {ok, reference(), pid(), non_neg_integer(), success_code(), coap_content()} | response().
 -type observe_key() :: {string(), atom() | non_neg_integer()}.
 -opaque state() :: #state{}.
 -export_type([state/0]).
@@ -142,8 +142,8 @@ cancel_async_request(Pid, Ref) ->
 
 % Start an observe relation to a specific resource
 
-% If the observe relation is established sucessfully, this function returns the first notification as {ReplyRef, N, Res}
-% where ReplyRef is the reference used to identify following notifications, N is the initial observe sequence number and Res is the response content.
+% If the observe relation is established sucessfully, this function returns the first notification as {ok, ReplyRef, Pid, N, Code, Content}
+% where ReplyRef is the reference used to identify following notifications, Pid is the ecoap_client pid, N is the initial observe sequence number.
 % If the resource is not observable, the function just returns the response as if it was from a plain GET request.
 % If the request time out, this function returns {error, timeout}.
 
@@ -169,9 +169,9 @@ observe(Pid, Uri, Options) ->
 		{coap_notify, ReplyRef, Pid, undefined, Res} ->
 			erlang:demonitor(MonitorRef, [flush]),
 			Res;
-		{coap_notify, ReplyRef, Pid, N, Res} -> 
+		{coap_notify, ReplyRef, Pid, N, {ok, Code, Content}} -> 
 			erlang:demonitor(MonitorRef, [flush]),
-			{ReplyRef, N, Res};
+			{ok, ReplyRef, Pid, N, Code, Content};
 		{'DOWN', MonitorRef, process, _Pid, _Reason} ->
 			exit(noproc)
 	end.
@@ -305,7 +305,8 @@ handle_call({start_observe, EpID, Key, {Method, Options, _Content}, ReplyPid}, _
 	Req = #req{method=Method, options=Options2, token=Token, reply_ref=Ref, reply_pid=ReplyPid, obs_key=Key, ep_id=EpID},
 	{Subscribers2, ReqRefs2} = case lists:keyfind({ReplyPid, Key}, 1, Subscribers) of
 		{{ReplyPid, Key}, _MonRef, ReqRef} ->
-			{Subscribers, store_ref(Ref, Req, delete_ref(ReqRef, ReqRefs))};
+			Subs = lists:keyreplace({ReplyPid, Key}, 1,  Subscribers, {{ReplyPid, Key}, _MonRef, Ref}),
+			{Subs, store_ref(Ref, Req, delete_ref(ReqRef, ReqRefs))};
 		false ->
 			{[{{ReplyPid, Key}, erlang:monitor(process, ReplyPid), Ref} | Subscribers], store_ref(Ref, Req, ReqRefs)}
 	end,
@@ -314,7 +315,8 @@ handle_call({start_observe, EpID, Key, {Method, Options, _Content}, ReplyPid}, _
 handle_call({cancel_observe, Ref, ETag}, _From, State=#state{sock_pid=SockPid, req_refs=ReqRefs, obs_regs=ObsRegs, msg_type=Type, subscribers=Subscribers}) ->
 	case find_ref(Ref, ReqRefs) of
 		#req{method=Method, options=Options, token=Token, obs_key=Key, ep_id=EpID, reply_pid=ReplyPid} when Key =/= undefined ->
-			Options2 = coap_utils:add_option('ETag', ETag, Options),
+			Options1 = case ETag of <<>> -> Options; Else -> coap_utils:add_option('ETag', [Else], Options) end,
+			Options2 = coap_utils:store_option('Observe', 1, Options1),
 			{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpID),
 			{ok, Ref2} = ecoap_endpoint:send(EndpointPid,  
 							coap_utils:set_token(Token, 
