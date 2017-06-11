@@ -75,9 +75,9 @@ observe_and_modify(Client, Uri, Resource) ->
 	receive 
 		{coap_notify, Ref, Client, N2, {ok, Code, Content2}} ->
 			{
-				{ok, ref, Client, N1, Code, Content1},
-				{coap_notify, ref, Client, N2, {ok, Code, Content2}},
-				ecoap_client:unobserve(Client, Ref)
+				{ok, ref, Client, N1, Code, Content1},                  % answer to the observe request
+				{coap_notify, ref, Client, N2, {ok, Code, Content2}},   % notification
+				ecoap_client:unobserve(Client, Ref)                     % answer to the cancellation
 			}
 	end.
 
