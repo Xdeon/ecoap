@@ -27,13 +27,13 @@ coap_get(_EpID, [<<"benchmark">>], _Name, _Query, _Request) ->
 coap_get(_EpID, [<<"fibonacci">>], _Name, [], _Request) ->
     {ok, #coap_content{payload = <<"fibonacci(20) = ", (integer_to_binary(fib(20)))/binary>>}};
 coap_get(_EpID, [<<"fibonacci">>], _Name, [Query|_], _Request) ->
-    Num = case re:run(Query, "^n=[0-9]+") of
-        {match, [{Pos, Len}]} ->
-            binary_to_integer(lists:nth(2, binary:split(binary:part(Query, Pos, Len), <<$=>>)));
+    Num = case re:run(Query, "^n=[0-9]+$") of
+        {match, _} ->
+            lists:nth(2, binary:split(Query, <<$=>>));
         nomatch -> 
-            20
+            <<"20">>
     end,
-    {ok, #coap_content{payload= <<"fibonacci(", (integer_to_binary(Num))/binary, ") = ", (integer_to_binary(fib(Num)))/binary>>}};
+    {ok, #coap_content{payload= <<"fibonacci(", Num/binary, ") = ", (integer_to_binary(fib(binary_to_integer(Num))))/binary>>}};
 coap_get(_EpID, [<<"helloWorld">>], _Name, _Query, _Request) ->
     {ok, #coap_content{payload = <<"Hello World!">>, format = 0}};
 coap_get(_EpID, [<<"shutdown">>], _Name, _Query, _Request) ->
