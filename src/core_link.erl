@@ -40,7 +40,7 @@ encode(LinkList) ->
         end, [], LinkList).
 
 encode_link_value({UriType, UriList, Attrs}) ->
-    encode_link_uri(UriType, UriList)++encode_link_params(Attrs).
+    lists:flatten([encode_link_uri(UriType, UriList), encode_link_params(Attrs)]).
 
 encode_link_params(Attrs) ->
     lists:foldl(
@@ -51,24 +51,30 @@ encode_link_params(Attrs) ->
             end
         end, [], Attrs).
 
-encode_link_uri(absolute, UriList) -> "</"++join_uri(UriList)++">";
-encode_link_uri(rootless, UriList) -> "<"++join_uri(UriList)++">".
+encode_link_uri(absolute, UriList) -> ["</", join_uri(UriList), ">"];
+encode_link_uri(rootless, UriList) -> ["<", join_uri(UriList), ">"].
 
-join_uri([Seg]) ->
-    http_uri:encode(binary_to_list(Seg));
-join_uri([Seg|Uri]) ->
-    http_uri:encode(binary_to_list(Seg))++"/"++join_uri(Uri).
+join_uri(UriList) ->
+    lists:reverse(join_uri1(UriList, [])).
+
+join_uri1([], Acc) -> Acc;
+join_uri1([Seg], Acc) ->
+    [encode_uri_seg(Seg)|Acc];
+join_uri1([Seg|Uri], Acc) ->
+    join_uri1(Uri, [encode_uri_seg(Seg), "/"|Acc]).
+
+encode_uri_seg(Seg) when is_binary(Seg) -> http_uri:encode(binary_to_list(Seg)).
 
 encode_link_param({_Any, undefined}) -> undefined;
-encode_link_param({ct, Value}) -> ";ct=" ++ content_type_to_int(Value);
-encode_link_param({rt, Value}) -> ";rt=\"" ++ binary_to_list(Value) ++ "\"";
-encode_link_param({sz, Value}) -> ";sz=" ++ integer_to_list(Value);
-encode_link_param({Other, Value}) when is_binary(Value) -> ";"++atom_to_list(Other)++"=\"" ++ binary_to_list(Value) ++ "\"".
+encode_link_param({ct, Value}) -> [";ct=", content_type_to_int(Value)];
+encode_link_param({rt, Value}) -> [";rt=\"", binary_to_list(Value), "\""];
+encode_link_param({sz, Value}) -> [";sz=", integer_to_list(Value)];
+encode_link_param({Other, Value}) when is_binary(Value) -> [";", atom_to_list(Other), "=\"", binary_to_list(Value), "\""].
 
 content_type_to_int(Value) when is_binary(Value) ->
     case coap_iana:encode_content_format(Value) of
         Num when is_integer(Num) -> integer_to_list(Num);
-        _ -> "\"" ++ binary_to_list(Value) ++ "\""
+        _ -> ["\"",  binary_to_list(Value), "\""]
     end;
 content_type_to_int(Value) when is_integer(Value) ->
     integer_to_list(Value).
