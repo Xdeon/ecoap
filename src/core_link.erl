@@ -34,22 +34,22 @@ decode(String) ->
 
 -spec encode([coap_uri_param()]) -> list().
 encode(LinkList) ->
-    lists:foldl(
+    lists:flatten(lists:foldl(
         fun (Link, []) -> encode_link_value(Link);
-            (Link, Str) -> Str++","++encode_link_value(Link)
-        end, [], LinkList).
+            (Link, Str) -> [Str, ",", encode_link_value(Link)]
+        end, [], LinkList)).
 
 encode_link_value({UriType, UriList, Attrs}) ->
-    lists:flatten([encode_link_uri(UriType, UriList), encode_link_params(Attrs)]).
+    [encode_link_uri(UriType, UriList), encode_link_params(Attrs)].
 
 encode_link_params(Attrs) ->
-    lists:foldl(
+    lists:reverse(lists:foldl(
         fun(Attr, Acc) ->
             case encode_link_param(Attr) of
                 undefined -> Acc;
-                Val -> Acc ++ Val
+                Val -> [Val|Acc]
             end
-        end, [], Attrs).
+        end, [], Attrs)).
 
 encode_link_uri(absolute, UriList) -> ["</", join_uri(UriList), ">"];
 encode_link_uri(rootless, UriList) -> ["<", join_uri(UriList), ">"].
