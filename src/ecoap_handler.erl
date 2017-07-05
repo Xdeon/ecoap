@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 %% API.
--export([start_link/2, notify/2]).
+-export([start_link/2, close/1, notify/2]).
 
 %% gen_server.
 -export([init/1]).
@@ -37,6 +37,9 @@
 -spec start_link(pid(), {atom(), [binary()], [binary()]}) -> {ok, pid()}.
 start_link(EndpointPid, ID) ->
 	gen_server:start_link(?MODULE, [EndpointPid, ID], []).
+
+close(Pid) ->
+    gen_server:cast(Pid, shutdown).
 
 -spec notify([binary()], any()) -> ok.
 notify(Uri, Info) ->
@@ -78,6 +81,11 @@ handle_cast({coap_notify, Info}, State=#state{observer=Observer, module=Module, 
             {ok, State2} = cancel_observer(Observer, State),
             return_response(Observer, {error, Error}, State2)
     end;
+handle_cast(shutdown, State=#state{observer=undefined}) ->
+    {stop, normal, State};
+handle_cast(shutdown, State=#state{observer=Observer}) ->
+    {ok, State2} = cancel_observer(Observer, State),
+    {stop, normal, State2};
 handle_cast(_Msg, State) ->
     error_logger:error_msg("unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
 	{noreply, State}.

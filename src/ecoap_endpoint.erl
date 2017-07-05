@@ -242,9 +242,15 @@ handle_info({request_complete, Receiver}, State=#state{tokens=Tokens, receivers=
 % Only monitor possible observe handlers instead of every new spawned handler
 % so that we can save some extra message traffic
 handle_info({register_handler, ID, Pid}, State=#state{rescnt=Count, trans_args=TransArgs=#{handler_regs:=Regs}, handler_refs=Refs}) ->
-    case maps:is_key(ID, Regs) of
-        true -> {noreply, State};
-        false ->
+    case maps:find(ID, Regs) of
+        {ok, Pid} -> 
+            % handler already registered
+            {noreply, State};
+        {ok, _Pid2} ->  
+            % only one handler for each operation allowed, so we terminate the one started later
+            ok = ecoap_handler:close(Pid),
+            {noreply, State};
+        error ->
             % io:format("register_ecoap_handler ~p for ~p~n", [Pid, ID]),
             Ref = erlang:monitor(process, Pid),
             {noreply, State#state{rescnt=Count+1, trans_args=TransArgs#{handler_regs:=maps:put(ID, Pid, Regs)}, handler_refs=maps:put(Ref, ID, Refs)}}
