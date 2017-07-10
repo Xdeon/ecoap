@@ -96,7 +96,8 @@ handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoint_pool
     		{reply, {ok, EpPid}, State};
     	error ->
     		{ok, EpPid} = ecoap_endpoint:start_link(?MODULE, Socket, EpID),
-    		{reply, {ok, EpPid}, store_endpoint(EpID, EpPid, State)}
+    		store_endpoint(EpID, EpPid),
+    		{reply, {ok, EpPid}, store_endpoint_monitor(EpID, EpPid, State)}
     end;
 % get an endpoint when being as a server
 handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoint_pool=PoolPid}) ->
@@ -106,14 +107,15 @@ handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoint_pool
 		error ->
 			case endpoint_sup_sup:start_endpoint(PoolPid, [?MODULE, Socket, EpID]) of
 		        {ok, _, EpPid} ->
-		            {reply, {ok, EpPid}, store_endpoint(EpID, EpPid, State)};
+					store_endpoint(EpID, EpPid),
+		            {reply, {ok, EpPid}, store_endpoint_monitor(EpID, EpPid, State)};
 		        Error ->
 		            {reply, Error, State}
 		    end
 	end;
 % only for debug use
-handle_call(get_all_endpoints, _From, State=#state{endpoint_refs=EndPointRefs}) ->
-	EpPids = [get(EpID) || EpID <- maps:values(EndPointRefs)],
+handle_call(get_all_endpoints, _From, State) ->
+	EpPids = fetch_endpoint_pids(State),
 	{reply, EpPids, State};
 handle_call(_Request, _From, State) ->
 	error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
@@ -136,7 +138,8 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, en
 				{ok, _, EpPid} -> 
 					%io:fwrite("start endpoint ~p~n", [EpID]),
 					EpPid ! {datagram, Bin},
-					{noreply, store_endpoint(EpID, EpPid, State)};
+					store_endpoint(EpID, EpPid),
+					{noreply, store_endpoint_monitor(EpID, EpPid, State)};
 				{error, _Reason} -> 
 					%io:fwrite("start_endpoint failed: ~p~n", [_Reason]),
 					{noreply, State}
@@ -146,10 +149,13 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, en
 			%io:fwrite("client recv unexpected packet~n"),
 			{noreply, State}
 	end;
-handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{endpoint_refs=EndPointRefs}) ->
- 	case find_endpoint(Ref, EndPointRefs) of
- 		{ok, EpID} -> {noreply, erase_endpoint(EpID, Ref, State)};
- 		error -> {noreply, State}
+handle_info({'DOWN', Ref, process, _Pid, _Reason}, State) ->
+ 	case find_endpoint_monitor(Ref, State) of
+ 		{ok, EpID} -> 
+ 			erase_endpoint(EpID),
+ 			{noreply, erase_endpoint_monitor(Ref, State)};
+ 		error -> 
+ 			{noreply, State}
  	end;
 handle_info({udp_passive, Socket}, State=#state{sock=Socket, endpoint_refs=EndPointRefs}) ->
 	Concurrency = maps:size(EndPointRefs),
@@ -189,29 +195,41 @@ find_endpoint(EpID) ->
 		EpPid -> {ok, EpPid}
 	end.
 
-find_endpoint(Ref, EndPointRefs) ->
+store_endpoint(EpID, EpPid) ->
+	put(EpID, EpPid).
+
+erase_endpoint(EpID) ->
+	erase(EpID).
+
+find_endpoint_monitor(Ref, #state{endpoint_refs=EndPointRefs}) ->
 	maps:find(Ref, EndPointRefs).
 
-store_endpoint(EpID, EpPid, State=#state{endpoint_refs=EndPointRefs}) ->
-	put(EpID, EpPid),
+store_endpoint_monitor(EpID, EpPid, State=#state{endpoint_refs=EndPointRefs}) ->
 	State#state{endpoint_refs=maps:put(erlang:monitor(process, EpPid), EpID, EndPointRefs)}.
 
-erase_endpoint(EpID, Ref, State=#state{endpoint_refs=EndPointRefs}) ->
-	erase(EpID),
+erase_endpoint_monitor(Ref, State=#state{endpoint_refs=EndPointRefs}) ->
 	State#state{endpoint_refs=maps:remove(Ref, EndPointRefs)}.
+
+fetch_endpoint_pids(#state{endpoint_refs=EndPointRefs}) ->
+	[get(EpID) || EpID <- maps:values(EndPointRefs)].
 
 -ifdef(TEST).
 
 -include_lib("eunit/include/eunit.hrl").
 
 store_endpoint_test() ->
-	State = store_endpoint({{127,0,0,1}, 5683}, self(), #state{}),
+	EpID = {{127,0,0,1}, 5683},
+	store_endpoint(EpID, self()),
+	State = store_endpoint_monitor(EpID, self(), #state{}),
 	[Ref] = maps:keys(State#state.endpoint_refs),
-	?assertEqual({ok, self()}, find_endpoint({{127,0,0,1}, 5683})),
-	?assertEqual({ok, {{127,0,0,1}, 5683}}, find_endpoint(Ref, State#state.endpoint_refs)),
-	State1 = erase_endpoint({{127,0,0,1}, 5683}, Ref, State),
-	?assertEqual(error, find_endpoint({{127,0,0,1}, 5683})),
-	?assertEqual(error, find_endpoint(Ref, State1#state.endpoint_refs)).
+	?assertEqual({ok, self()}, find_endpoint(EpID)),
+	?assertEqual({ok, EpID}, find_endpoint_monitor(Ref, State)),
+	?assertEqual([self()], fetch_endpoint_pids(State)),
+	erase_endpoint(EpID),
+	State1 = erase_endpoint_monitor(Ref, State),
+	?assertEqual(error, find_endpoint(EpID)),
+	?assertEqual(error, find_endpoint_monitor(Ref, State1)),
+	?assertEqual([], fetch_endpoint_pids(State1)).
 
 -endif.
 
