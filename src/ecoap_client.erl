@@ -407,11 +407,12 @@ request_block(EndpointPid, Type, Method, ROpt, Block1, Content) ->
     ecoap_endpoint:send(EndpointPid, coap_utils:set_content(Content, Block1,
         coap_utils:request(Type, Method, <<>>, ROpt))).
 
+% function to cancel request(s) using user side request reference
+% cancel async request in following cases:
+% 1. ordinary req, including non req, separate res, observe con/non req
+% 2. blockwise transfer for both con and non
+% 3. blockwise transfer for both con and non, during an observe
 cancel_request(ReqRef, State=#state{sock_pid=SockPid, req_refs=ReqRefs, block_refs=BlockRefs, obs_regs=ObsRegs, subscribers=Subscribers}) ->
-	% cancel async request in following cases:
-	% 1. ordinary req, including non req, separate res, observe con/non req
-	% 2. blockwise transfer for both con and non
-	% 3. blockwise transfer for both con and non, during an observe
 	case {find_ref(ReqRef, ReqRefs), find_ref(ReqRef, BlockRefs)} of
 		{undefined, undefined} -> 
 			% no req exist
@@ -490,55 +491,46 @@ handle_response(Ref, EndpointPid, _Message=#coap_message{code={ok, 'Continue'}, 
 			{noreply, State#state{req_refs=store_ref(Ref2, Req, delete_ref(Ref, ReqRefs))}}
 	end;
 
+% Note after receiving a notification we delete any ongoing block transfer 
+% (info of the last request with block option) before continuing and always start a fresh block transfer
+% This eliminates the possiblilty that multiple block transfers exist 
+% and thus a potential mix up of old & new blocks of the (changed) resource
 handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options=Options1, payload=Data}, 
 	State = #state{req_refs=ReqRefs, block_refs=BlockRefs, msg_type=Type, subscribers=Subscribers}) ->
 	case find_ref(Ref, ReqRefs) of
 		undefined -> 
 			io:format("unknown response: ~p~n", [Message]),
 			{noreply, State};
-		#req{method=Method, options=Options2, fragment=Fragment, req_ref=ReqRef, 
-			reply_pid=ReplyPid, from=From, block_obseq=Obseq, obs_key=Key} = Req ->
+		#req{method=Method, options=Options2, fragment=Fragment, req_ref=ReqRef, reply_pid=ReplyPid, from=From, 
+			block_obseq=Obseq, obs_key=Key} = Req ->
+            {N, BlockOrLastRef} = case coap_utils:get_option('Observe', Options1) of
+            	undefined -> {Obseq, Ref};	% Obseq = undefined by default and Ref is reference to last sent request
+            	Else -> {Else, find_ref(ReqRef, BlockRefs)}
+		    end,
 			case coap_utils:get_option('Block2', Options1) of
 		        {Num, true, Size} ->
-		            % more blocks follow, ask for more
-		            % no payload for requests with Block2 with NUM != 0
-		            {ok, Ref2} = ecoap_endpoint:send(EndpointPid,
+		        	% more blocks follow, ask for more
+		        	% no payload for requests with Block2 with NUM != 0
+		        	{ok, Ref2} = ecoap_endpoint:send(EndpointPid,
 		            	coap_utils:request(Type, Method, <<>>, coap_utils:add_option('Block2', {Num+1, false, Size}, Options2))),
 		            NewFragment = <<Fragment/binary, Data/binary>>,
-		            case coap_utils:get_option('Observe', Options1) of
-		            	undefined ->
-		            		% We need to clean up intermediate requests info during a blockwise transfer and only keep the newest one
-		            		{noreply, State#state{req_refs=store_ref(Ref2, Req#req{fragment=NewFragment}, delete_ref(Ref, ReqRefs)), 
-		            							  block_refs=update_block_refs(ReqRef, Ref2, BlockRefs)}};
-		            	N ->
-		            		% This is the first response of a blockwise transfer when observing certain resource
-		            		% We remember the observe seq number here because following requests will be normal ones
-		            		% Note after receiving a notification we delete any ongoing block transfer 
-		            		% (info of the last request with block option) before continuing and always start a fresh block transfer
-		            		% This eliminates the possiblilty that multiple block transfers exist 
-		            		% and thus a potential mix up of old & new blocks of the (changed) resource
-		            		{noreply, State#state{req_refs=store_ref(Ref2, Req#req{fragment=NewFragment, block_obseq=N}, delete_ref(find_ref(ReqRef, BlockRefs), ReqRefs)), 
-		            					          block_refs=update_block_refs(ReqRef, Ref2, BlockRefs)}}	
-		            end;
+		            % What we do here:
+        			% 1. If this is the first block of a blockwise transfer as an observe notification
+		    		% 	 We remember the observe seq number here because following requests will be without observe option
+		            % 2. update mapping from origin request to the lastest block request
+		            %    and clean up intermediate requests info during a blockwise transfer to only keep the newest one
+		            {noreply, State#state{req_refs=store_ref(Ref2, Req#req{fragment=NewFragment, block_obseq=N}, delete_ref(BlockOrLastRef, ReqRefs)), 
+		            					          block_refs=update_block_refs(ReqRef, Ref2, BlockRefs)}};
 		        _Else ->
-		            % not segmented	
-		            Res = return_response({ok, Code}, Message#coap_message{payload= <<Fragment/binary, Data/binary>>}),
+		        	% not segmented	
+		        	Res = return_response({ok, Code}, Message#coap_message{payload= <<Fragment/binary, Data/binary>>}),
 		            SubPids = get_sub_pids(Key, Subscribers),
-			        case coap_utils:get_option('Observe', Options1) of
-			        	undefined ->
-			        		% It will be a blockwise transfer observe notification if Obseq != undefined
-			        		ok = send_response(From, ReplyPid, ReqRef, Key, Obseq, SubPids, Res),
-			        		{noreply, State#state{req_refs=delete_ref(Ref, ReqRefs), 
-			        							  block_refs=delete_ref(ReqRef, BlockRefs)}};
-			        	Num ->
-			        		ok = send_response(From, ReplyPid, ReqRef, Key, Num, SubPids, Res),
-			        		% Clean ReqRefs and BlockRefs in case we receive a non-block observe notification in the middle of a block notification
-			        		% In this case the ongoing blockwise transfer is discarded			     
-			        		{noreply, State#state{req_refs=delete_ref(find_ref(ReqRef, BlockRefs), ReqRefs), 
+		            % It will be a blockwise transfer observe notification if N != undefined
+		            ok = send_response(From, ReplyPid, ReqRef, Key, N, SubPids, Res),
+					{noreply, State#state{req_refs=delete_ref(BlockOrLastRef, ReqRefs), 
 			        							  block_refs=delete_ref(ReqRef, BlockRefs)}}
-			        end
-		    end
-    end;
+			end
+	end;       							
 
 handle_response(Ref, _EndpointPid, Message=#coap_message{code={error, _Code}}, State) ->
 	handle_error(Ref, Message, State).
@@ -554,9 +546,9 @@ handle_error(Ref, Error, State=#state{req_refs=ReqRefs, obs_regs=ObsRegs, block_
 			SubPids = get_sub_pids(Key, Subscribers),
 		    ok = send_response(From, ReplyPid, ReqRef, Key, undefined, SubPids, Res),
 			% Make sure we remove any observe relation and info of request related to the error
-			% Note: Though it is enough to remove req info just using Ref as key, since for any ordinary message exchange
-			% info of last req is always cleaned. Howerver one exception is observe as info of origin observe req is kept until
-			% it get cancelled. Therefore when receiving an error during an observe notification blockwise transfer, we need to clean 
+			% Though it is enough to remove req info just using Ref as key, since for any ordinary message exchange
+			% info of last req is always cleaned. Howerver one exception is observe because info of origin observe req is kept until
+			% it gets cancelled. Therefore when receiving an error during an observe notification blockwise transfer, we need to clean 
 			% both info of last req (referenced by Ref) and info of origin observe req (referenced by ReqRef).
 			{noreply, State#state{req_refs=delete_ref(Ref, delete_ref(ReqRef, ReqRefs)), 
 								  obs_regs=delete_ref(Key, ObsRegs), block_refs=delete_ref(ReqRef, BlockRefs)}}
