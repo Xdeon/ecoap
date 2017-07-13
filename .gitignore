@@ -1,10 +1,6 @@
 # General
-*.o
-*.beam
 *.plt
 erl_crash.dump
-ebin/*.beam
-.concrete/DEV_MODE
 
 # rebar/rebar3
 .rebar
@@ -15,6 +11,9 @@ _build/
 # erlang.mk
 /.erlang.mk
 /deps
+ebin/*.beam
+ebin/test
+test/*.beam
 /_rel
 *.d
 
