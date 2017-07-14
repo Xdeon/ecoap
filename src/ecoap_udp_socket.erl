@@ -17,6 +17,7 @@
 
 -define(LOW_ACTIVE_PACKETS, 200).
 -define(HIGH_ACTIVE_PACKETS, 400).
+-define(CONCURRENCY_THRESHOLD, 1000).
 
 -define(DEFAULT_SOCK_OPTS,
 	[binary, {active, ?LOW_ACTIVE_PACKETS}, {reuseaddr, true}]).
@@ -159,7 +160,7 @@ handle_info({'DOWN', Ref, process, _Pid, _Reason}, State) ->
  	end;
 handle_info({udp_passive, Socket}, State=#state{sock=Socket, endpoint_refs=EndPointRefs}) ->
 	Concurrency = maps:size(EndPointRefs),
-	ActivePackets = if Concurrency < 2000 -> ?LOW_ACTIVE_PACKETS; 
+	ActivePackets = if Concurrency < ?CONCURRENCY_THRESHOLD -> ?LOW_ACTIVE_PACKETS; 
 					   true -> ?HIGH_ACTIVE_PACKETS 
 					end,
 	ok = inet:setopts(Socket, [{active, ActivePackets}]),
