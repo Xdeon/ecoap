@@ -54,16 +54,11 @@ encode_link_params(Attrs) ->
 encode_link_uri(absolute, UriList) -> ["</", join_uri(UriList), ">"];
 encode_link_uri(rootless, UriList) -> ["<", join_uri(UriList), ">"].
 
-join_uri(UriList) ->
-    lists:reverse(join_uri1(UriList, [])).
-
-join_uri1([], Acc) -> Acc;
-join_uri1([Seg], Acc) ->
-    [encode_uri_seg(Seg)|Acc];
-join_uri1([Seg|Uri], Acc) ->
-    join_uri1(Uri, [encode_uri_seg(Seg), "/"|Acc]).
-
-encode_uri_seg(Seg) when is_binary(Seg) -> http_uri:encode(binary_to_list(Seg)).
+join_uri([]) -> [];
+join_uri([Seg]) ->
+    http_uri:encode(binary_to_list(Seg));
+join_uri([Seg|Uri]) ->
+    http_uri:encode(binary_to_list(Seg))++"/"++join_uri(Uri).
 
 encode_link_param({_Any, undefined}) -> undefined;
 encode_link_param({ct, Value}) -> [";ct=", content_type_to_int(Value)];
