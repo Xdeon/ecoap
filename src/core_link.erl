@@ -60,10 +60,13 @@ join_uri([Seg]) ->
 join_uri([Seg|Uri]) ->
     http_uri:encode(binary_to_list(Seg))++"/"++join_uri(Uri).
 
+% TODO: sz, if, rt MUST NOT appear more than one in one link
 encode_link_param({_Any, undefined}) -> undefined;
 encode_link_param({ct, Value}) -> [";ct=", content_type_to_int(Value)];
 encode_link_param({rt, Value}) -> [";rt=\"", binary_to_list(Value), "\""];
 encode_link_param({sz, Value}) -> [";sz=", integer_to_list(Value)];
+% for param that has no value
+encode_link_param({Other, <<>>}) -> [";", atom_to_list(Other)];
 encode_link_param({Other, Value}) when is_binary(Value) -> [";", atom_to_list(Other), "=\"", binary_to_list(Value), "\""].
 
 content_type_to_int(Value) when is_binary(Value) ->
