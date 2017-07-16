@@ -48,16 +48,21 @@ clear_registry() -> ets:delete_all_objects(?HANDLER_TAB).
 % this allows user to have one handler for "foo" and another for "foo/bar"
 
 match_handler([], Reg) ->
-    % check if a match-all handler exists
-    % this also serves as a root handler
+    % match root handler if exists
     case ets:lookup(Reg, []) of
         [Elem] -> Elem;
         [] -> undefined
     end;
 match_handler(Uri, Reg) ->
+    match_handler_helper(Uri, Reg).
+ 
+match_handler_helper([], _Reg) ->
+    % reach the end of matching
+    undefined;
+match_handler_helper(Uri, Reg) ->
     case ets:lookup(Reg, Uri) of
         [Elem] -> Elem;
-        [] -> match_handler(lists:droplast(Uri), Reg)
+        [] -> match_handler_helper(lists:droplast(Uri), Reg)
     end.
 
 % ask each handler to provide a link list
@@ -118,11 +123,11 @@ match_test_() ->
     ?_assertEqual({[<<"foo">>, <<"bar">>], ?MODULE, undefined}, match_handler([<<"foo">>, <<"bar">>, <<"hoge">>], Tab))
     ].
 
-match_all_test_() ->
+match_root_test_() ->
     Tab = ets:new(ecoap_registry, [set]),
     ets:insert(Tab, {[], ?MODULE, undefined}),
-    [?_assertEqual({[], ?MODULE, undefined}, match_handler([<<"foo">>], Tab)),
-    ?_assertEqual({[], ?MODULE, undefined}, match_handler([<<"foo">>, <<"bar">>], Tab))
+    [?_assertEqual(undefined, match_handler([<<"foo">>, <<"bar">>], Tab)),
+    ?_assertEqual({[], ?MODULE, undefined}, match_handler([], Tab))
     ].
 
 -endif.
