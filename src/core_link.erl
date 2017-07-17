@@ -13,7 +13,7 @@
 -export([decode/1, encode/1]).
 
 -type coap_uri() :: {'absolute', [binary()], [coap_uri_param()]}.
--type coap_uri_param() :: {atom(), binary()}.
+-type coap_uri_param() :: {atom(), binary() | [binary()]}.
 
 -export_type([coap_uri/0]).
 -export_type([coap_uri_param/0]).
@@ -60,14 +60,24 @@ join_uri([Seg]) ->
 join_uri([Seg|Uri]) ->
     http_uri:encode(binary_to_list(Seg))++"/"++join_uri(Uri).
 
-% TODO: sz, if, rt MUST NOT appear more than one in one link
+% sz, if, rt MUST NOT appear more than one in one link
 encode_link_param({_Any, undefined}) -> undefined;
 encode_link_param({ct, Value}) -> [";ct=", content_type_to_int(Value)];
-encode_link_param({rt, Value}) -> [";rt=\"", binary_to_list(Value), "\""];
 encode_link_param({sz, Value}) -> [";sz=", integer_to_list(Value)];
+encode_link_param({rt, Value}) -> [";rt=\"", param_value_to_list(Value), "\""];
 % for param that has no value
 encode_link_param({Other, <<>>}) -> [";", atom_to_list(Other)];
-encode_link_param({Other, Value}) when is_binary(Value) -> [";", atom_to_list(Other), "=\"", binary_to_list(Value), "\""].
+encode_link_param({Other, Value}) -> [";", atom_to_list(Other), "=\"", param_value_to_list(Value), "\""].
+
+param_value_to_list(Value) when is_binary(Value) ->
+    binary_to_list(Value);
+
+param_value_to_list(Values) when is_list(Values) ->
+    binary_to_list(process_param_value(Values, <<>>)).
+
+process_param_value([], Acc) -> Acc;
+process_param_value([H], Acc) -> <<Acc/binary, H/binary>>;
+process_param_value([H|Rest], Acc) -> process_param_value(Rest, <<Acc/binary, H/binary, " ">>).    
 
 content_type_to_int(Value) when is_binary(Value) ->
     case coap_iana:encode_content_format(Value) of
@@ -87,6 +97,10 @@ codec_test_() ->
     test_decode("<link>", [{rootless, [<<"link">>], []}]),
     test_decode("</link1>;par=\"val\",<link2>;par=\"val\";par2=\"val2\"",
         [{absolute, [<<"link1">>], [{par, <<"val">>}]}, {rootless, [<<"link2">>], [{par, <<"val">>}, {par2, <<"val2">>}]}]),
+    test_decode("</sensors/temp>;rt=\"temperature-c\";if=\"sensor\";foo;bar=\"one two\"", 
+        [{absolute, [<<"sensors">>, <<"temp">>], 
+                    [{rt, <<"temperature-c">>}, {'if', <<"sensor">>}, {foo, <<>>}, {bar, [<<"one">>, <<"two">>]}]
+        }]),
     test_decode("/link", error)
     ].
 

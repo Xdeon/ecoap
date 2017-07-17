@@ -23,10 +23,16 @@ URI  -> segment '/' URI : [strval('$1')|'$3'].
 PARAMS -> ';' PARAM PARAMS: ['$2'|'$3'].
 PARAMS -> '$empty' : [].
 
+PARAM -> segment : {atomval('$1'), <<>>}.
 PARAM -> segment '=' segment : {atomval('$1'), strval('$3')}.
 PARAM -> segment '=' string : {atomval('$1'), strval('$3')}.
 
 Erlang code.
 
-strval({_, _, Val}) -> list_to_binary(Val).
+% strval({_, _, Val}) -> list_to_binary(Val).
+strval({_, _, Val}) -> 
+	case string:lexemes(Val, " ") of
+		[Val] -> list_to_binary(Val);
+		[_|_] = Splited -> [list_to_binary(Elem) || Elem <- Splited]
+	end.
 atomval({_, _, Val}) -> list_to_atom(Val).
