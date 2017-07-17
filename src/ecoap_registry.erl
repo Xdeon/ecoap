@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 %% API.
--export([start_link/0, get_links/0, register_handler/3, unregister_handler/1, match_handler/1, clear_registry/0]).
+-export([start_link/0, get_links/0, register_handler/1, unregister_handler/1, match_handler/1, clear_registry/0]).
 % -compile([export_all]).
 
 %% gen_server.
@@ -25,11 +25,11 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
--spec register_handler([binary()], module(), _) -> ok | {error, duplicated}.
-register_handler(Prefix, Module, Args) ->
-    gen_server:call(?MODULE, {register, Prefix, Module, Args}).
+% -spec register_handler([{[binary(), module(), _]}]) -> ok.
+register_handler(Regs) when is_list(Regs) -> 
+    gen_server:call(?MODULE, {register, Regs}).
 
--spec unregister_handler([binary()]) -> ok .
+-spec unregister_handler([binary()]) -> ok.
 unregister_handler(Prefix) ->
     gen_server:call(?MODULE, {unregister, Prefix}).
 
@@ -89,8 +89,8 @@ init([]) ->
     ets:insert(?HANDLER_TAB, {[<<".well-known">>, <<"core">>], resource_directory, undefined}),
     {ok, #state{}}.
 
-handle_call({register, Prefix, Module, Args}, _From, State) ->
-    ets:insert(?HANDLER_TAB, {Prefix, Module, Args}),
+handle_call({register, Reg}, _From, State) ->
+    ets:insert(?HANDLER_TAB, Reg),
     {reply, ok, State};    
 handle_call({unregister, Prefix}, _From, State) ->
     ets:delete(?HANDLER_TAB, Prefix),

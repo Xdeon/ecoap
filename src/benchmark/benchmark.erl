@@ -10,10 +10,12 @@
 start() ->
     _ = application:stop(ecoap),
     {ok, _} = application:ensure_all_started(ecoap),
-    ok = ecoap_registry:register_handler([<<"benchmark">>], ?MODULE, undefined),
-    ok = ecoap_registry:register_handler([<<"fibonacci">>], ?MODULE, undefined),
-    ok = ecoap_registry:register_handler([<<"helloWorld">>], ?MODULE, undefined),
-    ok = ecoap_registry:register_handler([<<"shutdown">>], ?MODULE, undefined).
+    ok = ecoap_registry:register_handler([
+            {[<<"benchmark">>], ?MODULE, undefined},
+            {[<<"fibonacci">>], ?MODULE, undefined},
+            {[<<"helloWorld">>], ?MODULE, undefined},
+            {[<<"shutdown">>], ?MODULE, undefined}
+        ]).
 
 stop() ->
     application:stop(ecoap).

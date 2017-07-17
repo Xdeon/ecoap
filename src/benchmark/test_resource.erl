@@ -12,7 +12,7 @@ start() ->
     ok = application:start(mnesia),
     {atomic, ok} = mnesia:create_table(resources, []),
     {ok, _} = application:ensure_all_started(ecoap),
-    ok = ecoap_registry:register_handler([], ?MODULE, undefined).
+    ok = ecoap_registry:register_handler([{[], ?MODULE, undefined}]).
 
 stop() ->
     ok = application:stop(ecoap),

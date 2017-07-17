@@ -43,7 +43,7 @@ server_simple_storage_test_() ->
             ok = application:start(mnesia),
             {atomic, ok} = mnesia:create_table(resources, []),
             {ok, _} = application:ensure_all_started(ecoap),
-            ecoap_registry:register_handler([<<"storage">>], ?MODULE, undefined),
+            ecoap_registry:register_handler([{[<<"storage">>], ?MODULE, undefined}]),
             {ok, Client} = ecoap_client:start_link(),
             Client
         end,

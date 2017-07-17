@@ -37,8 +37,8 @@ blockwise_transfer_test_() ->
     {setup,
         fun() ->
             {ok, _} = application:ensure_all_started(ecoap),
-            ecoap_registry:register_handler([<<"text">>], ?MODULE, undefined),
-            ecoap_registry:register_handler([<<"reflect">>], ?MODULE, undefined),
+            ecoap_registry:register_handler([{[<<"text">>], ?MODULE, undefined},
+                                             {[<<"reflect">>], ?MODULE, undefined}]),
             {ok, Client} = ecoap_client:start_link(),
             Client
         end,

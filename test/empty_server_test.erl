@@ -50,7 +50,7 @@ unknown_handler_test_() ->
     {setup,
         fun() ->
             {ok, _} = application:ensure_all_started(ecoap),
-            ecoap_registry:register_handler([<<"unknown">>], unknown_module, undefined)
+            ecoap_registry:register_handler([{[<<"unknown">>], unknown_module, undefined}])
         end,
         fun(_State) ->
             application:stop(ecoap)
