@@ -420,22 +420,19 @@ cancel_request(ReqRef, State=#state{sock_pid=SockPid, req_refs=ReqRefs, block_re
 		{undefined, SubRef} ->
 			% found ordinary blockwise transfer
 			#req{ep_id=EpID} = find_ref(SubRef, ReqRefs),
-			{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpID),
-			ok = ecoap_endpoint:cancel_request(EndpointPid, SubRef),
+			do_cancel_request(SockPid, EpID, SubRef),
 			State#state{req_refs=delete_ref(SubRef, ReqRefs), 
 						block_refs=delete_ref(ReqRef, BlockRefs)};
 		{#req{ep_id=EpID, obs_key=Key, reply_pid=ReplyPid}, undefined} ->
 			% found ordinary req or observe req without blockwise transfer
-			{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpID),
-			ok = ecoap_endpoint:cancel_request(EndpointPid, ReqRef),
+			do_cancel_request(SockPid, EpID, ReqRef),
 			State#state{req_refs=delete_ref(ReqRef, ReqRefs), 
 						obs_regs=delete_ref(Key, ObsRegs), 
 						subscribers=lists:keydelete({ReplyPid, Key}, 1, Subscribers)};
 		{#req{ep_id=EpID, obs_key=Key, reply_pid=ReplyPid}, SubRef} ->
 			% found observe req with blockwise transfer
-			{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpID),
-			ok = ecoap_endpoint:cancel_request(EndpointPid, ReqRef),
-			ok = ecoap_endpoint:cancel_request(EndpointPid, SubRef),
+			do_cancel_request(SockPid, EpID, ReqRef),
+			do_cancel_request(SockPid, EpID, SubRef),
 			State#state{req_refs=delete_ref(ReqRef, delete_ref(SubRef, ReqRefs)), 
 						block_refs=delete_ref(ReqRef, BlockRefs), 
 						obs_regs=delete_ref(Key, ObsRegs), 
@@ -491,22 +488,23 @@ handle_response(Ref, EndpointPid, _Message=#coap_message{code={ok, 'Continue'}, 
 			{noreply, State#state{req_refs=store_ref(Ref2, Req, delete_ref(Ref, ReqRefs))}}
 	end;
 
-% Note after receiving a notification we delete any ongoing block transfer 
-% (info of the last request with block option) before continuing and always start a fresh block transfer
-% This eliminates the possiblilty that multiple block transfers exist 
-% and thus a potential mix up of old & new blocks of the (changed) resource
+
 handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options=Options1, payload=Data}, 
-	State = #state{req_refs=ReqRefs, block_refs=BlockRefs, msg_type=Type, subscribers=Subscribers}) ->
+	State = #state{req_refs=ReqRefs, block_refs=BlockRefs, msg_type=Type, subscribers=Subscribers, sock_pid=SockPid}) ->
 	case find_ref(Ref, ReqRefs) of
 		undefined -> 
 			io:format("unknown response: ~p~n", [Message]),
 			{noreply, State};
 		#req{method=Method, options=Options2, fragment=Fragment, req_ref=ReqRef, reply_pid=ReplyPid, from=From, 
-			block_obseq=Obseq, obs_key=Key} = Req ->
+			block_obseq=Obseq, obs_key=Key, ep_id=EpID} = Req ->
             {N, BlockOrLastRef} = case coap_utils:get_option('Observe', Options1) of
             	undefined -> {Obseq, Ref};	% Obseq = undefined by default and Ref is reference to last sent request
             	Else -> {Else, find_ref(ReqRef, BlockRefs)}
 		    end,
+		    % Note after receiving a notification we cancel any ongoing block transfer 
+			% This eliminates the possiblilty that multiple block transfers exist 
+			% and thus a potential mix up of old & new blocks of the (changed) resource
+		    maybe_cancel_last_block_request(SockPid, EpID, BlockOrLastRef, Ref),
 			case coap_utils:get_option('Block2', Options1) of
 		        {Num, true, Size} ->
 		        	% more blocks follow, ask for more
@@ -563,9 +561,17 @@ handle_ack(Ref, State=#state{req_refs=ReqRefs, subscribers=Subscribers}) ->
 			{noreply, State#state{req_refs=store_ref(Ref, Req#req{from=undefined, req_ref=Ref}, ReqRefs)}}
 	end.
 
-update_block_refs(undefined, _, BlockRefs) -> BlockRefs;
-update_block_refs(InitRef, NewRef, BlockRefs) ->
-	store_ref(InitRef, NewRef, BlockRefs).
+do_cancel_request(SockPid, EpID, Ref) ->
+	{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpID),
+	ok = ecoap_endpoint:cancel_request(EndpointPid, Ref).
+
+maybe_cancel_last_block_request(SockPid, EpID, BlockOrLastRef, Ref) -> 
+	case BlockOrLastRef of
+		undefined -> ok;
+		Ref -> ok;
+		% this indicates we recevie a new blockwise observe notification in the middle of last blockwise transfer
+		_ -> do_cancel_request(SockPid, EpID, Ref)
+	end.
 
 find_ref(Ref, Refs) ->
 	case maps:find(Ref, Refs) of
@@ -578,6 +584,10 @@ store_ref(Ref, Val, Refs) ->
 
 delete_ref(Ref, Refs) ->
 	maps:remove(Ref, Refs).
+
+update_block_refs(undefined, _, BlockRefs) -> BlockRefs;
+update_block_refs(InitRef, NewRef, BlockRefs) ->
+	store_ref(InitRef, NewRef, BlockRefs).
 
 get_sub_pids(Key, Subscribers) ->
 	lists:foldl(fun({{Pid, ObsKey}, _, _}, Acc) ->
