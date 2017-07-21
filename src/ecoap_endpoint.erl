@@ -276,6 +276,35 @@ code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
 %% Internal
+
+% TODO: 
+% RFC 7252 4.7
+% In order not to cause congestion, clients (including proxies) MUST
+% strictly limit the number of simultaneous outstanding interactions
+% that they maintain to a given server (including proxies) to NSTART.
+% An outstanding interaction is either a CON for which an ACK has not
+% yet been received but is still expected (message layer) or a request
+% for which neither a response nor an Acknowledgment message has yet
+% been received but is still expected (which may both occur at the same
+% time, counting as one outstanding interaction).  The default value of
+% NSTART for this specification is 1.
+
+% The specific algorithm by which a client stops to "expect" a response
+% to a Confirmable request that was acknowledged, or to a Non-
+% confirmable request, is not defined.  Unless this is modified by
+% additional congestion control optimizations, it MUST be chosen in
+% such a way that an endpoint does not exceed an average data rate of
+% PROBING_RATE in sending to another endpoint that does not respond.
+
+% a server SHOULD implement some rate limiting for its
+% response transmission based on reasonable assumptions about
+% application requirements.
+
+% We may need to add a queue for outgoing confirmable msg so that it does not violate NSTART=1
+% and a queue for outgoing non-confirmable msg so that we can keep a counter and 
+% change a msg from NON to CON periodically & limit data rate according to some congestion control strategy (e.g. cocoa)
+% problem: What should we do when queue overflows? Should we inform the req/resp sender?
+
 make_new_request(Message=#coap_message{token=Token}, Receiver, State=#state{tokens=Tokens, nextmid=MsgId, receivers=Receivers}) ->
     % in case this is a request using previous token, we need to remove the outdated receiver reference first
     Receivers2 = maps:put(Receiver, {Token, {out, MsgId}}, maps:remove(maps:get(Token, Tokens, undefined), Receivers)),

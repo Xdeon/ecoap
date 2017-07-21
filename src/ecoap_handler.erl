@@ -237,14 +237,6 @@ handle_method(EpID, Request=#coap_message{code='DELETE'}, _Content, State) ->
 handle_method(_EpID, Request, _Content, State) ->
     return_response(Request, {error, 'MethodNotAllowed'}, State).
 
-%  TODO RFC7641:
-%  The Content-Format specified in a 2.xx notification MUST be the same
-%  as the one used in the initial response to the GET request.  If the
-%  server is unable to continue sending notifications in this format, it
-%  SHOULD send a notification with a 4.06 (Not Acceptable) response code
-%  and subsequently MUST remove the associated entry from the list of
-%  observers of the resource.
-
 handle_observe(EpID, Request, Content=#coap_content{}, 
         State=#state{endpoint_pid=EndpointPid, id=ID, prefix=Prefix, suffix=Suffix, uri=Uri, module=Module, observer=undefined}) ->
     % the first observe request from this user to this resource
