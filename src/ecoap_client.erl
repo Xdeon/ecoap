@@ -48,7 +48,7 @@
 	reply_pid = undefined :: pid(),
 	block_obseq = undefined :: undefined | non_neg_integer(),
 	obs_key = undefined :: undefined | observe_key(),
-	ep_id = undefined :: ecoap_udp_socket:ecoap_endpoint_id()
+	ep = undefined :: pid()
 }).
 
 -include_lib("ecoap_common/include/coap_def.hrl").
@@ -277,18 +277,18 @@ init([]) ->
 handle_call({send_request_sync, EpID, ping, ReplyPid}, From, State=#state{sock_pid=SockPid, req_refs=ReqRefs}) ->
 	{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpID),
 	{ok, Ref} = ecoap_endpoint:ping(EndpointPid),
-	{noreply, State#state{req_refs=store_ref(Ref, #req{from=From, reply_pid=ReplyPid, ep_id=EpID}, ReqRefs)}};
+	{noreply, State#state{req_refs=store_ref(Ref, #req{from=From, reply_pid=ReplyPid, ep=EndpointPid}, ReqRefs)}};
 
 handle_call({send_request_sync, EpID, {Method, Options, Content}, ReplyPid}, From, State=#state{sock_pid=SockPid, req_refs=ReqRefs, msg_type=Type}) ->
 	{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpID),
 	{ok, Ref} = request_block(EndpointPid, Type, Method, Options, Content),
-	Req = #req{method=Method, options=Options, content=Content, from=From, reply_pid=ReplyPid, ep_id=EpID},
+	Req = #req{method=Method, options=Options, content=Content, from=From, reply_pid=ReplyPid, ep=EndpointPid},
 	{noreply, State#state{req_refs=store_ref(Ref, Req, ReqRefs)}};
 
 handle_call({send_request_async, EpID, {Method, Options, Content}, ReplyPid}, _From, State=#state{sock_pid=SockPid, req_refs=ReqRefs, msg_type=Type}) ->
 	{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpID),
 	{ok, Ref} = request_block(EndpointPid, Type, Method, Options, Content),
-	Req = #req{method=Method, options=Options, content=Content, req_ref=Ref, reply_pid=ReplyPid, ep_id=EpID},
+	Req = #req{method=Method, options=Options, content=Content, req_ref=Ref, reply_pid=ReplyPid, ep=EndpointPid},
 	{reply, {ok, Ref}, State#state{req_refs=store_ref(Ref, Req, ReqRefs)}};
 
 handle_call({cancel_async_request, Ref}, _From, State) ->
@@ -309,7 +309,7 @@ handle_call({start_observe, EpID, Key, {Method, Options, _Content}, ReplyPid}, _
 					coap_utils:set_token(Token,
 						coap_utils:request(Type, Method, <<>>, Options))),	
 	Options2 = coap_utils:remove_option('Observe', Options),
-	Req = #req{method=Method, options=Options2, token=Token, req_ref=Ref, reply_pid=ReplyPid, obs_key=Key, ep_id=EpID},
+	Req = #req{method=Method, options=Options2, token=Token, req_ref=Ref, reply_pid=ReplyPid, obs_key=Key, ep=EndpointPid},
 	{Subscribers2, ReqRefs2} = case lists:keyfind({ReplyPid, Key}, 1, Subscribers) of
 		{{ReplyPid, Key}, _MonRef, ReqRef} ->
 			Subs = lists:keyreplace({ReplyPid, Key}, 1,  Subscribers, {{ReplyPid, Key}, _MonRef, Ref}),
@@ -319,17 +319,16 @@ handle_call({start_observe, EpID, Key, {Method, Options, _Content}, ReplyPid}, _
 	end,
 	{reply, {ok, Ref}, State#state{obs_regs=ObsRegs2, req_refs=ReqRefs2, subscribers=Subscribers2}};
 
-handle_call({cancel_observe, Ref, ETag}, _From, State=#state{sock_pid=SockPid, req_refs=ReqRefs, obs_regs=ObsRegs, msg_type=Type, subscribers=Subscribers}) ->
+handle_call({cancel_observe, Ref, ETag}, _From, State=#state{req_refs=ReqRefs, obs_regs=ObsRegs, msg_type=Type, subscribers=Subscribers}) ->
 	case find_ref(Ref, ReqRefs) of
-		#req{method=Method, options=Options, token=Token, obs_key=Key, ep_id=EpID, reply_pid=ReplyPid} when Key =/= undefined ->
+		#req{method=Method, options=Options, token=Token, obs_key=Key, ep=EndpointPid, reply_pid=ReplyPid} when Key =/= undefined ->
 			Options1 = case ETag of <<>> -> Options; Else -> coap_utils:add_option('ETag', [Else], Options) end,
 			Options2 = coap_utils:add_option('Observe', 1, Options1),
-			{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpID),
 			{ok, Ref2} = ecoap_endpoint:send(EndpointPid,  
 							coap_utils:set_token(Token, 
 								coap_utils:request(Type, Method, <<>>, Options2))),
 			Options3 = coap_utils:remove_option('Observe', Options2),
-			Req = #req{method=Method, options=Options3, token=Token, req_ref=Ref2, reply_pid=ReplyPid, ep_id=EpID},
+			Req = #req{method=Method, options=Options3, token=Token, req_ref=Ref2, reply_pid=ReplyPid, ep=EndpointPid},
 			{{ReplyPid, Key}, MonRef, Ref} = Sub = lists:keyfind({ReplyPid, Key}, 1, Subscribers),
 			erlang:demonitor(MonRef, [flush]),
 			{reply, {ok, Ref2}, State#state{req_refs=store_ref(Ref2, Req, delete_ref(Ref, ReqRefs)),
@@ -391,7 +390,6 @@ handle_info(_Info, State) ->
 	{noreply, State}.
 
 terminate(_Reason, #state{sock_pid=SockPid}) ->
-	[ecoap_endpoint:close(Pid) || Pid <- ecoap_udp_socket:get_all_endpoints(SockPid)],
 	ok = ecoap_udp_socket:close(SockPid),
 	ok.
 
@@ -412,27 +410,27 @@ request_block(EndpointPid, Type, Method, ROpt, Block1, Content) ->
 % 1. ordinary req, including non req, separate res, observe con/non req
 % 2. blockwise transfer for both con and non
 % 3. blockwise transfer for both con and non, during an observe
-cancel_request(ReqRef, State=#state{sock_pid=SockPid, req_refs=ReqRefs, block_refs=BlockRefs, obs_regs=ObsRegs, subscribers=Subscribers}) ->
+cancel_request(ReqRef, State=#state{req_refs=ReqRefs, block_refs=BlockRefs, obs_regs=ObsRegs, subscribers=Subscribers}) ->
 	case {find_ref(ReqRef, ReqRefs), find_ref(ReqRef, BlockRefs)} of
 		{undefined, undefined} -> 
 			% no req exist
 			State;
 		{undefined, SubRef} ->
 			% found ordinary blockwise transfer
-			#req{ep_id=EpID} = find_ref(SubRef, ReqRefs),
-			do_cancel_request(SockPid, EpID, SubRef),
+			#req{ep=EndpointPid} = find_ref(SubRef, ReqRefs),
+			do_cancel_request(EndpointPid, SubRef),
 			State#state{req_refs=delete_ref(SubRef, ReqRefs), 
 						block_refs=delete_ref(ReqRef, BlockRefs)};
-		{#req{ep_id=EpID, obs_key=Key, reply_pid=ReplyPid}, undefined} ->
+		{#req{ep=EndpointPid, obs_key=Key, reply_pid=ReplyPid}, undefined} ->
 			% found ordinary req or observe req without blockwise transfer
-			do_cancel_request(SockPid, EpID, ReqRef),
+			do_cancel_request(EndpointPid, ReqRef),
 			State#state{req_refs=delete_ref(ReqRef, ReqRefs), 
 						obs_regs=delete_ref(Key, ObsRegs), 
 						subscribers=lists:keydelete({ReplyPid, Key}, 1, Subscribers)};
-		{#req{ep_id=EpID, obs_key=Key, reply_pid=ReplyPid}, SubRef} ->
+		{#req{ep=EndpointPid, obs_key=Key, reply_pid=ReplyPid}, SubRef} ->
 			% found observe req with blockwise transfer
-			do_cancel_request(SockPid, EpID, ReqRef),
-			do_cancel_request(SockPid, EpID, SubRef),
+			do_cancel_request(EndpointPid, ReqRef),
+			do_cancel_request(EndpointPid, SubRef),
 			State#state{req_refs=delete_ref(ReqRef, delete_ref(SubRef, ReqRefs)), 
 						block_refs=delete_ref(ReqRef, BlockRefs), 
 						obs_regs=delete_ref(Key, ObsRegs), 
@@ -490,13 +488,13 @@ handle_response(Ref, EndpointPid, _Message=#coap_message{code={ok, 'Continue'}, 
 
 
 handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options=Options1, payload=Data}, 
-	State = #state{req_refs=ReqRefs, block_refs=BlockRefs, msg_type=Type, subscribers=Subscribers, sock_pid=SockPid}) ->
+	State = #state{req_refs=ReqRefs, block_refs=BlockRefs, msg_type=Type, subscribers=Subscribers}) ->
 	case find_ref(Ref, ReqRefs) of
 		undefined -> 
 			io:format("unknown response: ~p~n", [Message]),
 			{noreply, State};
 		#req{method=Method, options=Options2, fragment=Fragment, req_ref=ReqRef, reply_pid=ReplyPid, from=From, 
-			block_obseq=Obseq, obs_key=Key, ep_id=EpID} = Req ->
+			block_obseq=Obseq, obs_key=Key} = Req ->
             {N, BlockOrLastRef} = case coap_utils:get_option('Observe', Options1) of
             	undefined -> {Obseq, Ref};	% Obseq = undefined by default and Ref is reference to last sent request
             	Else -> {Else, find_ref(ReqRef, BlockRefs)}
@@ -504,7 +502,7 @@ handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options
 		    % Note after receiving a notification we cancel any ongoing block transfer 
 			% This eliminates the possiblilty that multiple block transfers exist 
 			% and thus a potential mix up of old & new blocks of the (changed) resource
-		    maybe_cancel_last_block_request(SockPid, EpID, BlockOrLastRef, Ref),
+		    maybe_cancel_last_block_request(EndpointPid, BlockOrLastRef, Ref),
 			case coap_utils:get_option('Block2', Options1) of
 		        {Num, true, Size} ->
 		        	% more blocks follow, ask for more
@@ -561,16 +559,15 @@ handle_ack(Ref, State=#state{req_refs=ReqRefs, subscribers=Subscribers}) ->
 			{noreply, State#state{req_refs=store_ref(Ref, Req#req{from=undefined, req_ref=Ref}, ReqRefs)}}
 	end.
 
-do_cancel_request(SockPid, EpID, Ref) ->
-	{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpID),
+do_cancel_request(EndpointPid, Ref) ->
 	ok = ecoap_endpoint:cancel_request(EndpointPid, Ref).
 
-maybe_cancel_last_block_request(SockPid, EpID, BlockOrLastRef, Ref) -> 
+maybe_cancel_last_block_request(EndpointPid, BlockOrLastRef, Ref) -> 
 	case BlockOrLastRef of
 		undefined -> ok;
 		Ref -> ok;
 		% this indicates we recevie a new blockwise observe notification in the middle of last blockwise transfer
-		_ -> do_cancel_request(SockPid, EpID, Ref)
+		_ -> do_cancel_request(EndpointPid, Ref)
 	end.
 
 find_ref(Ref, Refs) ->

@@ -107,6 +107,8 @@ generate_token(TKL) ->
 
 % client
 init([undefined, SocketModule, Socket, EpID]) ->
+    % we would like to terminate as well when upper layer socket process terminates
+    process_flag(trap_exit, true),
     TransArgs = #{sock=>Socket, sock_module=>SocketModule, ep_id=>EpID, endpoint_pid=>self()},
     Timer = endpoint_timer:start_timer(?SCAN_INTERVAL, start_scan),
     {ok, #state{nextmid=first_mid(), rescnt=0, timer=Timer, trans_args=TransArgs}};
