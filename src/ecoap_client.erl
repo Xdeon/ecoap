@@ -79,7 +79,7 @@ close(Pid) ->
 -spec ping(pid(), string()) -> ok | error.
 ping(Pid, Uri) ->
 	{_Scheme, _Host, EpID, _Path, _Query} = coap_utils:decode_uri(Uri),
-	case send_request_sync(Pid, EpID, ping, self()) of
+	case send_request_sync(Pid, EpID, {ping, #{}, undefined}, self()) of
 		{error, 'RST'} -> ok;
 		_Else -> error
 	end.
@@ -263,10 +263,10 @@ convert_content(Content) when is_binary(Content) -> #coap_content{payload=Conten
 send_request_sync(Pid, EpID, Req, ReplyPid) ->
 	% set timeout to infinity because ecoap_endpoint will always return a response, 
 	% i.e. an ordinary response or {error, timeout} when server does not respond to a confirmable request
-	gen_server:call(Pid, {send_request_sync, EpID, Req, ReplyPid}, infinity).
+	gen_server:call(Pid, {send_request, sync, EpID, Req, ReplyPid}, infinity).
 
 send_request_async(Pid, EpID, Req, ReplyPid) -> 
-	gen_server:call(Pid, {send_request_async, EpID, Req, ReplyPid}).
+	gen_server:call(Pid, {send_request, async, EpID, Req, ReplyPid}).
 
 %% gen_server.
 
@@ -274,22 +274,20 @@ init([]) ->
 	{ok, SockPid} = ecoap_udp_socket:start_link(),
 	{ok, #state{sock_pid=SockPid}}.
 
-handle_call({send_request_sync, EpID, ping, ReplyPid}, From, State=#state{sock_pid=SockPid, req_refs=ReqRefs}) ->
+handle_call({send_request, Async, EpID, {Method, Options, Content}, ReplyPid}, From, State=#state{sock_pid=SockPid, req_refs=ReqRefs, msg_type=Type}) ->
 	{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpID),
-	{ok, Ref} = ecoap_endpoint:ping(EndpointPid),
-	{noreply, State#state{req_refs=store_ref(Ref, #req{from=From, reply_pid=ReplyPid, ep=EndpointPid}, ReqRefs)}};
-
-handle_call({send_request_sync, EpID, {Method, Options, Content}, ReplyPid}, From, State=#state{sock_pid=SockPid, req_refs=ReqRefs, msg_type=Type}) ->
-	{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpID),
-	{ok, Ref} = request_block(EndpointPid, Type, Method, Options, Content),
-	Req = #req{method=Method, options=Options, content=Content, from=From, reply_pid=ReplyPid, ep=EndpointPid},
-	{noreply, State#state{req_refs=store_ref(Ref, Req, ReqRefs)}};
-
-handle_call({send_request_async, EpID, {Method, Options, Content}, ReplyPid}, _From, State=#state{sock_pid=SockPid, req_refs=ReqRefs, msg_type=Type}) ->
-	{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpID),
-	{ok, Ref} = request_block(EndpointPid, Type, Method, Options, Content),
-	Req = #req{method=Method, options=Options, content=Content, req_ref=Ref, reply_pid=ReplyPid, ep=EndpointPid},
-	{reply, {ok, Ref}, State#state{req_refs=store_ref(Ref, Req, ReqRefs)}};
+	{ok, Ref} = case Method of
+		ping -> ecoap_endpoint:ping(EndpointPid);
+		_ -> request_block(EndpointPid, Type, Method, Options, Content)
+	end,
+	case Async of
+		async ->
+			Req = #req{method=Method, options=Options, content=Content, req_ref=Ref, reply_pid=ReplyPid, ep=EndpointPid},
+			{reply, {ok, Ref}, State#state{req_refs=store_ref(Ref, Req, ReqRefs)}};
+		sync ->
+			Req = #req{method=Method, options=Options, content=Content, req_ref=Ref, from=From, reply_pid=ReplyPid, ep=EndpointPid},
+			{noreply, State#state{req_refs=store_ref(Ref, Req, ReqRefs)}}
+	end;
 
 handle_call({cancel_async_request, Ref}, _From, State) ->
 	State2 = cancel_request(Ref, State),
