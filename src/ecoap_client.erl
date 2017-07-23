@@ -400,7 +400,7 @@ get_endpoint(SockPid, EpID) ->
 	{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpID),
 	case ecoap_endpoint:check_alive(EndpointPid) of
 		true -> {ok, EndpointPid};
-		fasle -> get_endpoint(SockPid, EpID)
+		false -> get_endpoint(SockPid, EpID)
 	end.
 
 request_block(EndpointPid, Type, Method, ROpt, Content) ->
