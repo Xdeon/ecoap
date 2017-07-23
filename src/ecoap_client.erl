@@ -565,7 +565,7 @@ maybe_cancel_last_block_request(EndpointPid, BlockOrLastRef, Ref) ->
 		undefined -> ok;
 		Ref -> ok;
 		% this indicates we recevie a new blockwise observe notification in the middle of last blockwise transfer
-		_ -> do_cancel_request(EndpointPid, Ref)
+		_ -> do_cancel_request(EndpointPid, BlockOrLastRef)
 	end.
 
 find_ref(Ref, Refs) ->
