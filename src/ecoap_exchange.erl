@@ -95,7 +95,7 @@ in_non({in, BinMessage}, TransArgs, State) ->
             handle_response(Message, TransArgs, State),
             check_next_state(got_non, State);
         % shall we send reset?
-        {error, _Error} -> 
+        _ -> 
             next_state(undefined, State)
     end.
 
@@ -120,11 +120,7 @@ sent_non({in, BinMessage}, TransArgs, State)->
         #coap_message{type='RST'} = Rst ->
             handle_error(Rst, 'RST', TransArgs, State),
             next_state(got_rst, State);
-        % ignore other message type
-        #coap_message{} -> 
-            next_state(sent_non, State);
-        % encounter format error, ignore the message
-        {error, _Error} ->
+        _ -> 
             next_state(sent_non, State)
     end.
 
@@ -146,7 +142,7 @@ in_con({in, BinMessage}, TransArgs, State) ->
         #coap_message{} = Message ->
             handle_response(Message, TransArgs, State),
             go_await_aack(Message, TransArgs, State);
-        {error, _Error} ->
+        _ ->
             next_state(undefined, State)
     end.
 
@@ -242,9 +238,8 @@ await_pack({in, BinAck}, TransArgs, State) ->
         #coap_message{} = Ack ->
         	handle_response(Ack, TransArgs, State),
             check_next_state(aack_sent, State#exchange{msgbin= <<>>});
-        % encounter format error, ignore the message
-        % shall we inform the receiver?
-        {error, _Error} ->
+        % shall we inform the receiver the error?
+        _ ->
             next_state(await_pack, State)            
     end;
 await_pack({timeout, await_pack}, TransArgs=#{sock:=Socket, sock_module:=SocketModule, ep_id:=EpID}, State=#exchange{msgbin=BinMessage, retry_time=Timeout, retry_count=Count}) when Count < ?MAX_RETRANSMIT ->
