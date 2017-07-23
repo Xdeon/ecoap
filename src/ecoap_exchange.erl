@@ -143,7 +143,7 @@ in_con({in, BinMessage}, TransArgs, State) ->
             handle_response(Message, TransArgs, State),
             go_await_aack(Message, TransArgs, State);
         _ ->
-            next_state(undefined, State)
+            go_rst_sent(coap_utils:rst(coap_utils:get_id(BinMessage)), TransArgs, State)
     end.
 
 -spec go_await_aack(coap_message(), ecoap_endpoint:trans_args(), exchange()) -> exchange().
