@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 %% API.
--export([start_link/4, start_link/3, close/1, 
+-export([start_link/4, start_link/3,
         ping/1, send/2, send_message/3, send_request/3, send_response/3, cancel_request/2]).
 -export([generate_token/0, generate_token/1]).
 
@@ -56,10 +56,6 @@ start_link(SupPid, SocketModule, Socket, EpID) ->
 -spec start_link(module(), inet:socket(), ecoap_udp_socket:ecoap_endpoint_id()) -> {ok, pid()}.
 start_link(SocketModule, Socket, EpID) ->
     gen_server:start_link(?MODULE, [undefined, SocketModule, Socket, EpID], []).
-
--spec close(pid()) -> ok.
-close(Pid) ->
-	gen_server:cast(Pid, shutdown).
 
 -spec ping(pid()) -> {ok, reference()}.
 ping(EndpointPid) ->
@@ -145,8 +141,6 @@ handle_cast({send_response, Message, Receiver}, State) ->
 handle_cast({cancel_request, Receiver}, State=#state{tokens=Tokens, trans=Trans, receivers=Receivers}) ->
     {Token, TrId} = maps:get(Receiver, Receivers, {undefined, undefined}),
     {noreply, State#state{tokens=maps:remove(Token, Tokens), trans=maps:remove(TrId, Trans), receivers=maps:remove(Receiver, Receivers)}};
-handle_cast(shutdown, State) ->
-    {stop, normal, State};
 handle_cast(_Msg, State) ->
     error_logger:error_msg("unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
 	{noreply, State}.

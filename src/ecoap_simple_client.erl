@@ -124,8 +124,8 @@ handle_info({coap_error, _EpID, _EndpointPid, Ref, Error},
 handle_info(_Info, State) ->
 	{noreply, State}.
 
-terminate(_Reason, _State=#state{sock_pid=SockPid, endpoint_pid=EndpointPid}) ->
-	ok = close_transport(SockPid, EndpointPid),
+terminate(_Reason, _State=#state{sock_pid=SockPid}) ->
+	ok = ecoap_udp_socket:close(SockPid),
 	ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -192,8 +192,4 @@ return_response({error, Code}, #coap_message{payload= <<>>}) ->
     {error, Code};
 return_response({error, Code}, Message) ->
     {error, Code, coap_utils:get_content(Message)}.
-
-close_transport(SockPid, EndpointPid) ->
-	ecoap_endpoint:close(EndpointPid),
-	ecoap_udp_socket:close(SockPid).
 
