@@ -275,7 +275,7 @@ init([]) ->
 	{ok, #state{sock_pid=SockPid}}.
 
 handle_call({send_request, Async, EpID, {Method, Options, Content}, ReplyPid}, From, State=#state{sock_pid=SockPid, req_refs=ReqRefs, msg_type=Type}) ->
-	{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpID),
+	{ok, EndpointPid} = get_endpoint(SockPid, EpID),
 	{ok, Ref} = case Method of
 		ping -> ecoap_endpoint:ping(EndpointPid);
 		_ -> request_block(EndpointPid, Type, Method, Options, Content)
@@ -302,7 +302,7 @@ handle_call({start_observe, EpID, Key, {Method, Options, _Content}, ReplyPid}, _
 		OldToken -> 
 			{OldToken, ObsRegs}
 	end,
-	{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpID),
+	{ok, EndpointPid} = get_endpoint(SockPid, EpID),
 	{ok, Ref} = ecoap_endpoint:send(EndpointPid,  
 					coap_utils:set_token(Token,
 						coap_utils:request(Type, Method, <<>>, Options))),	
@@ -395,6 +395,13 @@ code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
 %% Internal
+
+get_endpoint(SockPid, EpID) ->
+	{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpID),
+	case ecoap_endpoint:check_alive(EndpointPid) of
+		true -> {ok, EndpointPid};
+		fasle -> get_endpoint(SockPid, EpID)
+	end.
 
 request_block(EndpointPid, Type, Method, ROpt, Content) ->
     request_block(EndpointPid, Type, Method, ROpt, undefined, Content).

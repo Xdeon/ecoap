@@ -5,6 +5,7 @@
 -export([start_link/4, start_link/3,
         ping/1, send/2, send_message/3, send_request/3, send_response/3, cancel_request/2]).
 -export([generate_token/0, generate_token/1]).
+-export([check_alive/1]).
 
 %% gen_server.
 -export([init/1]).
@@ -92,6 +93,17 @@ send_response(EndpointPid, Ref, Message) ->
 cancel_request(EndpointPid, Ref) ->
     gen_server:cast(EndpointPid, {cancel_request, {self(), Ref}}).
 
+% this function is only used by ecoap_client to ensure the liveness of ecoap_endpoint process
+-spec check_alive(pid()) -> boolean().
+check_alive(EndpointPid) ->
+    try gen_server:call(EndpointPid, check_alive) of
+        ok -> true
+    catch 
+        exit:{noproc, _} -> false;
+        % we crash for other exit including timeout
+        _:R -> exit(R)
+    end.
+
 -spec generate_token() -> binary().
 generate_token() -> generate_token(?TOKEN_LENGTH).
 
@@ -124,6 +136,8 @@ init([SupPid, SocketModule, Socket, EpID]) ->
     Timer = endpoint_timer:start_timer(?SCAN_INTERVAL, start_scan),
     gen_server:enter_loop(?MODULE, [], #state{nextmid=first_mid(), rescnt=0, timer=Timer, trans_args=TransArgs, handler_refs=#{}}).
 
+handle_call(check_alive, _From, State=#state{timer=Timer}) ->
+    {reply, ok, State#state{timer=endpoint_timer:kick_timer(Timer)}};
 handle_call(_Request, _From, State) ->
     error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
 	{noreply, State}.
