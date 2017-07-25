@@ -385,9 +385,9 @@ create_exchange(TrId, Receiver, #state{trans=Trans}) ->
 init_exchange(TrId, Receiver) ->
     ecoap_exchange:init(TrId, Receiver).
 
-update_state(State=#state{trans=Trans}, TrId, undefined) ->
+update_state(State=#state{trans=Trans, timer=Timer}, TrId, undefined) ->
     Trans2 = maps:remove(TrId, Trans),
-    {noreply, State#state{trans=Trans2}};
+    {noreply, State#state{trans=Trans2, timer=endpoint_timer:kick_timer(Timer)}};
 update_state(State=#state{trans=Trans, timer=Timer}, TrId, TrState) ->
     Trans2 = maps:put(TrId, TrState, Trans),
     {noreply, State#state{trans=Trans2, timer=endpoint_timer:kick_timer(Timer)}}.
