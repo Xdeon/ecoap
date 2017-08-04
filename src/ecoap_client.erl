@@ -9,10 +9,12 @@
 %% sync request
 -export([request/3, request/4, request/5]).
 %% async request
--export([async_request/3, async_request/4, async_request/5, cancel_async_request/2]).
+-export([async_request/3, async_request/4, async_request/5]).
 %% observe
 -export([observe/2, observe/3, unobserve/2, unobserve/3]).
 -export([async_observe/2, async_observe/3, async_unobserve/2, async_unobserve/3]).
+%% cancel and flush
+-export([cancel_async_request/2, flush/1]).
 
 -ifdef(TEST).
 %% utilities
@@ -142,6 +144,17 @@ async_request(Pid, Method, Uri, Content, Options) ->
 -spec cancel_async_request(pid(), reference()) -> ok.
 cancel_async_request(Pid, Ref) ->
 	gen_server:call(Pid, {cancel_async_request, Ref}).
+
+% flush unwanted async response/notification, i.e. after cancelling an async request
+flush(ReqRef) ->
+	receive
+		{async_response, ReqRef, _, _} ->
+			flush(ReqRef);
+		{coap_notify, ReqRef, _, _, _} ->
+			flush(ReqRef)
+	after 0 ->
+		ok
+	end.	
 
 % Start an observe relation to a specific resource
 
@@ -625,4 +638,3 @@ return_response({error, Code}, #coap_message{payload= <<>>}) ->
     {error, Code};
 return_response({error, Code}, Message) ->
     {error, Code, coap_utils:get_content(Message)}.
-
