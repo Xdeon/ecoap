@@ -1,7 +1,7 @@
 -module(resource_directory).
 
 -export([coap_discover/2, coap_get/5, coap_post/4, coap_put/4, coap_delete/4,
-        coap_observe/4, coap_unobserve/1, coap_payload_adapter/2, handle_info/2, coap_ack/2]).
+        coap_observe/4, coap_unobserve/1, handle_notify/3, handle_info/3, coap_ack/2]).
 
 -behaviour(coap_resource).
 
@@ -25,8 +25,8 @@ coap_delete(_EpID, _Prefix, _Suffix, _Request) -> {error, 'MethodNotAllowed'}.
 
 coap_observe(_EpID, _Prefix, _Suffix, _Request) -> {error, 'MethodNotAllowed'}.
 coap_unobserve(_State) -> ok.
-coap_payload_adapter(Content, _Accept) -> {ok, Content}.
-handle_info(_Message, State) -> {noreply, State}.
+handle_notify(Notification, _ObsReq, State) -> {ok, Notification, State}.
+handle_info(_Info, _ObsReq, State) -> {noreply, State}.
 coap_ack(_Ref, State) -> {ok, State}.
 
 % uri-query processing
@@ -59,8 +59,35 @@ match_link({_Type, _Uri, Attrs}, Name, Value0) ->
     lists:any(
         fun (AttrVal) ->
             case Value0 of
-                {prefix, Value} -> binary:part(AttrVal, 0, byte_size(Value)) =:= Value;
-                {global, Value} -> AttrVal =:= Value
+                {prefix, Value} -> match_param(AttrVal, fun(Actual) -> binary:part(Actual, 0, byte_size(Value)) =:= Value end);
+                {global, Value} -> match_param(AttrVal, fun(Actual) -> Actual =:= Value end)
             end
         end,
         proplists:get_all_values(Name, Attrs)).
+
+match_param([_|_]=AttrVal, MatchFun) ->
+    lists:any(MatchFun, AttrVal);
+match_param(AttrVal, MatchFun) ->
+    MatchFun(AttrVal).
+
+-ifdef(TEST).
+
+-include_lib("eunit/include/eunit.hrl").
+
+attribute_query_test_() ->
+    Link = [{absolute, [<<"sensor">>], [{title, <<"Sensor Index">>}]},
+           {absolute, [<<"sensors">>, <<"temp">>], [{rt, <<"temperature-c">>}, {'if', <<"sensor">>}, {foo, <<>>}, {bar, [<<"one">>, <<"two">>]}]},
+           {absolute, [<<"sensors">>, <<"light">>], [{rt, [<<"light-lux">>, <<"core.sen-light">>]}, {'if', <<"sensor">>}, {foo, <<>>}]}],
+    Sensors = "</sensors/temp>;rt=\"temperature-c\";if=\"sensor\";foo;bar=\"one two\"",
+    [?_assertEqual(Sensors, core_link:encode(filter(Link, parse_query("bar=one&if=sensor")))),
+    ?_assertEqual(Sensors, core_link:encode(filter(Link, parse_query("bar=one&foo")))),
+    ?_assertEqual(Sensors, core_link:encode(filter(Link, parse_query("if=sensor&bar=one")))),
+    ?_assertEqual(Sensors, core_link:encode(filter(Link, parse_query("foo&bar=one")))),
+    ?_assertEqual(Sensors, core_link:encode(filter(Link, parse_query("bar=one&bar=two")))),
+    ?_assertEqual("", core_link:encode(filter(Link, parse_query("bar=one&bar=three"))))
+    ]. 
+
+parse_query(Query) ->
+    binary:split(list_to_binary(Query), <<"&">>).
+
+-endif.

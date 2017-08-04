@@ -1,7 +1,7 @@
 -module(ecoap_exchange).
 
 %% API
--export([init/2, received/3, send/3, timeout/3, awaits_response/1, not_expired/1]).
+-export([init/2, received/3, send/3, timeout/3, awaits_response/1, in_transit/1, not_expired/2]).
 -export([idle/3, got_non/3, sent_non/3, got_rst/3, await_aack/3, pack_sent/3, await_pack/3, aack_sent/3]).
 
 -define(ACK_TIMEOUT, 2000).
@@ -32,9 +32,9 @@
 -include_lib("ecoap_common/include/coap_def.hrl").
 
 % -record(state, {phase, sock, cid, channel, tid, resp, receiver, msg, timer, retry_time, retry_count}).
--spec not_expired(exchange()) -> boolean().
-not_expired(#exchange{timestamp=Timestamp, expire_time=ExpireTime}) ->
-    erlang:convert_time_unit(erlang:monotonic_time() - Timestamp, native, milli_seconds) < ExpireTime.
+-spec not_expired(integer(), exchange()) -> boolean().
+not_expired(CurrentTime, #exchange{timestamp=Timestamp, expire_time=ExpireTime}) ->
+    CurrentTime - Timestamp < ExpireTime.
 
 -spec init(ecoap_endpoint:trid(), undefined | ecoap_endpoint:receiver()) -> exchange().
 init(TrId, Receiver) ->
@@ -62,19 +62,26 @@ awaits_response(#exchange{stage=await_aack}) ->
 awaits_response(_State) ->
     false.
 
+% A CON is in transit as long as it has not been acknowledged, rejected, or timed out.
+-spec in_transit(exchange()) -> boolean().
+in_transit(#exchange{stage=await_pack}) -> 
+    true;
+in_transit(_State) -> 
+    false.
+
 % ->NON
 -spec idle({in | out, binary()}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
 idle(Msg={in, <<1:2, 1:2, _:12, _Tail/bytes>>}, TransArgs, State=#exchange{}) ->
-    in_non(Msg, TransArgs, State#exchange{expire_time=?NON_LIFETIME});
+    in_non(Msg, TransArgs, State#exchange{expire_time=native_time(?NON_LIFETIME)});
 % ->CON
 idle(Msg={in, <<1:2, 0:2, _:12, _Tail/bytes>>}, TransArgs, State=#exchange{}) ->
-    in_con(Msg, TransArgs, State#exchange{expire_time=?EXCHANGE_LIFETIME});
+    in_con(Msg, TransArgs, State#exchange{expire_time=native_time(?EXCHANGE_LIFETIME)});
 % NON->
 idle(Msg={out, #coap_message{type='NON'}}, TransArgs, State=#exchange{}) ->
-    out_non(Msg, TransArgs, State#exchange{expire_time=?NON_LIFETIME});
+    out_non(Msg, TransArgs, State#exchange{expire_time=native_time(?NON_LIFETIME)});
 % CON->
 idle(Msg={out, #coap_message{type='CON'}}, TransArgs, State=#exchange{}) ->
-    out_con(Msg, TransArgs, State#exchange{expire_time=?EXCHANGE_LIFETIME}).
+    out_con(Msg, TransArgs, State#exchange{expire_time=native_time(?EXCHANGE_LIFETIME)}).
 
 
 % --- incoming NON
@@ -88,7 +95,7 @@ in_non({in, BinMessage}, TransArgs, State) ->
             handle_response(Message, TransArgs, State),
             check_next_state(got_non, State);
         % shall we send reset?
-        {error, _Error} -> 
+        _ -> 
             next_state(undefined, State)
     end.
 
@@ -113,11 +120,7 @@ sent_non({in, BinMessage}, TransArgs, State)->
         #coap_message{type='RST'} = Rst ->
             handle_error(Rst, 'RST', TransArgs, State),
             next_state(got_rst, State);
-        % ignore other message type
-        #coap_message{} -> 
-            next_state(sent_non, State);
-        % encounter format error, ignore the message
-        {error, _Error} ->
+        _ -> 
             next_state(sent_non, State)
     end.
 
@@ -139,8 +142,8 @@ in_con({in, BinMessage}, TransArgs, State) ->
         #coap_message{} = Message ->
             handle_response(Message, TransArgs, State),
             go_await_aack(Message, TransArgs, State);
-        {error, _Error} ->
-            next_state(undefined, State)
+        _ ->
+            go_rst_sent(coap_utils:rst(coap_utils:get_id(BinMessage)), TransArgs, State)
     end.
 
 -spec go_await_aack(coap_message(), ecoap_endpoint:trans_args(), exchange()) -> exchange().
@@ -222,7 +225,7 @@ out_con({out, Message}, TransArgs=#{sock:=Socket, sock_module:=SocketModule, ep_
 -spec await_pack({in, binary()} | {timeout, await_pack}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
 await_pack({in, BinAck}, TransArgs, State) ->
     case catch coap_message:decode(BinAck) of
-    	% this is an empty ack for separate response
+    	% this is an empty ack for separate response or observe notification
         #coap_message{type='ACK', code=undefined} = Ack ->
             handle_ack(Ack, TransArgs, State),
             % since we can confirm when an outgoing confirmable message
@@ -235,9 +238,8 @@ await_pack({in, BinAck}, TransArgs, State) ->
         #coap_message{} = Ack ->
         	handle_response(Ack, TransArgs, State),
             check_next_state(aack_sent, State#exchange{msgbin= <<>>});
-        % encounter format error, ignore the message
-        % shall we inform the receiver?
-        {error, _Error} ->
+        % shall we inform the receiver the error?
+        _ ->
             next_state(await_pack, State)            
     end;
 await_pack({timeout, await_pack}, TransArgs=#{sock:=Socket, sock_module:=SocketModule, ep_id:=EpID}, State=#exchange{msgbin=BinMessage, retry_time=Timeout, retry_count=Count}) when Count < ?MAX_RETRANSMIT ->
@@ -262,12 +264,11 @@ aack_sent({timeout, await_pack}, _TransArgs, State) ->
 % utility functions
 
 handle_request(Message=#coap_message{code=Method, options=Options}, 
-    #{ep_id:=EpID, handler_sup:=HdlSupPid, endpoint_pid:=EndpointPid, handler_regs:=HandlerRegs}, 
-    #exchange{receiver=undefined}) ->
+    #{ep_id:=EpID, handler_sup:=HdlSupPid, endpoint_pid:=EndpointPid, handler_regs:=HandlerRegs}, #exchange{receiver=undefined}) ->
     %io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
     Uri = coap_utils:get_option('Uri-Path', Options, []),
     Query = coap_utils:get_option('Uri-Query', Options, []),
-    case ecoap_handler_sup:get_handler(HdlSupPid, {Method, Uri, Query}, HandlerRegs) of
+    case get_handler(HdlSupPid, EndpointPid, {Method, Uri, Query}, HandlerRegs) of
         {ok, Pid} ->
             Pid ! {coap_request, EpID, EndpointPid, undefined, Message},
             ok;
@@ -298,6 +299,14 @@ handle_ack(_Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiv
 	Sender ! {coap_ack, EpID, EndpointPid, Ref},
 	ok.
 
+get_handler(SupPid, EndpointPid, HandlerID, HandlerRegs) ->
+    case maps:find(HandlerID, HandlerRegs) of
+        error ->          
+            ecoap_handler_sup:start_handler(SupPid, EndpointPid, HandlerID);
+        {ok, Pid} ->
+            {ok, Pid}
+    end.
+
 request_complete(EndpointPid, #coap_message{options=Options}, Receiver) ->
     case coap_utils:get_option('Observe', Options) of
         undefined ->
@@ -314,6 +323,12 @@ request_complete(EndpointPid, #coap_message{options=Options}, Receiver) ->
 timeout_after(Time, EndpointPid, TrId, Event) ->
     erlang:send_after(Time, EndpointPid, {timeout, TrId, Event}).
 
+cancel_timer(Timer) ->
+    erlang:cancel_timer(Timer, [{async, true}, {info, false}]).
+
+native_time(Time) ->
+    erlang:convert_time_unit(Time, millisecond, native).
+
 % check deduplication flag to decide whether clean up state
 -ifdef(NODEDUP).
 check_next_state(_, State) -> next_state(undefined, State).
@@ -327,14 +342,14 @@ next_state(Stage, #{endpoint_pid:=EndpointPid}, State=#exchange{trid=TrId, timer
     State#exchange{stage=Stage, timer=Timer};
 % restart the timer
 next_state(Stage, #{endpoint_pid:=EndpointPid}, State=#exchange{trid=TrId, timer=Timer1}, Timeout) ->
-    _ = erlang:cancel_timer(Timer1),
+    _ = cancel_timer(Timer1),
     Timer2 = timeout_after(Timeout, EndpointPid, TrId, Stage),
     State#exchange{stage=Stage, timer=Timer2}.
 
 next_state(undefined, #exchange{timer=undefined}) ->
     undefined;
 next_state(undefined, #exchange{timer=Timer}) ->
-    _ = erlang:cancel_timer(Timer),
+    _ = cancel_timer(Timer),
     undefined;
 next_state(Stage, State=#exchange{timer=undefined}) ->
     State#exchange{stage=Stage};
@@ -342,9 +357,9 @@ next_state(Stage, State=#exchange{stage=Stage1, timer=Timer}) ->
     if
         % when going to another stage, the timer is cancelled
         Stage /= Stage1 ->
-            _ = erlang:cancel_timer(Timer),
+            _ = cancel_timer(Timer),
             State#exchange{stage=Stage, timer=undefined};
-        % when staying in current phase, the timer continues
+        % when staying in current stage, the timer continues
         true ->
             State
     end.

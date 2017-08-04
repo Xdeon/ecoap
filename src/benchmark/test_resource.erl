@@ -1,6 +1,6 @@
 -module(test_resource).
 -export([coap_discover/2, coap_get/5, coap_post/4, coap_put/4, coap_delete/4, 
-        coap_observe/4, coap_unobserve/1, coap_payload_adapter/2, handle_info/2, coap_ack/2]).
+        coap_observe/4, coap_unobserve/1, handle_notify/3, handle_info/3, coap_ack/2]).
 -export([start/0, stop/0]).
 
 -include_lib("ecoap_common/include/coap_def.hrl").
@@ -12,7 +12,7 @@ start() ->
     ok = application:start(mnesia),
     {atomic, ok} = mnesia:create_table(resources, []),
     {ok, _} = application:ensure_all_started(ecoap),
-    ok = ecoap_registry:register_handler([], ?MODULE, undefined).
+    ok = ecoap_registry:register_handler([{[], ?MODULE, undefined}]).
 
 stop() ->
     ok = application:stop(ecoap),
@@ -60,9 +60,11 @@ coap_unobserve({state, Prefix, Name}) ->
     io:format("unobserve ~p ~p~n", [Prefix, Name]),
     ok.
 
-coap_payload_adapter(Content, _Accept) -> {ok, Content}.
+handle_notify(Notification, _ObsReq, State) ->
+    {ok, Notification, State}.
 
-handle_info(_Message, State) -> {noreply, State}.
+handle_info(_Info, _ObsReq, State) -> 
+    {noreply, State}.
 
 coap_ack(_Ref, State) -> {ok, State}.
 

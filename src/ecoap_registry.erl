@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 %% API.
--export([start_link/0, get_links/0, register_handler/3, unregister_handler/1, match_handler/1, clear_registry/0]).
+-export([start_link/0, get_links/0, register_handler/1, unregister_handler/1, match_handler/1, clear_registry/0]).
 % -compile([export_all]).
 
 %% gen_server.
@@ -25,11 +25,11 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
--spec register_handler([binary()], module(), _) -> ok | {error, duplicated}.
-register_handler(Prefix, Module, Args) ->
-    gen_server:call(?MODULE, {register, Prefix, Module, Args}).
+% -spec register_handler([{[binary(), module(), _]}]) -> ok.
+register_handler(Regs) when is_list(Regs) -> 
+    gen_server:call(?MODULE, {register, Regs}).
 
--spec unregister_handler([binary()]) -> ok .
+-spec unregister_handler([binary()]) -> ok.
 unregister_handler(Prefix) ->
     gen_server:call(?MODULE, {unregister, Prefix}).
 
@@ -48,16 +48,21 @@ clear_registry() -> ets:delete_all_objects(?HANDLER_TAB).
 % this allows user to have one handler for "foo" and another for "foo/bar"
 
 match_handler([], Reg) ->
-    % check if a match-all handler exists
-    % this also serves as a root handler
+    % match root handler if exists
     case ets:lookup(Reg, []) of
         [Elem] -> Elem;
         [] -> undefined
     end;
 match_handler(Uri, Reg) ->
+    match_handler_helper(Uri, Reg).
+ 
+match_handler_helper([], _Reg) ->
+    % reach the end of matching
+    undefined;
+match_handler_helper(Uri, Reg) ->
     case ets:lookup(Reg, Uri) of
         [Elem] -> Elem;
-        [] -> match_handler(lists:droplast(Uri), Reg)
+        [] -> match_handler_helper(lists:droplast(Uri), Reg)
     end.
 
 % ask each handler to provide a link list
@@ -84,8 +89,8 @@ init([]) ->
     ets:insert(?HANDLER_TAB, {[<<".well-known">>, <<"core">>], resource_directory, undefined}),
     {ok, #state{}}.
 
-handle_call({register, Prefix, Module, Args}, _From, State) ->
-    ets:insert(?HANDLER_TAB, {Prefix, Module, Args}),
+handle_call({register, Reg}, _From, State) ->
+    ets:insert(?HANDLER_TAB, Reg),
     {reply, ok, State};    
 handle_call({unregister, Prefix}, _From, State) ->
     ets:delete(?HANDLER_TAB, Prefix),
@@ -118,11 +123,11 @@ match_test_() ->
     ?_assertEqual({[<<"foo">>, <<"bar">>], ?MODULE, undefined}, match_handler([<<"foo">>, <<"bar">>, <<"hoge">>], Tab))
     ].
 
-match_all_test_() ->
+match_root_test_() ->
     Tab = ets:new(ecoap_registry, [set]),
     ets:insert(Tab, {[], ?MODULE, undefined}),
-    [?_assertEqual({[], ?MODULE, undefined}, match_handler([<<"foo">>], Tab)),
-    ?_assertEqual({[], ?MODULE, undefined}, match_handler([<<"foo">>, <<"bar">>], Tab))
+    [?_assertEqual(undefined, match_handler([<<"foo">>, <<"bar">>], Tab)),
+    ?_assertEqual({[], ?MODULE, undefined}, match_handler([], Tab))
     ].
 
 -endif.

@@ -1,6 +1,6 @@
 -module(benchmark).
 -export([coap_discover/2, coap_get/5, coap_post/4, coap_put/4, coap_delete/4, 
-        coap_observe/4, coap_unobserve/1, coap_payload_adapter/2, handle_info/2, coap_ack/2]).
+        coap_observe/4, coap_unobserve/1, handle_notify/3, handle_info/3, coap_ack/2]).
 -export([start/0, stop/0]).
 -export([fib/1]).
 
@@ -10,10 +10,12 @@
 start() ->
     _ = application:stop(ecoap),
     {ok, _} = application:ensure_all_started(ecoap),
-    ok = ecoap_registry:register_handler([<<"benchmark">>], ?MODULE, undefined),
-    ok = ecoap_registry:register_handler([<<"fibonacci">>], ?MODULE, undefined),
-    ok = ecoap_registry:register_handler([<<"helloWorld">>], ?MODULE, undefined),
-    ok = ecoap_registry:register_handler([<<"shutdown">>], ?MODULE, undefined).
+    ok = ecoap_registry:register_handler([
+            {[<<"benchmark">>], ?MODULE, undefined},
+            {[<<"fibonacci">>], ?MODULE, undefined},
+            {[<<"helloWorld">>], ?MODULE, undefined},
+            {[<<"shutdown">>], ?MODULE, undefined}
+        ]).
 
 stop() ->
     application:stop(ecoap).
@@ -27,13 +29,13 @@ coap_get(_EpID, [<<"benchmark">>], _Name, _Query, _Request) ->
 coap_get(_EpID, [<<"fibonacci">>], _Name, [], _Request) ->
     {ok, #coap_content{payload = <<"fibonacci(20) = ", (integer_to_binary(fib(20)))/binary>>}};
 coap_get(_EpID, [<<"fibonacci">>], _Name, [Query|_], _Request) ->
-    Num = case re:run(Query, "^n=[0-9]+") of
-        {match, [{Pos, Len}]} ->
-            binary_to_integer(lists:nth(2, binary:split(binary:part(Query, Pos, Len), <<$=>>)));
+    Num = case re:run(Query, "^n=[0-9]+$") of
+        {match, _} ->
+            lists:nth(2, binary:split(Query, <<$=>>));
         nomatch -> 
-            20
+            <<"20">>
     end,
-    {ok, #coap_content{payload= <<"fibonacci(", (integer_to_binary(Num))/binary, ") = ", (integer_to_binary(fib(Num)))/binary>>}};
+    {ok, #coap_content{payload= <<"fibonacci(", Num/binary, ") = ", (integer_to_binary(fib(binary_to_integer(Num))))/binary>>}};
 coap_get(_EpID, [<<"helloWorld">>], _Name, _Query, _Request) ->
     {ok, #coap_content{payload = <<"Hello World!">>, format = 0}};
 coap_get(_EpID, [<<"shutdown">>], _Name, _Query, _Request) ->
@@ -59,9 +61,9 @@ coap_observe(_EpID, _Prefix, _Name, _Request) ->
 coap_unobserve(_Obstate) ->
     ok.
 
-coap_payload_adapter(Content, _Accept) -> {ok, Content}.
+handle_notify(Notification, _ObsReq, State) ->{ok, Notification, State}.
 
-handle_info(_Message, State) -> {noreply, State}.
+handle_info(_Info, _ObsReq, State) -> {noreply, State}.
 
 coap_ack(_Ref, State) -> {ok, State}.
 
