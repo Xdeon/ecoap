@@ -15,9 +15,12 @@
 -export([terminate/2]).
 -export([code_change/3]).
 
+%% TODO: are configurable {active, N} necessary here?
+%% parameters below highly depend on experiments
+%% they give acceptable performance on AWS EC2 instance
 -define(LOW_ACTIVE_PACKETS, 200).
 -define(HIGH_ACTIVE_PACKETS, 400).
--define(CONCURRENCY_THRESHOLD, 1000).
+-define(CONCURRENCY_THRESHOLD, 2000).
 
 -define(DEFAULT_SOCK_OPTS,
 	[binary, {active, ?LOW_ACTIVE_PACKETS}, {reuseaddr, true}]).
@@ -158,11 +161,8 @@ handle_info({'DOWN', Ref, process, _Pid, _Reason}, State) ->
  		error -> 
  			{noreply, State}
  	end;
-handle_info({udp_passive, Socket}, State=#state{sock=Socket, endpoint_refs=EndPointRefs}) ->
-	Concurrency = maps:size(EndPointRefs),
-	ActivePackets = if Concurrency < ?CONCURRENCY_THRESHOLD -> ?LOW_ACTIVE_PACKETS; 
-					   true -> ?HIGH_ACTIVE_PACKETS 
-					end,
+handle_info({udp_passive, Socket}, State=#state{sock=Socket}) ->
+	ActivePackets = next_active_packets(State),
 	ok = inet:setopts(Socket, [{active, ActivePackets}]),
 	{noreply, State};
 	
@@ -189,6 +189,13 @@ merge_opts(Defaults, Options) ->
                     false -> [Opt | Acc]
                 end
     end, Defaults, Options).
+
+next_active_packets(State) ->
+	Concurrency = maps:size(State#state.endpoint_refs),
+	if 
+		Concurrency < ?CONCURRENCY_THRESHOLD -> ?LOW_ACTIVE_PACKETS;
+		true -> ?HIGH_ACTIVE_PACKETS
+	end.
 
 find_endpoint(EpID) ->
 	case get(EpID) of
