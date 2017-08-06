@@ -1,5 +1,5 @@
 -module(endpoint_timer).
--export([start_timer/2, cancel_timer/1, restart_timer/1, kick_timer/1, is_timeout/1]).
+-export([start_timer/2, cancel_timer/1, restart_timer/1, kick_timer/1, is_kicked/1]).
 
 % This timer is intended to be used when NODEDUP is set or EXCHANGE_LIFETIME is strongly reduced.
 % Under such situations, it is desired that an ecoap_endpoint process could determine
@@ -36,11 +36,25 @@ restart_timer(State=#timer_state{interval=Time, msg=Msg}) ->
 -spec kick_timer(timer_state()) -> timer_state().
 kick_timer(State=#timer_state{kicked=false}) ->
 	State#timer_state{kicked=true};
-kick_timer(State=#timer_state{kicked=true}) ->
+kick_timer(State) ->
 	State.
 
--spec is_timeout(timer_state()) -> boolean().
-is_timeout(#timer_state{kicked=true}) ->
-	false;
-is_timeout(#timer_state{kicked=false}) ->
-	true.
+-spec is_kicked(timer_state()) -> boolean().
+is_kicked(#timer_state{kicked=Kicked}) ->
+	Kicked.
+
+-ifdef(TEST).
+
+-include_lib("eunit/include/eunit.hrl").
+
+timer_test_() ->
+	Msg = timeout,
+	Timer = start_timer(10, Msg),
+	Timer2 = kick_timer(Timer),
+	[
+		?_assertEqual(false, is_kicked(Timer)),
+		?_assertEqual(Msg, receive Any -> Any end),
+		?_assertEqual(true, is_kicked(Timer2))
+	].
+
+-endif.

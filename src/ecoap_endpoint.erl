@@ -393,11 +393,11 @@ update_state(State=#state{trans=Trans, timer=Timer}, TrId, TrState) ->
     {noreply, State#state{trans=Trans2, timer=endpoint_timer:kick_timer(Timer)}}.
 
 purge_state(State=#state{tokens=Tokens, trans=Trans, rescnt=Count, timer=Timer}) ->
-    case {maps:size(Tokens) + maps:size(Trans) + Count, endpoint_timer:is_timeout(Timer)} of
-        {0, true} -> 
+    case {maps:size(Tokens) + maps:size(Trans) + Count, endpoint_timer:is_kicked(Timer)} of
+        {0, false} -> 
             % io:format("All trans expired~n"),
             {stop, normal, State};
-        _Else -> 
+        _ -> 
             Timer2 = endpoint_timer:restart_timer(Timer),
             % io:format("Ongoing trans exist~n"),
             {noreply, State#state{timer=Timer2}}
