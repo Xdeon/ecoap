@@ -1,8 +1,8 @@
 -module(ecoap_exchange).
 
 %% API
--export([init/2, received/3, send/3, timeout/3, awaits_response/1, in_transit/1, not_expired/2]).
--export([idle/3, got_non/3, sent_non/3, got_rst/3, await_aack/3, pack_sent/3, await_pack/3, aack_sent/3]).
+-export([init/2, received/3, send/3, timeout/3, awaits_response/1, in_transit/1, cancel_msg/1, not_expired/2]).
+-export([idle/3, got_non/3, sent_non/3, got_rst/3, await_aack/3, pack_sent/3, await_pack/3, aack_sent/3, cancelled/3]).
 
 -define(ACK_TIMEOUT, 2000).
 -define(ACK_RANDOM_FACTOR, 1000). % ACK_TIMEOUT*0.5
@@ -31,7 +31,6 @@
 
 -include_lib("ecoap_common/include/coap_def.hrl").
 
-% -record(state, {phase, sock, cid, channel, tid, resp, receiver, msg, timer, retry_time, retry_count}).
 -spec not_expired(integer(), exchange()) -> boolean().
 not_expired(CurrentTime, #exchange{timestamp=Timestamp, expire_time=ExpireTime}) ->
     CurrentTime - Timestamp < ExpireTime.
@@ -54,6 +53,11 @@ send(Message, TransArgs, State=#exchange{stage=Stage}) ->
 -spec timeout(atom(), ecoap_endpoint:trans_args(), exchange()) -> exchange().
 timeout(Event, TransArgs, State=#exchange{stage=Stage}) ->
     ?MODULE:Stage({timeout, Event}, TransArgs, State).
+
+% cancel msg
+-spec cancel_msg(exchange()) -> exchange().
+cancel_msg(State) ->
+    State#exchange{stage=cancelled, msgbin = <<>>}.
 
 % check if we can send a response
 -spec awaits_response(exchange()) -> boolean().
@@ -83,7 +87,6 @@ idle(Msg={out, #coap_message{type='NON'}}, TransArgs, State=#exchange{}) ->
 idle(Msg={out, #coap_message{type='CON'}}, TransArgs, State=#exchange{}) ->
     out_con(Msg, TransArgs, State#exchange{expire_time=native_time(?EXCHANGE_LIFETIME)}).
 
-
 % --- incoming NON
 -spec in_non({in, binary()}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
 in_non({in, BinMessage}, TransArgs, State) ->
@@ -105,7 +108,6 @@ got_non({in, _Message}, _TransArgs, State) ->
     next_state(got_non, State).
 
 % --- outgoing NON
-
 -spec out_non({out, coap_message()}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
 out_non({out, Message}, #{sock:=Socket, sock_module:=SocketModule, ep_id:=EpID}, State) ->
     %io:fwrite("~p send outgoing non msg ~p~n", [self(), Message]),
@@ -129,7 +131,6 @@ got_rst({in, _BinMessage}, _TransArgs, State)->
     next_state(got_rst, State).
 
 % --- incoming CON->ACK|RST
-
 -spec in_con({in, binary()}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
 in_con({in, BinMessage}, TransArgs, State) ->
     case catch coap_message:decode(BinMessage) of
@@ -211,7 +212,6 @@ pack_sent({timeout, await_aack}, _TransArgs, State) ->
 % TODO: CON->CON does not cancel retransmission of the request
 
 % --- outgoing CON->ACK|RST
-
 -spec out_con({out, coap_message()}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
 out_con({out, Message}, TransArgs=#{sock:=Socket, sock_module:=SocketModule, ep_id:=EpID}, State) ->
     %io:fwrite("~p send outgoing con msg ~p~n", [self(), Message]),
@@ -261,8 +261,11 @@ aack_sent({timeout, await_pack}, _TransArgs, State) ->
 	% ignore the msg
 	next_state(aack_sent, State).
 
-% utility functions
+-spec cancelled({_, _}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
+cancelled({_, _}, _TransArgs, State) ->
+    State.
 
+% utility functions
 handle_request(Message=#coap_message{code=Method, options=Options}, 
     #{ep_id:=EpID, handler_sup:=HdlSupPid, endpoint_pid:=EndpointPid, handler_regs:=HandlerRegs}, #exchange{receiver=undefined}) ->
     %io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
