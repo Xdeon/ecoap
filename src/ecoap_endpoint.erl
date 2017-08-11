@@ -153,8 +153,18 @@ handle_cast({send_response, Message, Receiver}, State) ->
     make_new_response(Message, Receiver, State);
 % cancel request include removing token, request exchange state and receiver reference
 handle_cast({cancel_request, Receiver}, State=#state{tokens=Tokens, trans=Trans, receivers=Receivers}) ->
-    {Token, TrId} = maps:get(Receiver, Receivers, {undefined, undefined}),
-    {noreply, State#state{tokens=maps:remove(Token, Tokens), trans=maps:remove(TrId, Trans), receivers=maps:remove(Receiver, Receivers)}};
+    case maps:find(Receiver, Receivers) of
+        {ok, {Token, TrId}} ->
+            Tokens2 = maps:remove(Token, Tokens),
+            Receivers2 = maps:remove(Receiver, Receivers),
+            Trans2 = case maps:find(TrId, Trans) of
+                {ok, TrState} -> maps:update(TrId, ecoap_exchange:cancel_msg(TrState), Trans);
+                error -> Trans
+            end,
+            {noreply, State#state{tokens=Tokens2, trans=Trans2, receivers=Receivers2}};
+        error ->
+            {noreply, State}
+    end;
 handle_cast(_Msg, State) ->
     error_logger:error_msg("unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
 	{noreply, State}.
