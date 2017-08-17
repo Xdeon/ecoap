@@ -62,7 +62,7 @@
 					{error, error_code(), coap_content()} | 
 					{separate, reference()}.
 -type observe_response() :: {ok, reference(), pid(), non_neg_integer(), success_code(), coap_content()} | response().
--type observe_key() :: {string(), atom() | non_neg_integer()}.
+-type observe_key() :: {binary(), atom() | non_neg_integer()}.
 -opaque state() :: #state{}.
 -export_type([state/0]).
 
@@ -269,7 +269,7 @@ assemble_request(Method, Uri, Options, Content) ->
 assemble_observe_request(Uri, Options) ->
 	{EpID, Req} = assemble_request('GET', Uri, coap_utils:add_option('Observe', 0, Options), #coap_content{}),
 	Accpet = coap_utils:get_option('Accpet', Options),
-	Key = {Uri, Accpet},
+	Key = {list_to_binary(Uri), Accpet},
 	{EpID, Key, Req}.
 
 convert_content(Content=#coap_content{}) -> Content;
