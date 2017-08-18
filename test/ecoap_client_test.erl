@@ -84,11 +84,11 @@ error_while_observe_block({Server, Client}) ->
     server_stub:send_response(Server, #coap_message{type='RST', id=BlockReqMsgId4}),
     timer:sleep(50),
     ReqRefs = ecoap_client:get_reqrefs(Client),
-    BlockRefs = ecoap_client:get_blockrefs(Client),
+    BlockRegs = ecoap_client:get_blockregs(Client),
     ObsRegs = ecoap_client:get_obsregs(Client),
     [
         ?_assertEqual(#{}, ReqRefs),
-        ?_assertEqual(#{}, BlockRefs),
+        ?_assertEqual(#{}, BlockRegs),
         ?_assertEqual(#{}, ObsRegs)
     ].
 
