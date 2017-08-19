@@ -10,11 +10,11 @@ start_link(SocketModule, Socket, EpID) ->
     {ok, SupPid} = supervisor:start_link(?MODULE, []),
     {ok, EpPid} = supervisor:start_child(SupPid,
         #{id => ecoap_endpoint,
-         start => {ecoap_endpoint, start_link, [SupPid, SocketModule, Socket, EpID]},
-         restart => permanent, 
-         shutdown => 5000, 
-         type => worker, 
-         modules => [ecoap_endpoint]}),
+          start => {ecoap_endpoint, start_link, [SupPid, SocketModule, Socket, EpID]},
+          restart => permanent, 
+          shutdown => 5000, 
+          type => worker, 
+          modules => [ecoap_endpoint]}),
     {ok, SupPid, EpPid}.
 
 init([]) ->
