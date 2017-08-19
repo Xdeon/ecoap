@@ -147,133 +147,6 @@ async_request(Pid, Method, Uri, Content, Options) ->
 	{EpID, Req} = assemble_request(Method, Uri, Options, Content),
 	send_request(Pid, EpID, Req).
 
-% Note this function can cancel an async request that has not been responded yet, e.g. a long term seperate response
-% It can also be used to cancel an observe relation reactively, 
-% i.e. cancel it by removing token info and let next notification be rejected
-% Blockwise transfer is cancelled by removing the origin request token and its record completely
-% so that if the cancellation occurs before a blockwise transfer finish, next block response will be discarded and no new request will be sent
-
--spec cancel_async_request(pid(), reference()) -> ok.
-cancel_async_request(Pid, Ref) ->
-	gen_server:cast(Pid, {cancel_async_request, Ref}).
-
-% flush unwanted async response/notification, i.e. after cancelling an async request
-flush(ReqRef) ->
-	receive
-		{coap_response, ReqRef, _, _} ->
-			flush(ReqRef);
-		{coap_notify, ReqRef, _, _, _} ->
-			flush(ReqRef)
-	after 0 ->
-		ok
-	end.	
-
-% Start an observe relation to a specific resource
-
-% If the observe relation is established sucessfully, this function returns the first notification as {ok, ReqRef, Pid, N, Code, Content}
-% where ReqRef is the reference used to identify following notifications, Pid is the ecoap_client pid, N is the initial observe sequence number.
-% If the resource is not observable, the function just returns the response as if it was from a plain GET request.
-% If the request time out, this function returns {error, timeout}.
-
-% Following notifications will be sent to the caller process as messages in form of {coap_notify, ReqRef, Pid, N, Res}
-% where ReqRef is the reference, Pid is the ecoap_client pid, N is the observe sequence number and Res is the response content.
-% If some error happened in server side, e.g. a reset/error code is received during observing
-% the response is sent to the caller process as message in form of {coap_notify, ReqRef, Pid, undefined, Res} where Res is {error, _}.
-
-% If the ecoap_client process crashed during the calll, the call fails with reason noproc.
-
--spec observe(pid(), string()) -> observe_response().
-observe(Pid, Uri) ->
-	observe(Pid, Uri, #{}).
-
--spec observe(pid(), string(), optionset()) -> observe_response().
-observe(Pid, Uri, Options) ->
-	{EpID, Key, Req} = assemble_observe_request(Uri, Options),
-	% start monitor after we got ReqRef in case the gen_server call crash and we are left with the unused monitor
-	{ok, ReqRef} = gen_server:call(Pid, {start_observe, EpID, Key, Req, self()}),
-	MonRef = erlang:monitor(process, Pid),
-	receive 
-		% Server does not support observing the resource or an error happened
-		{coap_notify, ReqRef, Pid, undefined, Res} ->
-			erlang:demonitor(MonRef, [flush]),
-			Res;
-		{coap_notify, ReqRef, Pid, N, {ok, Code, Content}} -> 
-			erlang:demonitor(MonRef, [flush]),
-			{ok, ReqRef, Pid, N, Code, Content};
-		{'DOWN', MonRef, process, Pid, Reason} ->
-			exit(Reason)
-	end.
-
--spec async_observe(pid(), string()) -> {ok, reference()}.
-async_observe(Pid, Uri) ->
-	async_observe(Pid, Uri, #{}).
-
--spec async_observe(pid(), string(), optionset()) -> {ok, reference()}.
-async_observe(Pid, Uri, Options) ->
-	{EpID, Key, Req} = assemble_observe_request(Uri, Options),
-	gen_server:call(Pid, {start_observe, EpID, Key, Req, self()}).
-
-% Cancel an observe relation to a specific resource
-
-% If unobserve resource succeed, the function returns the response as if it was from a plain GET request;
-% If the request time out, this function returns {error, timeout}.
-% If no matching observe relation exists, the function returns {error, no_observe}.
-% note observe relation is matched against URI and accept content-format;
-% If the ecoap_client process crashed during the call, the call fails with reason noproc.
-
--spec unobserve(pid(), reference()) -> response() | {error, no_observe}.
-unobserve(Pid, Ref) ->
-	unobserve(Pid, Ref, undefined).
-
--spec unobserve(pid(), reference(), binary() | undefined) -> response() | {error, no_observe}.
-unobserve(Pid, Ref, ETag) ->
-	case gen_server:call(Pid, {cancel_observe, Ref, ETag}) of
-		{ok, ReqRef} ->
-			MonRef = erlang:monitor(process, Pid),
-			receive 
-				{coap_response, ReqRef, Pid, Res} -> 
-					erlang:demonitor(MonRef, [flush]),
-					Res;
-				{'DOWN', MonRef, process, Pid, Reason} -> 
-					exit(Reason)
-			end;
-		Else -> Else
-	end.
-
--spec async_unobserve(pid(), reference()) -> {ok, reference()} | {error, no_observe}.
-async_unobserve(Pid, Ref) ->
-	async_unobserve(Pid, Ref, undefined).
-
--spec async_unobserve(pid(), reference(), binary() | undefined) -> {ok, reference()} | {error, no_observe}.
-async_unobserve(Pid, Ref, ETag) ->
-	gen_server:call(Pid, {cancel_observe, Ref, ETag}).
-
-assemble_request(Method, Uri, Options, Content) ->
-	{_Scheme, Host, {PeerIP, PortNo}, Path, Query} = coap_utils:decode_uri(Uri),
-	Options2 = coap_utils:add_option('Uri-Path', Path, 
-					coap_utils:add_option('Uri-Query', Query,
-						coap_utils:add_option('Uri-Host', Host, 
-							coap_utils:add_option('Uri-Port', PortNo, Options)))),
-	EpID = {PeerIP, PortNo},
-	Req = {'CON', Method, Options2, convert_content(Content)},
-	{EpID, Req}.
-
-assemble_observe_request(Uri, Options) ->
-	{_Scheme, Host, {PeerIP, PortNo}, Path, Query} = coap_utils:decode_uri(Uri),
-	Accpet = coap_utils:get_option('Accpet', Options),
-	Options2 = coap_utils:add_option('Observe', 0,
-					coap_utils:add_option('Uri-Path', Path, 
-						coap_utils:add_option('Uri-Query', Query,
-							coap_utils:add_option('Uri-Host', Host, 
-								coap_utils:add_option('Uri-Port', PortNo, Options))))),
-	EpID = {PeerIP, PortNo},
-	Key = {EpID, Path, Accpet},
-	Req = {'CON', 'GET', Options2, #coap_content{}},
-	{EpID, Key, Req}.
-
-convert_content(Content=#coap_content{}) -> Content;
-convert_content(Content) when is_binary(Content) -> #coap_content{payload=Content}.
-
 % send_request_sync(Pid, EpID, Req, ReplyPid) ->
 % 	% set timeout to infinity because ecoap_endpoint will always return a response, 
 % 	% i.e. an ordinary response or {error, timeout} when server does not respond to a confirmable request
@@ -284,20 +157,7 @@ send_request(Pid, EpID, Req) ->
 
 send_request(Pid, EpID, Req, Timeout) ->
 	{ok, ReqRef} = gen_server:call(Pid, {send_request, EpID, Req, self()}),
-	MonRef = erlang:monitor(process, Pid),
-	receive 
-		{coap_response, ReqRef, Pid, Result} ->
-			erlang:demonitor(MonRef, [flush]),
-			Result;
-		{'DOWN', MonRef, _, _, Reason} ->
-			% target process died with Reason and so do we
-			exit(Reason)
-	after Timeout ->
-		erlang:demonitor(MonRef, [flush]),
-		cancel_async_request(Pid, ReqRef),
-		flush(ReqRef),
-		{error, timeout}
-	end.
+	wait_for_response(Pid, ReqRef, Timeout).
 		
 % send_request(Pid, EpID, Req, Timeout) ->
 % 	Tag = make_ref(),
@@ -336,6 +196,139 @@ send_request(Pid, EpID, Req, Timeout) ->
 	
 % check_exit(timeout) -> {error, timeout};
 % check_exit(Reason) -> exit(Reason).
+
+% Start an observe relation to a specific resource
+
+% If the observe relation is established sucessfully, this function returns the first notification as {ok, ReqRef, Pid, N, Code, Content}
+% where ReqRef is the reference used to identify following notifications, Pid is the ecoap_client pid, N is the initial observe sequence number.
+% If the resource is not observable, the function just returns the response as if it was from a plain GET request.
+% If the request time out, this function returns {error, timeout}.
+
+% Following notifications will be sent to the caller process as messages in form of {coap_notify, ReqRef, Pid, N, Res}
+% where ReqRef is the reference, Pid is the ecoap_client pid, N is the observe sequence number and Res is the response content.
+% If some error happened in server side, e.g. a reset/error code is received during observing
+% the response is sent to the caller process as message in form of {coap_notify, ReqRef, Pid, undefined, Res} where Res is {error, _}.
+
+% If the ecoap_client process crashed during the calll, the call fails with reason noproc.
+
+-spec observe(pid(), string()) -> observe_response().
+observe(Pid, Uri) ->
+	observe(Pid, Uri, #{}).
+
+-spec observe(pid(), string(), optionset()) -> observe_response().
+observe(Pid, Uri, Options) ->
+	{EpID, Key, Req} = assemble_observe_request(Uri, Options),
+	% start monitor after we got ReqRef in case the gen_server call crash and we are left with the unused monitor
+	{ok, ReqRef} = gen_server:call(Pid, {start_observe, EpID, Key, Req, self()}),
+	wait_for_response(Pid, ReqRef, infinity).
+
+-spec async_observe(pid(), string()) -> {ok, reference()}.
+async_observe(Pid, Uri) ->
+	async_observe(Pid, Uri, #{}).
+
+-spec async_observe(pid(), string(), optionset()) -> {ok, reference()}.
+async_observe(Pid, Uri, Options) ->
+	{EpID, Key, Req} = assemble_observe_request(Uri, Options),
+	gen_server:call(Pid, {start_observe, EpID, Key, Req, self()}).
+
+% Cancel an observe relation to a specific resource
+
+% If unobserve resource succeed, the function returns the response as if it was from a plain GET request;
+% If the request time out, this function returns {error, timeout}.
+% If no matching observe relation exists, the function returns {error, no_observe}.
+% note observe relation is matched against URI and accept content-format;
+% If the ecoap_client process crashed during the call, the call fails with reason noproc.
+
+-spec unobserve(pid(), reference()) -> response() | {error, no_observe}.
+unobserve(Pid, Ref) ->
+	unobserve(Pid, Ref, undefined).
+
+-spec unobserve(pid(), reference(), binary() | undefined) -> response() | {error, no_observe}.
+unobserve(Pid, Ref, ETag) ->
+	case gen_server:call(Pid, {cancel_observe, Ref, ETag}) of
+		{ok, ReqRef} -> wait_for_response(Pid, ReqRef, infinity);
+		Else -> Else
+	end.
+
+-spec async_unobserve(pid(), reference()) -> {ok, reference()} | {error, no_observe}.
+async_unobserve(Pid, Ref) ->
+	async_unobserve(Pid, Ref, undefined).
+
+-spec async_unobserve(pid(), reference(), binary() | undefined) -> {ok, reference()} | {error, no_observe}.
+async_unobserve(Pid, Ref, ETag) ->
+	gen_server:call(Pid, {cancel_observe, Ref, ETag}).
+
+wait_for_response(Pid, ReqRef, Timeout) ->
+	MonRef = erlang:monitor(process, Pid),
+	receive
+		{coap_response, ReqRef, Pid, Result} ->
+			erlang:demonitor(MonRef, [flush]),
+			Result;
+		% Server does not support observing the resource or an error happened
+		{coap_notify, ReqRef, Pid, undefined, Res} ->
+			erlang:demonitor(MonRef, [flush]),
+			Res;
+		{coap_notify, ReqRef, Pid, N, {ok, Code, Content}} -> 
+			erlang:demonitor(MonRef, [flush]),
+			{ok, ReqRef, Pid, N, Code, Content};
+		% if target process is on a remote node
+		{'DOWN', MonRef, _, _, noconnection} ->
+			exit({nodedown, node(Pid)});
+		% target process exit with Reason and so do we
+		{'DOWN', MonRef, process, Pid, Reason} -> 
+			exit(Reason)
+	after Timeout ->
+		erlang:demonitor(MonRef, [flush]),
+		cancel_async_request(Pid, ReqRef),
+		exit(timeout)
+	end.
+
+% Note this function can cancel an async request that has not been responded yet, e.g. a long term seperate response
+% It can also be used to cancel an observe relation reactively, 
+% i.e. cancel it by removing token info and let next notification be rejected
+% Blockwise transfer is cancelled by removing the origin request token and its record completely
+% so that if the cancellation occurs before a blockwise transfer finish, next block response will be discarded and no new request will be sent
+
+-spec cancel_async_request(pid(), reference()) -> ok.
+cancel_async_request(Pid, Ref) ->
+	gen_server:cast(Pid, {cancel_async_request, Ref}).
+
+% flush unwanted async response/notification, i.e. after cancelling an async request
+flush(ReqRef) ->
+	receive
+		{coap_response, ReqRef, _, _} ->
+			flush(ReqRef);
+		{coap_notify, ReqRef, _, _, _} ->
+			flush(ReqRef)
+	after 0 ->
+		ok
+	end.	
+
+assemble_request(Method, Uri, Options, Content) ->
+	{_Scheme, Host, {PeerIP, PortNo}, Path, Query} = coap_utils:decode_uri(Uri),
+	Options2 = coap_utils:add_option('Uri-Path', Path, 
+					coap_utils:add_option('Uri-Query', Query,
+						coap_utils:add_option('Uri-Host', Host, 
+							coap_utils:add_option('Uri-Port', PortNo, Options)))),
+	EpID = {PeerIP, PortNo},
+	Req = {'CON', Method, Options2, convert_content(Content)},
+	{EpID, Req}.
+
+assemble_observe_request(Uri, Options) ->
+	{_Scheme, Host, {PeerIP, PortNo}, Path, Query} = coap_utils:decode_uri(Uri),
+	Accpet = coap_utils:get_option('Accpet', Options),
+	Options2 = coap_utils:add_option('Observe', 0,
+					coap_utils:add_option('Uri-Path', Path, 
+						coap_utils:add_option('Uri-Query', Query,
+							coap_utils:add_option('Uri-Host', Host, 
+								coap_utils:add_option('Uri-Port', PortNo, Options))))),
+	EpID = {PeerIP, PortNo},
+	Key = {EpID, Path, Accpet},
+	Req = {'CON', 'GET', Options2, #coap_content{}},
+	{EpID, Key, Req}.
+
+convert_content(Content=#coap_content{}) -> Content;
+convert_content(Content) when is_binary(Content) -> #coap_content{payload=Content}.
 
 -ifdef(TEST).
 
