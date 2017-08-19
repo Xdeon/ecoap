@@ -248,20 +248,6 @@ async_unobserve(Pid, Ref) ->
 async_unobserve(Pid, Ref, ETag) ->
 	gen_server:call(Pid, {cancel_observe, Ref, ETag}).
 
--ifdef(TEST).
-
-% utility function for test purpose
--spec get_reqrefs(pid()) -> map().
-get_reqrefs(Pid) -> gen_server:call(Pid, get_reqrefs).
-
--spec get_obsregs(pid()) -> map().
-get_obsregs(Pid) -> gen_server:call(Pid, get_obsregs).
-
--spec get_blockregs(pid()) -> map().
-get_blockregs(Pid) -> gen_server:call(Pid, get_blockregs).
-
--endif.
-
 assemble_request(Method, Uri, Options, Content) ->
 	{_Scheme, Host, {PeerIP, PortNo}, Path, Query} = coap_utils:decode_uri(Uri),
 	Options2 = coap_utils:add_option('Uri-Path', Path, 
@@ -298,14 +284,16 @@ send_request(Pid, EpID, Req) ->
 
 send_request(Pid, EpID, Req, Timeout) ->
 	{ok, ReqRef} = gen_server:call(Pid, {send_request, EpID, Req, self()}),
-	ToMref = erlang:monitor(process, Pid),
+	MonRef = erlang:monitor(process, Pid),
 	receive 
 		{coap_response, ReqRef, Pid, Result} ->
+			erlang:demonitor(MonRef, [flush]),
 			Result;
-		{'DOWN', ToMref, _, _, Reason} ->
+		{'DOWN', MonRef, _, _, Reason} ->
 			% target process died with Reason and so do we
 			exit(Reason)
 	after Timeout ->
+		erlang:demonitor(MonRef, [flush]),
 		cancel_async_request(Pid, ReqRef),
 		flush(ReqRef),
 		{error, timeout}
@@ -348,6 +336,20 @@ send_request(Pid, EpID, Req, Timeout) ->
 	
 % check_exit(timeout) -> {error, timeout};
 % check_exit(Reason) -> exit(Reason).
+
+-ifdef(TEST).
+
+% utility function for test purpose
+-spec get_reqrefs(pid()) -> map().
+get_reqrefs(Pid) -> gen_server:call(Pid, get_reqrefs).
+
+-spec get_obsregs(pid()) -> map().
+get_obsregs(Pid) -> gen_server:call(Pid, get_obsregs).
+
+-spec get_blockregs(pid()) -> map().
+get_blockregs(Pid) -> gen_server:call(Pid, get_blockregs).
+
+-endif.
 
 %% gen_server.
 
