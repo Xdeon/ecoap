@@ -73,7 +73,7 @@ send_datagram(Socket, {PeerIP, PeerPortNo}, Datagram) ->
 %% gen_server.
 
 init([InPort, Opts]) ->
-	% process_flag(trap_exit, true),
+	process_flag(trap_exit, true),
 	{ok, Socket} = gen_udp:open(InPort, merge_opts(?DEFAULT_SOCK_OPTS, Opts)),
 	io:format("socket setting: ~p~n", [inet:getopts(Socket, [recbuf, sndbuf, buffer])]),
 	{ok, #state{sock=Socket}}.
@@ -83,14 +83,7 @@ init(SupPid, InPort, Opts) ->
 	error_logger:info_msg("coap listen on *:~p~n", [InPort]),
 	register(?MODULE, self()),
 	ok = proc_lib:init_ack({ok, self()}),
-	{ok, Pid} = supervisor:start_child(SupPid, 
-		#{id => endpoint_sup_sup,
-      	  start =>{endpoint_sup_sup, start_link, []},
-		  restart => temporary,
-		  shutdown => infinity,
-		  type => supervisor,
-		  modules => [endpoint_sup_sup]}),
-    link(Pid),
+ 	{_, Pid, _, _} = lists:keyfind(endpoint_sup_sup, 1, supervisor:which_children(SupPid)),
     gen_server:enter_loop(?MODULE, [], State#state{endpoint_pool=Pid}, {local, ?MODULE}).
 
 % get an endpoint when being as a client

@@ -59,7 +59,8 @@ init([EndpointPid, ID={_, Uri, Query}]) ->
             {ok, #state{endpoint_pid=EndpointPid, id=ID, uri=Uri, prefix=Prefix, suffix=uri_suffix(Prefix, Uri), query=Query, module=Module, args=Args,
                 insegs=orddict:new(), obseq=0}};
         undefined ->
-            {stop, 'NotFound'}
+            % use shutdown as reason to avoid crash report logging
+            {stop, shutdown}
     end.
 
 handle_call(_Request, _From, State) ->
