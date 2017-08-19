@@ -275,7 +275,7 @@ handle_request(Message=#coap_message{code=Method, options=Options},
         {ok, Pid} ->
             Pid ! {coap_request, EpID, EndpointPid, undefined, Message},
             ok;
-        {error, 'NotFound'} ->
+        {error, shutdown} ->
         	{ok, _} = ecoap_endpoint:send(EndpointPid,
                 coap_utils:response({error, 'NotFound'}, Message)),
             ok
