@@ -33,7 +33,7 @@
 
 -spec not_expired(integer(), exchange()) -> boolean().
 not_expired(CurrentTime, #exchange{timestamp=Timestamp, expire_time=ExpireTime}) ->
-    erlang:convert_time_unit(CurrentTime - Timestamp, native, millisecond) < ExpireTime.
+    CurrentTime - Timestamp < ExpireTime.
 
 -spec init(ecoap_endpoint:trid(), undefined | ecoap_endpoint:receiver()) -> exchange().
 init(TrId, Receiver) ->
@@ -76,16 +76,16 @@ in_transit(_State) ->
 % ->NON
 -spec idle({in | out, binary()}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
 idle(Msg={in, <<1:2, 1:2, _:12, _Tail/bytes>>}, TransArgs, State) ->
-    in_non(Msg, TransArgs, State#exchange{expire_time=?NON_LIFETIME});
+    in_non(Msg, TransArgs, State#exchange{expire_time=native_time(?NON_LIFETIME)});
 % ->CON
 idle(Msg={in, <<1:2, 0:2, _:12, _Tail/bytes>>}, TransArgs, State) ->
-    in_con(Msg, TransArgs, State#exchange{expire_time=?EXCHANGE_LIFETIME});
+    in_con(Msg, TransArgs, State#exchange{expire_time=native_time(?EXCHANGE_LIFETIME)});
 % NON->
 idle(Msg={out, #coap_message{type='NON'}}, TransArgs, State) ->
-    out_non(Msg, TransArgs, State#exchange{expire_time=?NON_LIFETIME});
+    out_non(Msg, TransArgs, State#exchange{expire_time=native_time(?NON_LIFETIME)});
 % CON->
 idle(Msg={out, #coap_message{type='CON'}}, TransArgs, State) ->
-    out_con(Msg, TransArgs, State#exchange{expire_time=?EXCHANGE_LIFETIME}).
+    out_con(Msg, TransArgs, State#exchange{expire_time=native_time(?EXCHANGE_LIFETIME)}).
 
 % --- incoming NON
 -spec in_non({in, binary()}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
@@ -322,6 +322,9 @@ request_complete(EndpointPid, #coap_message{options=Options}, Receiver) ->
 
 % erlang:start_timer(Time, Dest, Msg) -> TimerRef, receive {timeout, TimerRef, Msg}
 % erlang:send_after(Time, Dest, Msg) -> TimerRef, receive Msg
+
+native_time(Time) ->
+    erlang:convert_time_unit(Time, millisecond, native).
 
 timeout_after(Time, EndpointPid, TrId, Event) ->
     erlang:send_after(Time, EndpointPid, {timeout, TrId, Event}).
