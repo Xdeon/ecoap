@@ -17,7 +17,7 @@
 ERLANG_MK_FILENAME := $(realpath $(lastword $(MAKEFILE_LIST)))
 export ERLANG_MK_FILENAME
 
-ERLANG_MK_VERSION = 2017.07.06-8-g46bef5c
+ERLANG_MK_VERSION = 2017.08.28-1-gd9a9158
 ERLANG_MK_WITHOUT = 
 
 # Make 3.81 and 3.82 are deprecated.
@@ -4288,7 +4288,7 @@ endef
 # if given. Do it for all 3 possible Makefile file names.
 ifeq ($(NO_AUTOPATCH_ERLANG_MK),)
 define dep_autopatch_erlang_mk
-	$t for f in Makefile makefile GNUmakefile; do \
+	for f in Makefile makefile GNUmakefile; do \
 		if [ -f $(DEPS_DIR)/$1/$$f ]; then \
 			sed -i.bak s/'include *erlang.mk'/'include $$(if $$(ERLANG_MK_FILENAME),$$(ERLANG_MK_FILENAME),erlang.mk)'/ $(DEPS_DIR)/$1/$$f; \
 		fi \
@@ -4365,6 +4365,8 @@ define dep_autopatch_rebar.erl
 				lists:foreach(fun
 					({d, D}) ->
 						Write("ERLC_OPTS += -D" ++ atom_to_list(D) ++ "=1\n");
+					({d, DKey, DVal}) ->
+						Write("ERLC_OPTS += -D" ++ atom_to_list(DKey) ++ "=" ++ atom_to_list(DVal) ++ "\n");
 					({i, I}) ->
 						Write(["ERLC_OPTS += -I ", I, "\n"]);
 					({platform_define, Regex, D}) ->
