@@ -386,10 +386,7 @@ next_mid(MsgId) ->
 
 % find or initialize a new exchange
 create_exchange(TrId, Receiver, #state{trans=Trans}) ->
-    case maps:find(TrId, Trans) of
-        {ok, TrState} -> TrState;
-        error -> init_exchange(TrId, Receiver)
-    end.
+    maps:get(TrId, Trans, init_exchange(TrId, Receiver)).
 
 init_exchange(TrId, Receiver) ->
     ecoap_exchange:init(TrId, Receiver).
