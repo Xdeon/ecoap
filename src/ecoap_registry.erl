@@ -48,21 +48,14 @@ clear_registry() -> ets:delete_all_objects(?HANDLER_TAB).
 % this allows user to have one handler for "foo" and another for "foo/bar"
 
 match_handler([], Reg) ->
-    % match root handler if exists
-    case ets:lookup(Reg, []) of
-        [Elem] -> Elem;
-        [] -> undefined
-    end;
+    match(Reg, [], undefined);
 match_handler(Uri, Reg) ->
-    match_handler_helper(Uri, Reg).
- 
-match_handler_helper([], _Reg) ->
-    % reach the end of matching
-    undefined;
-match_handler_helper(Uri, Reg) ->
-    case ets:lookup(Reg, Uri) of
-        [Elem] -> Elem;
-        [] -> match_handler_helper(lists:droplast(Uri), Reg)
+    match(Reg, Uri, match_handler(lists:droplast(Uri), Reg)).
+
+match(Tab, Key, Default) ->
+    case ets:lookup(Tab, Key) of
+        [Val] -> Val;
+        [] -> Default
     end.
 
 % ask each handler to provide a link list
