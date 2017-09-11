@@ -31,6 +31,7 @@
 	timer = undefined :: undefined | reference()}).
 
 -include_lib("ecoap_common/include/coap_def.hrl").
+-include("ecoap.hrl").
 
 %% API.
 
@@ -134,7 +135,7 @@ code_change(_OldVsn, State, _Extra) ->
 %% Internal
 
 handle(EpID, Request, State=#state{endpoint_pid=EndpointPid, id=ID}) ->
-	Block1 = coap_utils:get_option('Block1', Request),
+	Block1 = ecoap_utils:get_option('Block1', Request),
     case catch assemble_payload(Request, Block1, State) of
         {error, Code} ->
             return_response(Request, {error, Code}, State);
@@ -142,8 +143,8 @@ handle(EpID, Request, State=#state{endpoint_pid=EndpointPid, id=ID}) ->
             % io:format("Has Block1~n"),
             register_handler(EndpointPid, ID),
             {ok, _} = ecoap_endpoint:send_response(EndpointPid, [],
-                coap_utils:set_option('Block1', Block1,
-                    coap_utils:response({ok, 'Continue'}, Request))),
+                ecoap_utils:set_option('Block1', Block1,
+                    ecoap_utils:response({ok, 'Continue'}, Request))),
             set_timeout(?EXCHANGE_LIFETIME, State2);
         {ok, Payload, State2} ->
             process_request(EpID, Request#coap_message{payload=Payload}, State2)
@@ -153,7 +154,8 @@ assemble_payload(#coap_message{payload=Payload}, undefined, State) ->
     {ok, Payload, State};
 assemble_payload(#coap_message{payload=Segment}, {Num, true, Size}, State=#state{insegs=Segs}) ->
     case byte_size(Segment) of
-        Size -> {'Continue', State#state{insegs=orddict:store(Num, Segment, Segs)}};
+        Size when Num*Size < ?MAX_BODY_SIZE -> {'Continue', State#state{insegs=orddict:store(Num, Segment, Segs)}};
+        Size -> {error, 'RequestEntityTooLarge'};
         _Else -> {error, 'BadRequest'}
     end;
 assemble_payload(#coap_message{payload=Segment}, {_Num, false, _Size}, State=#state{insegs=Segs}) ->
@@ -166,7 +168,7 @@ assemble_payload(#coap_message{payload=Segment}, {_Num, false, _Size}, State=#st
     {ok, <<Payload/binary, Segment/binary>>, State#state{insegs=orddict:new()}}.
 
 process_request(EpID, Request, State=#state{last_response={ok, Code, Content}}) ->
-    case coap_utils:get_option('Block2', Request) of
+    case ecoap_utils:get_option('Block2', Request) of
         {N, _, _} when N > 0 ->
             return_resource([], Request, {ok, Code}, Content, State);
         _Else ->
@@ -197,22 +199,22 @@ check_preconditions(EpID, Request, Content, State) ->
     end.
 
 if_match(Request, #coap_content{etag=ETag}) ->
-    case coap_utils:get_option('If-Match', Request, []) of
+    case ecoap_utils:get_option('If-Match', Request, []) of
         % empty string matches any existing representation
         [] -> true;
         % match exact resources
         List -> lists:member(ETag, List)
     end;
 if_match(Request, {error, 'NotFound'}) ->
-    not coap_utils:has_option('If-Match', Request).
+    not ecoap_utils:has_option('If-Match', Request).
 
 if_none_match(Request, #coap_content{}) ->
-    not coap_utils:has_option('If-None-Match', Request);
+    not ecoap_utils:has_option('If-None-Match', Request);
 if_none_match(#coap_message{}, {error, _}) ->
     true.
 
 handle_method(EpID, Request=#coap_message{code='GET'}, Content=#coap_content{}, State) ->
-     case coap_utils:get_option('Observe', Request) of
+     case ecoap_utils:get_option('Observe', Request) of
         0 ->
             handle_observe(EpID, Request, Content, State);
         1 ->
@@ -276,7 +278,7 @@ cancel_observer(#coap_message{}, State=#state{uri=Uri, module=Module, obstate=Ob
     {ok, State#state{observer=undefined, obstate=undefined}}.
 
 handle_post(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
-    % Content = coap_utils:get_content(Request),
+    % Content = ecoap_utils:get_content(Request),
     case invoke_callback(Module, coap_post, [EpID, Prefix, Suffix, Request]) of
         {ok, Code, Content} ->
             return_resource([], Request, {ok, Code}, Content, State);
@@ -287,7 +289,7 @@ handle_post(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=Mod
     end.
 
 handle_put(EpID, Request, Content, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
-    % Content = coap_utils:get_content(Request),
+    % Content = ecoap_utils:get_content(Request),
     case invoke_callback(Module, coap_put, [EpID, Prefix, Suffix, Request]) of
         ok ->
             return_response(Request, created_or_changed(Content), State);
@@ -316,22 +318,22 @@ return_resource(Request, Content, State) ->
     return_resource([], Request, {ok, 'Content'}, Content, State).
 
 return_resource(Ref, Request, {ok, Code}, Content=#coap_content{etag=ETag}, State) ->
-    Response = case lists:member(ETag, coap_utils:get_option('ETag', Request, [])) of
+    Response = case lists:member(ETag, ecoap_utils:get_option('ETag', Request, [])) of
             true ->
-                coap_utils:set_content(#coap_content{etag=ETag},
-                    coap_utils:response({ok, 'Valid'}, Request));
+                ecoap_utils:set_content(#coap_content{etag=ETag},
+                    ecoap_utils:response({ok, 'Valid'}, Request));
             false ->
-                coap_utils:set_content(Content, coap_utils:get_option('Block2', Request),
-                    coap_utils:response({ok, Code}, Request))
+                ecoap_utils:set_content(Content, ecoap_utils:get_option('Block2', Request),
+                    ecoap_utils:response({ok, Code}, Request))
     end,
     send_observable(Ref, Request, Response, State#state{last_response={ok, Code, Content}}).
 
 send_observable(Ref, Request=#coap_message{token=Token}, Response,
         State=#state{observer=Observer, obseq=Seq}) ->
-    case {coap_utils:get_option('Observe', Request), Observer} of
+    case {ecoap_utils:get_option('Observe', Request), Observer} of
         % when requested observe and is observing, return the sequence number
         {0, #coap_message{token=Token}} ->
-            send_response(Ref, coap_utils:set_option('Observe', Seq, Response), State#state{obseq=next_seq(Seq)});
+            send_response(Ref, ecoap_utils:set_option('Observe', Seq, Response), State#state{obseq=next_seq(Seq)});
         _Else ->
             send_response(Ref, Response, State)
     end.    
@@ -340,7 +342,7 @@ return_response(Request, Code, State) ->
     return_response([], Request, Code, <<>>, State).
 
 return_response(Ref, Request, Code, Reason, State) ->
-    send_response(Ref, coap_utils:response(Code, Reason, Request), State#state{last_response=Code}).
+    send_response(Ref, ecoap_utils:response(Code, Reason, Request), State#state{last_response=Code}).
 
 send_response(Ref, Response, State=#state{endpoint_pid=EndpointPid, observer=Observer, id=ID}) ->
     % io:fwrite("<- ~p~n", [Response]),
@@ -350,7 +352,7 @@ send_response(Ref, Response, State=#state{endpoint_pid=EndpointPid, observer=Obs
             % notifications will follow
             {noreply, State};
         undefined ->
-            case coap_utils:get_option('Block2', Response) of
+            case ecoap_utils:get_option('Block2', Response) of
                 {_, true, _} ->
                     % client is expected to ask for more blocks
                     register_handler(EndpointPid, ID),
@@ -382,11 +384,11 @@ next_seq(Seq) ->
     end.
 
 % uri_suffix(Prefix, #coap_message{options=Options}) ->
-%     Uri = coap_utils:get_option('Uri-Path', Options, []),
+%     Uri = ecoap_utils:get_option('Uri-Path', Options, []),
 %     lists:nthtail(length(Prefix), Uri).
 
 % uri_query(#coap_message{options=Options}) ->
-%     coap_utils:get_option('Uri-Query', Options, []).
+%     ecoap_utils:get_option('Uri-Query', Options, []).
 
 uri_suffix(Prefix, Uri) ->
 	lists:nthtail(length(Prefix), Uri).

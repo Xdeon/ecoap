@@ -136,7 +136,7 @@ in_con({in, BinMessage}, TransArgs, State) ->
     case catch coap_message:decode(BinMessage) of
         #coap_message{code=undefined, id=MsgId} ->
             % provoked reset
-            go_rst_sent(coap_utils:rst(MsgId), TransArgs, State);
+            go_rst_sent(ecoap_utils:rst(MsgId), TransArgs, State);
         #coap_message{code=Method} = Message when is_atom(Method) ->
             handle_request(Message, TransArgs, State),
             go_await_aack(Message, TransArgs, State);
@@ -144,13 +144,13 @@ in_con({in, BinMessage}, TransArgs, State) ->
             handle_response(Message, TransArgs, State),
             go_await_aack(Message, TransArgs, State);
         _ ->
-            go_rst_sent(coap_utils:rst(coap_utils:get_id(BinMessage)), TransArgs, State)
+            go_rst_sent(ecoap_utils:rst(ecoap_utils:get_id(BinMessage)), TransArgs, State)
     end.
 
 -spec go_await_aack(coap_message(), ecoap_endpoint:trans_args(), exchange()) -> exchange().
 go_await_aack(Message, TransArgs, State) ->
     % we may need to ack the message
-    EmptyACK = coap_utils:ack(Message),
+    EmptyACK = ecoap_utils:ack(Message),
     BinAck = coap_message:encode(EmptyACK),
     next_state(await_aack, TransArgs, State#exchange{msgbin=BinAck}, ?PROCESSING_DELAY).
 
@@ -249,7 +249,7 @@ await_pack({timeout, await_pack}, TransArgs=#{sock:=Socket, sock_module:=SocketM
     Timeout2 = Timeout*2,
     next_state(await_pack, TransArgs, State#exchange{retry_time=Timeout2, retry_count=Count+1}, Timeout2);
 await_pack({timeout, await_pack}, TransArgs, State=#exchange{trid={out, MsgId}}) ->
-    handle_error(coap_utils:rst(MsgId), timeout, TransArgs, State),
+    handle_error(ecoap_utils:rst(MsgId), timeout, TransArgs, State),
     check_next_state(aack_sent, State#exchange{msgbin= <<>>}).
 
 -spec aack_sent({in, binary()} | {timeout, await_pack}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
@@ -269,15 +269,15 @@ cancelled({_, _}, _TransArgs, State) ->
 handle_request(Message=#coap_message{code=Method, options=Options}, 
     #{ep_id:=EpID, handler_sup:=HdlSupPid, endpoint_pid:=EndpointPid, handler_regs:=HandlerRegs}, #exchange{receiver=undefined}) ->
     %io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
-    Uri = coap_utils:get_option('Uri-Path', Options, []),
-    Query = coap_utils:get_option('Uri-Query', Options, []),
+    Uri = ecoap_utils:get_option('Uri-Path', Options, []),
+    Query = ecoap_utils:get_option('Uri-Query', Options, []),
     case get_handler(HdlSupPid, EndpointPid, {Method, Uri, Query}, HandlerRegs) of
         {ok, Pid} ->
             Pid ! {coap_request, EpID, EndpointPid, undefined, Message},
             ok;
         {error, shutdown} ->
         	{ok, _} = ecoap_endpoint:send(EndpointPid,
-                coap_utils:response({error, 'NotFound'}, Message)),
+                ecoap_utils:response({error, 'NotFound'}, Message)),
             ok
     end.
 
@@ -311,7 +311,7 @@ get_handler(SupPid, EndpointPid, HandlerID, HandlerRegs) ->
     end.
 
 request_complete(EndpointPid, #coap_message{options=Options}, Receiver) ->
-    case coap_utils:get_option('Observe', Options) of
+    case ecoap_utils:get_option('Observe', Options) of
         undefined ->
             EndpointPid ! {request_complete, Receiver},
             ok;

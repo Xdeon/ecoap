@@ -4,8 +4,13 @@
 -export([start/2]).
 -export([stop/1]).
 
+-include("ecoap.hrl").
+
 start(_Type, _Args) ->
-	{ok, InPort} = application:get_env(port),
+	InPort = case application:get_env(port) of
+				undefined -> ?DEFAULT_COAP_PORT;
+				{ok, Port} -> Port
+			 end,
 	{ok, Opts} = application:get_env(socket_opts),
 	ecoap_sup:start_link(InPort, Opts).
 
