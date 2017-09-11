@@ -136,7 +136,7 @@ code_change(_OldVsn, State, _Extra) ->
 
 handle(EpID, Request, State=#state{endpoint_pid=EndpointPid, id=ID}) ->
 	Block1 = ecoap_utils:get_option('Block1', Request),
-    case catch assemble_payload(Request, Block1, State) of
+    case catch assemble_payload(ecoap_utils:get_payload(Request), Block1, State) of
         {error, Code} ->
             return_response(Request, {error, Code}, State);
         {'Continue', State2} ->
@@ -147,18 +147,18 @@ handle(EpID, Request, State=#state{endpoint_pid=EndpointPid, id=ID}) ->
                     ecoap_utils:response({ok, 'Continue'}, Request))),
             set_timeout(?EXCHANGE_LIFETIME, State2);
         {ok, Payload, State2} ->
-            process_request(EpID, Request#coap_message{payload=Payload}, State2)
+            process_request(EpID, ecoap_utils:set_payload(Payload, Request), State2)
     end.
 
-assemble_payload(#coap_message{payload=Payload}, undefined, State) ->
+assemble_payload(Payload, undefined, State) ->
     {ok, Payload, State};
-assemble_payload(#coap_message{payload=Segment}, {Num, true, Size}, State=#state{insegs=Segs}) ->
+assemble_payload(Segment, {Num, true, Size}, State=#state{insegs=Segs}) ->
     case byte_size(Segment) of
         Size when Num*Size < ?MAX_BODY_SIZE -> {'Continue', State#state{insegs=orddict:store(Num, Segment, Segs)}};
         Size -> {error, 'RequestEntityTooLarge'};
         _Else -> {error, 'BadRequest'}
     end;
-assemble_payload(#coap_message{payload=Segment}, {_Num, false, _Size}, State=#state{insegs=Segs}) ->
+assemble_payload(Segment, {_Num, false, _Size}, State=#state{insegs=Segs}) ->
     Payload = orddict:fold(
         fun (Num1, Segment1, Acc) when Num1*byte_size(Segment1) == byte_size(Acc) ->
                 <<Acc/binary, Segment1/binary>>;
@@ -193,27 +193,30 @@ check_resource(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, query=Q
 check_preconditions(EpID, Request, Content, State) ->
     case if_match(Request, Content) andalso if_none_match(Request, Content) of
         true ->
-            handle_method(EpID, Request, Content, State);
+            handle_method(EpID, Request, ecoap_utils:get_code(Request), Content, State);
         false ->
             return_response(Request, {error, 'PreconditionFailed'}, State)
     end.
 
+if_match(Request, {error, 'NotFound'}) ->
+    not ecoap_utils:has_option('If-Match', Request);
 if_match(Request, #coap_content{etag=ETag}) ->
     case ecoap_utils:get_option('If-Match', Request, []) of
         % empty string matches any existing representation
         [] -> true;
         % match exact resources
         List -> lists:member(ETag, List)
-    end;
-if_match(Request, {error, 'NotFound'}) ->
-    not ecoap_utils:has_option('If-Match', Request).
+    end.
 
+if_none_match(_Request, {error, _}) ->
+    true;
 if_none_match(Request, #coap_content{}) ->
-    not ecoap_utils:has_option('If-None-Match', Request);
-if_none_match(#coap_message{}, {error, _}) ->
-    true.
+    not ecoap_utils:has_option('If-None-Match', Request).
 
-handle_method(EpID, Request=#coap_message{code='GET'}, Content=#coap_content{}, State) ->
+handle_method(_EpID, Request, 'GET', {error, Code}, State) ->
+    return_response(Request, {error, Code}, State);
+
+handle_method(EpID, Request, 'GET', Content, State) ->
      case ecoap_utils:get_option('Observe', Request) of
         0 ->
             handle_observe(EpID, Request, Content, State);
@@ -225,22 +228,19 @@ handle_method(EpID, Request=#coap_message{code='GET'}, Content=#coap_content{}, 
             return_response(Request, {error, 'BadOption'}, State)
     end;
 
-handle_method(_EpID, Request=#coap_message{code='GET'}, {error, Code}, State) ->
-    return_response(Request, {error, Code}, State);
-
-handle_method(EpID, Request=#coap_message{code='POST'}, _Content, State) ->
+handle_method(EpID, Request, 'POST', _Content, State) ->
     handle_post(EpID, Request, State);
 
-handle_method(EpID, Request=#coap_message{code='PUT'}, Content, State) ->
+handle_method(EpID, Request, 'PUT', Content, State) ->
     handle_put(EpID, Request, Content, State);
 
-handle_method(EpID, Request=#coap_message{code='DELETE'}, _Content, State) ->
+handle_method(EpID, Request, 'DELETE', _Content, State) ->
     handle_delete(EpID, Request, State);
 
-handle_method(_EpID, Request, _Content, State) ->
+handle_method(_EpID, Request, _Code, _Content, State) ->
     return_response(Request, {error, 'MethodNotAllowed'}, State).
 
-handle_observe(EpID, Request, Content=#coap_content{}, 
+handle_observe(EpID, Request, Content, 
         State=#state{endpoint_pid=EndpointPid, id=ID, prefix=Prefix, suffix=Suffix, uri=Uri, module=Module, observer=undefined}) ->
     % the first observe request from this user to this resource
     case invoke_callback(Module, coap_observe, [EpID, Prefix, Suffix, Request]) of
@@ -261,13 +261,23 @@ handle_observe(_EpID, Request, Content, State) ->
     % subsequent observe request from the same user
     return_resource(Request, Content, State#state{observer=Request}).
 
-handle_unobserve(_EpID, Request=#coap_message{token=Token}, Content, State=#state{observer=#coap_message{token=Token}}) ->
-    {ok, State2} = cancel_observer(Request, State),
-    return_resource(Request, Content, State2);
-handle_unobserve(_EpID, Request, Content, State) ->
-    return_resource(Request, Content, State).
+% handle_unobserve(_EpID, Request=#coap_message{token=Token}, Content, State=#state{observer=#coap_message{token=Token}}) ->
+%     {ok, State2} = cancel_observer(Request, State),
+%     return_resource(Request, Content, State2);
+% handle_unobserve(_EpID, Request, Content, State) ->
+%     return_resource(Request, Content, State).
 
-cancel_observer(#coap_message{}, State=#state{uri=Uri, module=Module, obstate=ObState}) ->
+handle_unobserve(_EpID, Request, Content, State=#state{observer=Observer}) ->
+    RequestToken = ecoap_utils:get_token(Request),
+    case ecoap_utils:get_token(Observer) of
+        RequestToken -> 
+            {ok, State2} = cancel_observer(Request, State),
+            return_resource(Request, Content, State2);
+        _Else ->
+            return_resource(Request, Content, State)
+    end.
+
+cancel_observer(_Request, State=#state{uri=Uri, module=Module, obstate=ObState}) ->
     ok = Module:coap_unobserve(ObState),
     ok = pg2:leave({coap_observer, Uri}, self()),
     % will the last observer to leave this group please turn out the lights
@@ -328,11 +338,23 @@ return_resource(Ref, Request, {ok, Code}, Content=#coap_content{etag=ETag}, Stat
     end,
     send_observable(Ref, Request, Response, State#state{last_response={ok, Code, Content}}).
 
-send_observable(Ref, Request=#coap_message{token=Token}, Response,
-        State=#state{observer=Observer, obseq=Seq}) ->
-    case {ecoap_utils:get_option('Observe', Request), Observer} of
+% send_observable(Ref, Request=#coap_message{token=Token}, Response,
+%         State=#state{observer=Observer, obseq=Seq}) ->
+%     case {ecoap_utils:get_option('Observe', Request), Observer} of
+%         % when requested observe and is observing, return the sequence number
+%         {0, #coap_message{token=Token}} ->
+%             send_response(Ref, ecoap_utils:set_option('Observe', Seq, Response), State#state{obseq=next_seq(Seq)});
+%         _Else ->
+%             send_response(Ref, Response, State)
+%     end.    
+
+send_observable(Ref, _Request, Response, State=#state{observer=undefined}) ->
+    send_response(Ref, Response, State);
+send_observable(Ref, Request, Response, State=#state{observer=Observer, obseq=Seq}) ->
+    RequestToken = ecoap_utils:get_token(Request),
+    case {ecoap_utils:get_option('Observe', Request), ecoap_utils:get_token(Observer)} of
         % when requested observe and is observing, return the sequence number
-        {0, #coap_message{token=Token}} ->
+        {0, RequestToken} ->
             send_response(Ref, ecoap_utils:set_option('Observe', Seq, Response), State#state{obseq=next_seq(Seq)});
         _Else ->
             send_response(Ref, Response, State)
@@ -348,9 +370,6 @@ send_response(Ref, Response, State=#state{endpoint_pid=EndpointPid, observer=Obs
     % io:fwrite("<- ~p~n", [Response]),
     {ok, _} = ecoap_endpoint:send_response(EndpointPid, Ref, Response),
     case Observer of
-        #coap_message{} ->
-            % notifications will follow
-            {noreply, State};
         undefined ->
             case ecoap_utils:get_option('Block2', Response) of
                 {_, true, _} ->
@@ -360,7 +379,10 @@ send_response(Ref, Response, State=#state{endpoint_pid=EndpointPid, observer=Obs
                 _Else ->
                     % no further communication concerning this request
                     {stop, normal, State}
-            end
+            end;
+        _ ->
+            % notifications will follow
+            {noreply, State}
     end.
 
 register_handler(EndpointPid, ID) ->
