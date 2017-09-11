@@ -119,7 +119,7 @@ match_test_() ->
 match_root_test_() ->
     Tab = ets:new(ecoap_registry, [set]),
     ets:insert(Tab, {[], ?MODULE, undefined}),
-    [?_assertEqual(undefined, match_handler([<<"foo">>, <<"bar">>], Tab)),
+    [?_assertEqual({[], ?MODULE, undefined}, match_handler([<<"foo">>, <<"bar">>], Tab)),
     ?_assertEqual({[], ?MODULE, undefined}, match_handler([], Tab))
     ].
 

@@ -24,7 +24,7 @@ coap_discover(Prefix, _Args) ->
     [{absolute, Prefix++Name, []} || Name <- mnesia:dirty_all_keys(resources)].
 
 coap_get(_EpID, Prefix, Name, Query, Request) ->
-    Accept = coap_utils:get_option('Accept', Request),
+    Accept = ecoap_utils:get_option('Accept', Request),
     io:format("get ~p ~p ~p accept ~p~n", [Prefix, Name, Query, Accept]),
     case mnesia:dirty_read(resources, Name) of
         [{resources, Name, Content}] -> {ok, Content};
@@ -32,13 +32,13 @@ coap_get(_EpID, Prefix, Name, Query, Request) ->
     end.
 
 coap_post(_EpID, Prefix, Name, Request) -> 
-    Content = coap_utils:get_content(Request),
+    Content = ecoap_utils:get_content(Request),
     io:format("post ~p ~p ~p~n", [Prefix, Name, Content]),
     {error, 'MethodNotAllowed'}.
     % {ok, 'Created', #coap_content{options=#{'Location-Path' => Prefix++Name}}}.
 
 coap_put(_EpID, Prefix, Name, Request) ->
-    Content = coap_utils:get_content(Request),
+    Content = ecoap_utils:get_content(Request),
     io:format("put ~p ~p ~p~n", [Prefix, Name, Content]),
     mnesia:dirty_write(resources, {resources, Name, Content}),
     ecoap_handler:notify(Prefix++Name, Content),
@@ -51,7 +51,7 @@ coap_delete(_EpID, Prefix, Name, _Request) ->
     ok.
 
 coap_observe(_EpID, Prefix, Name, Request) ->
-    RequireAck = coap_utils:requires_ack(Request),
+    RequireAck = ecoap_utils:requires_ack(Request),
     io:format("observe ~p ~p requires ack ~p~n", [Prefix, Name, RequireAck]),
     {ok, {state, Prefix, Name}}.
     % {error, 'MethodNotAllowed'}.

@@ -88,7 +88,7 @@ close(Pid) ->
 
 -spec ping(pid(), string()) -> ok | error.
 ping(Pid, Uri) ->
-	{_Scheme, _Host, EpID, _Path, _Query} = coap_utils:decode_uri(Uri),
+	{_Scheme, _Host, EpID, _Path, _Query} = ecoap_utils:decode_uri(Uri),
 	case send_request(Pid, EpID, ping, infinity) of
 		{error, 'RST'} -> ok;
 		_Else -> error
@@ -305,23 +305,23 @@ flush(ReqRef) ->
 	end.	
 
 assemble_request(Method, Uri, Options, Content) ->
-	{_Scheme, Host, {PeerIP, PortNo}, Path, Query} = coap_utils:decode_uri(Uri),
-	Options2 = coap_utils:add_option('Uri-Path', Path, 
-					coap_utils:add_option('Uri-Query', Query,
-						coap_utils:add_option('Uri-Host', Host, 
-							coap_utils:add_option('Uri-Port', PortNo, Options)))),
+	{_Scheme, Host, {PeerIP, PortNo}, Path, Query} = ecoap_utils:decode_uri(Uri),
+	Options2 = ecoap_utils:add_option('Uri-Path', Path, 
+					ecoap_utils:add_option('Uri-Query', Query,
+						ecoap_utils:add_option('Uri-Host', Host, 
+							ecoap_utils:add_option('Uri-Port', PortNo, Options)))),
 	EpID = {PeerIP, PortNo},
 	Req = {'CON', Method, Options2, convert_content(Content)},
 	{EpID, Req}.
 
 assemble_observe_request(Uri, Options) ->
-	{_Scheme, Host, {PeerIP, PortNo}, Path, Query} = coap_utils:decode_uri(Uri),
-	Accpet = coap_utils:get_option('Accpet', Options),
-	Options2 = coap_utils:add_option('Observe', 0,
-					coap_utils:add_option('Uri-Path', Path, 
-						coap_utils:add_option('Uri-Query', Query,
-							coap_utils:add_option('Uri-Host', Host, 
-								coap_utils:add_option('Uri-Port', PortNo, Options))))),
+	{_Scheme, Host, {PeerIP, PortNo}, Path, Query} = ecoap_utils:decode_uri(Uri),
+	Accpet = ecoap_utils:get_option('Accpet', Options),
+	Options2 = ecoap_utils:add_option('Observe', 0,
+					ecoap_utils:add_option('Uri-Path', Path, 
+						ecoap_utils:add_option('Uri-Query', Query,
+							ecoap_utils:add_option('Uri-Host', Host, 
+								ecoap_utils:add_option('Uri-Port', PortNo, Options))))),
 	EpID = {PeerIP, PortNo},
 	Key = {EpID, Path, Accpet},
 	Req = {'CON', 'GET', Options2, #coap_content{}},
@@ -383,9 +383,9 @@ handle_call({start_observe, EpID, Key, {Type, Method, Options, _Content}, ReplyP
 	end,
 	{ok, EndpointPid} = get_endpoint(SockPid, EpID),
 	{ok, Ref} = ecoap_endpoint:send(EndpointPid,  
-					coap_utils:set_token(Token,
-						coap_utils:request(Type, Method, <<>>, Options))),	
-	Options2 = coap_utils:remove_option('Observe', Options),
+					ecoap_utils:set_token(Token,
+						ecoap_utils:request(Type, Method, <<>>, Options))),	
+	Options2 = ecoap_utils:remove_option('Observe', Options),
 	Req = #req{
 				type=Type,
 				method=Method, 
@@ -413,11 +413,11 @@ handle_call({cancel_observe, Ref, ETag}, _From, State=#state{req_refs=ReqRefs, o
 		#req{obs_key=undefined} -> 
 			{reply, {error, no_observe}, State};
 		#req{type=Type, method=Method, options=Options, token=Token, obs_key=Key, ep=EndpointPid, ep_id=EpID, reply_pid=ReplyPid} ->
-			Options1 = coap_utils:add_option('ETag', ETag, Options),
-			Options2 = coap_utils:add_option('Observe', 1, Options1),
+			Options1 = ecoap_utils:add_option('ETag', ETag, Options),
+			Options2 = ecoap_utils:add_option('Observe', 1, Options1),
 			{ok, Ref2} = ecoap_endpoint:send(EndpointPid,  
-							coap_utils:set_token(Token, 
-								coap_utils:request(Type, Method, <<>>, Options2))),
+							ecoap_utils:set_token(Token, 
+								ecoap_utils:request(Type, Method, <<>>, Options2))),
 			Req = #req{type=Type, method=Method, options=Options1, token=Token, req_ref=Ref2, reply_pid=ReplyPid, ep=EndpointPid, ep_id=EpID},
 			{{ReplyPid, Key}, MonRef, Ref} = Sub = lists:keyfind({ReplyPid, Key}, 1, Subscribers),
 			erlang:demonitor(MonRef, [flush]),
@@ -443,7 +443,7 @@ handle_cast(_Msg, State) ->
 
 % response arrived as a separate CON msg
 handle_info({coap_response, _EpID, EndpointPid, Ref, Message=#coap_message{type='CON'}}, State) ->
-	{ok, _} = ecoap_endpoint:send(EndpointPid, coap_utils:ack(Message)),
+	{ok, _} = ecoap_endpoint:send(EndpointPid, ecoap_utils:ack(Message)),
 	handle_response(Ref, EndpointPid, Message, State);
 
 handle_info({coap_response, _EpID, EndpointPid, Ref, Message}, State) ->
@@ -487,11 +487,11 @@ request_block(EpID, EndpointPid, Type, Method, ROpt, Content) ->
     request_block(EpID, EndpointPid, Type, Method, ROpt, undefined, Content).
 
 request_block(EpID, EndpointPid, Type, Method, ROpt, Block1, Content) ->
-	RequestMessage = coap_utils:set_content(Content, Block1, coap_utils:request(Type, Method, <<>>, ROpt)),
+	RequestMessage = ecoap_utils:set_content(Content, Block1, ecoap_utils:request(Type, Method, <<>>, ROpt)),
 	{ok, Ref} = ecoap_endpoint:send(EndpointPid, RequestMessage),
-	HasBlock = coap_utils:has_option('Block1', RequestMessage) orelse coap_utils:has_option('Block2', RequestMessage),
+	HasBlock = ecoap_utils:has_option('Block1', RequestMessage) orelse ecoap_utils:has_option('Block2', RequestMessage),
 	BlockKey = case HasBlock of 
-		true -> {EpID, coap_utils:get_option('Uri-Path', ROpt)};
+		true -> {EpID, ecoap_utils:get_option('Uri-Path', ROpt)};
 		false -> undefined
 	end,
 	{ok, Ref, BlockKey}.
@@ -547,7 +547,7 @@ handle_response(Ref, EndpointPid, _Message=#coap_message{code={ok, 'Continue'}, 
 	case find_ref(Ref, ReqRefs) of
 		undefined -> {noreply, State};
 		#req{type=Type, method=Method, options=Options2, content=Content, req_ref=ReqRef, ep_id=EpID} = Req ->
-			{Num, true, Size} = coap_utils:get_option('Block1', Options1),
+			{Num, true, Size} = ecoap_utils:get_option('Block1', Options1),
 			{ok, Ref2, BlockKey} = request_block(EpID, EndpointPid, Type, Method, Options2, {Num+1, false, Size}, Content),
 			{ReqRefs2, BlockRegs2} = update_block_transfer_status(EndpointPid, BlockKey, Ref, Ref2, ReqRefs, BlockRegs),
 			State2 = case Ref of
@@ -565,7 +565,7 @@ handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options
 			{noreply, State};
 		#req{type=Type, method=Method, options=Options2, fragment=Fragment, req_ref=ReqRef, reply_pid=ReplyPid, 
 			block_obseq=Obseq, obs_key=Key, block_key=BlockKey, ep_id=EpID} = Req ->
-            N = case coap_utils:get_option('Observe', Options1) of
+            N = case ecoap_utils:get_option('Observe', Options1) of
             	undefined -> Obseq;	% Obseq = undefined by default
             	Else -> Else
 		    end,
@@ -573,12 +573,12 @@ handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options
 			% This eliminates the possiblilty that multiple block transfers exist 
 			% and thus a potential mix up of old & new blocks of the (changed) resource
 		    % update_block_transfer_status(EndpointPid, BlockOrLastRef, Ref),
-			case coap_utils:get_option('Block2', Options1) of
+			case ecoap_utils:get_option('Block2', Options1) of
 		        {Num, true, Size} ->
 		        	% more blocks follow, ask for more
 		        	% no payload for requests with Block2 with NUM != 0
 		        	{ok, Ref2} = ecoap_endpoint:send(EndpointPid,
-		            	coap_utils:request(Type, Method, <<>>, coap_utils:add_option('Block2', {Num+1, false, Size}, Options2))),
+		            	ecoap_utils:request(Type, Method, <<>>, ecoap_utils:add_option('Block2', {Num+1, false, Size}, Options2))),
 		            NewFragment = <<Fragment/binary, Data/binary>>,
 		            % What we do here:
         			% 1. If this is the first block of a blockwise transfer as an observe notification
@@ -586,7 +586,7 @@ handle_response(Ref, EndpointPid, Message=#coap_message{code={ok, Code}, options
 		            % 2. Cancel ongoing blockwise transfer, if any
 		            % 3. Update block_key filed of original request 
 		            BlockKey2 = case BlockKey of 
-		            	undefined -> {EpID, coap_utils:get_option('Uri-Path', Options2)};
+		            	undefined -> {EpID, ecoap_utils:get_option('Uri-Path', Options2)};
 		            	Other -> Other
 		            end,
         			{ReqRefs2, BlockRegs2} = update_block_transfer_status(EndpointPid, BlockKey2, Ref, Ref2, ReqRefs, BlockRegs),
@@ -678,8 +678,8 @@ send_response(ReplyPid, ReqRef, ObsKey, Obseq, SubPids, Res) ->
 	ok.
 
 return_response({ok, Code}, Message) ->
-    {ok, Code, coap_utils:get_content(Message, extended)};
+    {ok, Code, ecoap_utils:get_content(Message, extended)};
 return_response({error, Code}, #coap_message{payload= <<>>}) ->
     {error, Code};
 return_response({error, Code}, Message) ->
-    {error, Code, coap_utils:get_content(Message)}.
+    {error, Code, ecoap_utils:get_content(Message)}.

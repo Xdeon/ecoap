@@ -206,8 +206,8 @@
 <title>ecoap_exchange:go_await_aack/3 (883 samples, 0.90%)</title><rect x="107.1" y="97" width="10.7" height="15.0" fill="rgb(234,222,27)" rx="2" ry="2" />
 <text text-anchor="" x="110.14" y="107.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
-<g class="func_g" onmouseover="s('coap_utils:ack/1 (4,055 samples, 4.15%)')" onmouseout="c()" onclick="zoom(this)">
-<title>coap_utils:ack/1 (4,055 samples, 4.15%)</title><rect x="58.2" y="97" width="48.9" height="15.0" fill="rgb(208,227,31)" rx="2" ry="2" />
+<g class="func_g" onmouseover="s('ecoap_utils:ack/1 (4,055 samples, 4.15%)')" onmouseout="c()" onclick="zoom(this)">
+<title>ecoap_utils:ack/1 (4,055 samples, 4.15%)</title><rect x="58.2" y="97" width="48.9" height="15.0" fill="rgb(208,227,31)" rx="2" ry="2" />
 <text text-anchor="" x="61.18" y="107.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >coap..</text>
 </g>
 <g class="func_g" onmouseover="s('coap_message:decode/1 (864 samples, 0.88%)')" onmouseout="c()" onclick="zoom(this)">
@@ -354,8 +354,8 @@
 <title>ecoap_exchange:await_aack/3 (939 samples, 0.96%)</title><rect x="1024.5" y="113" width="11.3" height="15.0" fill="rgb(221,140,52)" rx="2" ry="2" />
 <text text-anchor="" x="1027.48" y="123.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
-<g class="func_g" onmouseover="s('coap_utils:get_option/3 (1,553 samples, 1.59%)')" onmouseout="c()" onclick="zoom(this)">
-<title>coap_utils:get_option/3 (1,553 samples, 1.59%)</title><rect x="146.9" y="81" width="18.8" height="15.0" fill="rgb(254,100,51)" rx="2" ry="2" />
+<g class="func_g" onmouseover="s('ecoap_utils:get_option/3 (1,553 samples, 1.59%)')" onmouseout="c()" onclick="zoom(this)">
+<title>ecoap_utils:get_option/3 (1,553 samples, 1.59%)</title><rect x="146.9" y="81" width="18.8" height="15.0" fill="rgb(254,100,51)" rx="2" ry="2" />
 <text text-anchor="" x="149.94" y="91.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
 <g class="func_g" onmouseover="s('erlang:setelement/3 (87 samples, 0.09%)')" onmouseout="c()" onclick="zoom(this)">
