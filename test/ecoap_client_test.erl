@@ -1,7 +1,7 @@
 -module(ecoap_client_test).
 
 -include_lib("eunit/include/eunit.hrl").
--include_lib("ecoap_common/include/coap_def.hrl").
+-include("ecoap.hrl").
 
 basic_test_() ->
     {setup,
@@ -67,21 +67,21 @@ error_while_observe_block({Server, Client}) ->
     timer:sleep(50),
     {match, BlockReqMsgId, BlockReqToken} = server_stub:expect_request(Server, ExpectReq),
     server_stub:send_response(Server, 
-        #coap_message{type='ACK', id=BlockReqMsgId, code={ok, 'Content'}, options=#{'Observe' => 1, 'Block2' => {0, true, 64}}, token=BlockReqToken,
-        payload=test_utils:large_binary(64, <<"A">>)}),
+        #{type=>'ACK', id=>BlockReqMsgId, code=>{ok, 'Content'}, options=>#{'Observe' => 1, 'Block2' => {0, true, 64}}, token=>BlockReqToken,
+        payload=>test_utils:large_binary(64, <<"A">>)}),
     timer:sleep(50),
-    {match, BlockReqMsgId2, BlockReqToken2} = server_stub:expect_request(Server, ExpectReq#coap_message{options=#{'Block2' => {1, false, 64}, 'Uri-Path' => [<<"test">>]}}),
+    {match, BlockReqMsgId2, BlockReqToken2} = server_stub:expect_request(Server, ExpectReq#{options:=#{'Block2' => {1, false, 64}, 'Uri-Path' => [<<"test">>]}}),
     server_stub:send_response(Server, 
-        #coap_message{type='ACK', id=BlockReqMsgId2, code={ok, 'Content'}, options=#{'Block2' => {1, true, 64}}, token=BlockReqToken2,
-        payload=test_utils:large_binary(64, <<"B">>)}),
+        #{type=>'ACK', id=>BlockReqMsgId2, code=>{ok, 'Content'}, options=>#{'Block2' => {1, true, 64}}, token=>BlockReqToken2,
+        payload=>test_utils:large_binary(64, <<"B">>)}),
     timer:sleep(50),
-    {match, BlockReqMsgId3, BlockReqToken3} = server_stub:expect_request(Server, ExpectReq#coap_message{options=#{'Block2' => {2, false, 64}, 'Uri-Path' => [<<"test">>]}}),
+    {match, BlockReqMsgId3, BlockReqToken3} = server_stub:expect_request(Server, ExpectReq#{options:=#{'Block2' => {2, false, 64}, 'Uri-Path' => [<<"test">>]}}),
     server_stub:send_response(Server, 
-        #coap_message{type='ACK', id=BlockReqMsgId3, code={ok, 'Content'}, options=#{'Block2' => {2, true, 64}}, token=BlockReqToken3,
-        payload=test_utils:large_binary(64, <<"C">>)}),
+        #{type=>'ACK', id=>BlockReqMsgId3, code=>{ok, 'Content'}, options=>#{'Block2' => {2, true, 64}}, token=>BlockReqToken3,
+        payload=>test_utils:large_binary(64, <<"C">>)}),
     timer:sleep(50),
-    {match, BlockReqMsgId4, _} = server_stub:expect_request(Server, ExpectReq#coap_message{options=#{'Block2' => {3, false, 64}, 'Uri-Path' => [<<"test">>]}}),
-    server_stub:send_response(Server, #coap_message{type='RST', id=BlockReqMsgId4}),
+    {match, BlockReqMsgId4, _} = server_stub:expect_request(Server, ExpectReq#{options:=#{'Block2' => {3, false, 64}, 'Uri-Path' => [<<"test">>]}}),
+    server_stub:send_response(Server, ecoap_utils:rst(BlockReqMsgId4)),
     timer:sleep(50),
     ReqRefs = ecoap_client:get_reqrefs(Client),
     BlockRegs = ecoap_client:get_blockregs(Client),

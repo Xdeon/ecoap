@@ -25,13 +25,13 @@
 	tokens = #{} :: #{binary() => receiver()},
 	trans = #{} :: #{trid() => ecoap_exchange:exchange()},
     receivers = #{} :: #{receiver() => {binary(), trid()}},
-	nextmid = undefined :: msg_id(),
+	nextmid = undefined :: coap_message:msg_id(),
 	rescnt = undefined :: non_neg_integer(),
     handler_refs = undefined :: undefined | #{reference() => tuple()},
     timer = undefined :: endpoint_timer:timer_state()
 }).
 
--type trid() :: {in | out, msg_id()}.
+-type trid() :: {in | out, coap_message:msg_id()}.
 -type receiver() :: {pid(), reference()}.
 -type trans_args() :: #{sock := inet:socket(),
                         sock_module := module(), 
@@ -47,7 +47,7 @@
 -export_type([receiver/0]).
 -export_type([trans_args/0]).
 
--include_lib("ecoap_common/include/coap_def.hrl").
+-include("ecoap.hrl").
 
 %% API.
 -spec start_link(pid(), module(), inet:socket(), ecoap_udp_socket:ecoap_endpoint_id()) -> {ok, pid()}.
@@ -60,31 +60,31 @@ start_link(SocketModule, Socket, EpID) ->
 
 -spec ping(pid()) -> {ok, reference()}.
 ping(EndpointPid) ->
-    send_message(EndpointPid, make_ref(), #coap_message{type='CON'}).
+    send_message(EndpointPid, make_ref(), coap_message:new()).
 
--spec send(pid(), coap_message()) -> {ok, reference()}.
-send(EndpointPid, Message=#coap_message{type=Type, code=Code}) when is_tuple(Code); Type=='ACK'; Type=='RST' ->
+-spec send(pid(), coap_message:coap_message()) -> {ok, reference()}.
+send(EndpointPid, Message=#{type := Type, code := Code}) when is_tuple(Code); Type=='ACK'; Type=='RST' ->
     send_response(EndpointPid, make_ref(), Message);
-send(EndpointPid, Message=#coap_message{}) ->
+send(EndpointPid, Message) ->
     send_request(EndpointPid, make_ref(), Message).
 
--spec send_request(pid(), Ref, coap_message()) -> {ok, Ref}.
+-spec send_request(pid(), Ref, coap_message:coap_message()) -> {ok, Ref}.
 % when no token is assigned then generate one
-send_request(EndpointPid, Ref, Message=#coap_message{token= <<>>}) ->
+send_request(EndpointPid, Ref, Message=#{token := <<>>}) ->
     Token = generate_token(), 
-    gen_server:cast(EndpointPid, {send_request, Message#coap_message{token=Token}, {self(), Ref}}),
+    gen_server:cast(EndpointPid, {send_request, Message#{token := Token}, {self(), Ref}}),
     {ok, Ref};
 % use user defined token
 send_request(EndpointPid, Ref, Message) ->
     gen_server:cast(EndpointPid, {send_request, Message, {self(), Ref}}),
     {ok, Ref}.
 
--spec send_message(pid(), Ref, coap_message()) -> {ok, Ref}.
+-spec send_message(pid(), Ref, coap_message:coap_message()) -> {ok, Ref}.
 send_message(EndpointPid, Ref, Message) ->
     gen_server:cast(EndpointPid, {send_message, Message, {self(), Ref}}),
     {ok, Ref}.
 
--spec send_response(pid(), Ref, coap_message()) -> {ok, Ref}.
+-spec send_response(pid(), Ref, coap_message:coap_message()) -> {ok, Ref}.
 send_response(EndpointPid, Ref, Message) ->
     gen_server:cast(EndpointPid, {send_response, Message, {self(), Ref}}),
     {ok, Ref}.
@@ -324,20 +324,20 @@ code_change(_OldVsn, State, _Extra) ->
 % change a msg from NON to CON periodically & limit data rate according to some congestion control strategy (e.g. cocoa)
 % problem: What should we do when queue overflows? Should we inform the req/resp sender?
 
-make_new_request(Message=#coap_message{token=Token}, Receiver, State=#state{tokens=Tokens, nextmid=MsgId, receivers=Receivers}) ->
+make_new_request(Message=#{token := Token}, Receiver, State=#state{tokens=Tokens, nextmid=MsgId, receivers=Receivers}) ->
     % in case this is a request using previous token, we need to remove the outdated receiver reference first
     Receivers2 = maps:put(Receiver, {Token, {out, MsgId}}, maps:remove(maps:get(Token, Tokens, undefined), Receivers)),
     Tokens2 = maps:put(Token, Receiver, Tokens),
     make_new_message(Message, Receiver, State#state{tokens=Tokens2, receivers=Receivers2}).
 
 make_new_message(Message, Receiver, State=#state{nextmid=MsgId}) ->
-    make_message({out, MsgId}, Message#coap_message{id=MsgId}, Receiver, State#state{nextmid=next_mid(MsgId)}).
+    make_message({out, MsgId}, Message#{id := MsgId}, Receiver, State#state{nextmid=next_mid(MsgId)}).
 
 make_message(TrId, Message, Receiver, State=#state{trans_args=TransArgs}) ->
     update_state(State, TrId,
         ecoap_exchange:send(Message, TransArgs, init_exchange(TrId, Receiver))).
 
-make_new_response(Message=#coap_message{id=MsgId}, Receiver, State=#state{trans=Trans, trans_args=TransArgs}) ->
+make_new_response(Message=#{id := MsgId}, Receiver, State=#state{trans=Trans, trans_args=TransArgs}) ->
     % io:format("The response: ~p~n", [Message]),
     case maps:find({in, MsgId}, Trans) of
         {ok, TrState} ->

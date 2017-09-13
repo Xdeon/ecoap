@@ -1,69 +1,42 @@
 -module(ecoap_utils_test).
 -include_lib("eunit/include/eunit.hrl").
--include_lib("ecoap_common/include/coap_def.hrl").
 -include("ecoap.hrl").
 
-utils_test_() ->
-    OptionExample = #{'Size1' => 1024, 'Content-Format' => <<"text/plain">>},
-    Msg1 = #coap_message{type='CON', id=123, code='GET', 
-                    token= <<"Token">>, options=#{'Uri-Path' => [<<"test">>]}, payload= <<>>},
-    Msg2 = #coap_message{
-        options = #{'Uri-Path' => [<<"test">>], 
-                    'ETag' => [<<"ETag">>],
-                    'Content-Format' => <<"text/plain">>, 
-                    'Observe' => 12, 
-                    'Location-Path' => [<<"new_path">>]}},
-    % Note the order of options will change
-    [
-        ?_assertEqual(OptionExample, ecoap_utils:add_options(OptionExample, #{})),
-        ?_assertEqual(OptionExample, ecoap_utils:add_options(#{}, OptionExample)),
-        ?_assertEqual(OptionExample#{'Size1' := 512}, ecoap_utils:add_option('Size1', 512, OptionExample)),
-
-        % option in second map will supersed the same option in first map
-        ?_assertEqual(OptionExample#{'ETag' => [<<"ETag">>], 'Size1' := 256}, 
-            ecoap_utils:add_options(OptionExample, #{'ETag' => [<<"ETag">>], 'Size1' => 256})),
-        ?_assertEqual(OptionExample#{'ETag' => [<<"ETag">>]}, 
-            ecoap_utils:add_options(#{'Size1' => 256, 'ETag' => [<<"ETag">>]}, OptionExample)),
-
-        ?_assertEqual(true, ecoap_utils:has_option('Size1', OptionExample)),
-        ?_assertEqual(#{'Content-Format' => <<"text/plain">>},
-            ecoap_utils:remove_option('Size1', OptionExample)),
-
-        ?_assertEqual(Msg1#coap_message{options=#{'ETag' => [<<"ETag">>], 'Uri-Path' => [<<"test">>]}},
-            ecoap_utils:set_option('ETag', [<<"ETag">>], Msg1)),
-        ?_assertEqual(Msg1#coap_message{options=#{'Max-Age' => 5, 'ETag' => [<<"ETag">>], 'Uri-Path' => [<<"hello">>]}}, 
-            ecoap_utils:set_options(#{'ETag' => [<<"ETag">>], 'Max-Age' => 5, 'Uri-Path' => [<<"hello">>]}, Msg1)),
-        ?_assertEqual(#coap_content{etag= <<"ETag">>, format= <<"text/plain">>, options=#{'Location-Path' => [<<"new_path">>]}}, 
-            ecoap_utils:get_content(Msg2, extended)),
-        ?_assertEqual(#{'Location-Path' => [<<"new_path">>]}, ecoap_utils:get_extra_options(Msg2))
-    ].
-
 request_compose_test_() ->
+    Default = coap_message:new(),
     [
-        ?_assertEqual(#coap_message{type='CON', code='GET'},
+        ?_assertEqual(Default#{type:='CON', code:='GET'},
             ecoap_utils:request('CON', 'GET')),
-        ?_assertEqual(#coap_message{type='CON', code='PUT', payload= <<"payload">>}, 
+        ?_assertEqual(Default#{type:='CON', code:='PUT', payload:= <<"payload">>}, 
             ecoap_utils:request('CON', 'PUT', <<"payload">>)),
-        ?_assertEqual(#coap_message{type='CON', code='PUT', options=#{'Uri-Path' => [<<"test">>]}, payload= <<"payload">>}, 
+        ?_assertEqual(Default#{type:='CON', code:='PUT', options:=#{'Uri-Path' => [<<"test">>]}, payload:= <<"payload">>}, 
             ecoap_utils:request('CON', 'PUT', <<"payload">>, #{'Uri-Path' => [<<"test">>]}))
     ].
 
 response_compose_test_() ->
-    Request = #coap_message{type='CON', id=123, code='GET', 
-                    token= <<"Token">>, options=#{'Uri-Path' => [<<"test">>]}, payload= <<>>},
+    Request = #{type=>'CON', id=>123, code=>'GET', 
+                    token=> <<"Token">>, options=>#{'Uri-Path' => [<<"test">>]}, payload=> <<>>},
+    Request2 = Request#{options:=#{'Uri-Path' => [<<"test">>], 
+                                    'ETag' => [<<"ETag">>],
+                                    'Content-Format' => <<"text/plain">>, 
+                                    'Observe' => 12, 
+                                    'Location-Path' => [<<"new_path">>]}},
     Payload = <<"Payload">>,
     Content = #coap_content{etag= <<"ETag">>, max_age=30, format= <<"text/plain">>, payload=Payload},
     [
-        ?_assertEqual(Request#coap_message{code={error, 'NotFound'}, options=#{}}, 
+        ?_assertEqual(Request#{code:={error, 'NotFound'}, options:=#{}}, 
             ecoap_utils:response({error, 'NotFound'}, Request)),
-        ?_assertEqual(Request#coap_message{code={ok, 'Content'}, options=#{}, payload=Payload}, 
+        ?_assertEqual(Request#{code:={ok, 'Content'}, options:=#{}, payload:=Payload}, 
             ecoap_utils:response({ok, 'Content'}, Payload, Request)),
-        ?_assertEqual(Request#coap_message{code={ok, 'Content'}, 
-            options=#{'ETag' => [<<"ETag">>], 'Max-Age' => 30, 'Content-Format' => <<"text/plain">>}, 
-                payload=Payload}, 
+        ?_assertEqual(Request#{code:={ok, 'Content'}, 
+            options:=#{'ETag' => [<<"ETag">>], 'Max-Age' => 30, 'Content-Format' => <<"text/plain">>}, 
+                payload:=Payload}, 
                     ecoap_utils:response({ok, 'Content'}, Content, Request)),
         ?_assertEqual(Content,
-            ecoap_utils:get_content(ecoap_utils:response({ok, 'Content'}, Content, Request)))
+            ecoap_utils:get_content(ecoap_utils:response({ok, 'Content'}, Content, Request))),
+        ?_assertEqual(#coap_content{etag= <<"ETag">>, format= <<"text/plain">>, options=#{'Location-Path' => [<<"new_path">>]}}, 
+            ecoap_utils:get_content(Request2, extended)),
+        ?_assertEqual(#{'Location-Path' => [<<"new_path">>]}, ecoap_utils:get_extra_options(Request2))
     ].
 
 uri_test_() ->

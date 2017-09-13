@@ -1,7 +1,7 @@
 -module(server_stub).
 -behaviour(gen_server).
 
--include_lib("ecoap_common/include/coap_def.hrl").
+-include("ecoap.hrl").
 
 %% API.
 -export([start_link/1]).
@@ -17,7 +17,7 @@
 
 -record(state, {
 	socket = undefined :: inet:socket(),
-	inbound = undefined :: undefined | coap_message(),
+	inbound = undefined :: undefined | coap_message:coap_message(),
 	peer_addr = undefined :: undefined | {inet:ip_address(), inet:port_number()}
 }).
 
@@ -27,7 +27,7 @@
 start_link(Port) ->
 	gen_server:start_link(?MODULE, [Port], []).
 
--spec expect_request(pid(), coap_message()) -> {match, non_neg_integer(), binary()} | nomatch.
+-spec expect_request(pid(), coap_message:coap_message()) -> {match, non_neg_integer(), binary()} | nomatch.
 expect_request(Pid, ExpectReq) -> 
 	gen_server:call(Pid, {expect_request, ExpectReq}).
 
@@ -35,7 +35,7 @@ expect_request(Pid, ExpectReq) ->
 expect_empty(Pid, Type, MsgId) ->
 	gen_server:call(Pid, {expect_empty, Type, MsgId}).
 
--spec send_response(pid(), coap_message()) -> ok.
+-spec send_response(pid(), coap_message:coap_message()) -> ok.
 send_response(Pid, Response) ->
 	gen_server:cast(Pid, {send_response, Response}).
 
@@ -53,7 +53,7 @@ init([Port]) ->
 	{ok, #state{socket=Socket}}.
 
 handle_call({expect_empty, Type, MsgId}, _From, 
-	#state{inbound=#coap_message{type=Type, id=MsgId, code=undefined}}=State) ->
+	#state{inbound=#{type:=Type, id:=MsgId, code:=undefined}}=State) ->
 	{reply, match, State};
 handle_call({expect_empty, _, _}, _From, State) ->
 	{reply, nomatch, State};	
@@ -65,7 +65,7 @@ handle_call(_Request, _From, State) ->
 	{noreply, State}.
 
 handle_cast({send_empty, Type, MsgId}, #state{socket=Socket, peer_addr={PeerIP, PeerPortNo}}=State) ->
-	Response = #coap_message{type=Type, id=MsgId},
+	Response = coap_message:new(#{type=>Type, id=>MsgId}),
 	ok = gen_udp:send(Socket, PeerIP, PeerPortNo, coap_message:encode(Response)),
 	{noreply, State};
 handle_cast({send_response, Response}, #state{socket=Socket, peer_addr={PeerIP, PeerPortNo}}=State) ->
@@ -88,8 +88,8 @@ terminate(_Reason, #state{socket=Socket}) ->
 code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
-match(#coap_message{type=Type, code=Code, options=Options, payload=Payload},
-	#coap_message{type=Type, id=MsgId, code=Code, token=Token, options=Options, payload=Payload}) ->
+match(#{type:=Type, code:=Code, options:=Options, payload:=Payload},
+	#{type:=Type, id:=MsgId, code:=Code, token:=Token, options:=Options, payload:=Payload}) ->
 	{match, MsgId, Token};
 match(_, _) ->
 	nomatch.

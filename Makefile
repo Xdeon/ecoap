@@ -6,7 +6,7 @@ PROJECT_ENV = [{port, 5683}, {socket_opts, [{recbuf, 1048576}, {sndbuf, 1048576}
 
 LOCAL_DEPS = crypto
 DEPS = ecoap_common
-dep_ecoap_common = git https://Xdeon@bitbucket.org/Xdeon/ecoap_common.git dev
+dep_ecoap_common = git https://Xdeon@bitbucket.org/Xdeon/ecoap_common.git using_map_as_message
 
 COMPILE_FIRST = coap_resource
 
@@ -20,4 +20,4 @@ ERLC_OPTS += +report +verbose +warn_deprecated_function +warn_deprecated_type +w
 
 # ERLC_OPTS += -DNODEDUP
 
-# SHELL_OPTS = +K true +spp true +sbt s
+SHELL_OPTS = +K true +spp true

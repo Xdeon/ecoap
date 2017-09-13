@@ -5,7 +5,7 @@
         coap_observe/4, coap_unobserve/1, handle_notify/3, handle_info/3, coap_ack/2]).
 
 -include_lib("eunit/include/eunit.hrl").
--include_lib("ecoap_common/include/coap_def.hrl").
+-include("ecoap.hrl").
 
 coap_discover(Prefix, _Args) ->
     [{absolute, Prefix, []}].

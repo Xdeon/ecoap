@@ -1,6 +1,6 @@
 -module(ecoap_simple_client_test).
 -include_lib("eunit/include/eunit.hrl").
--include_lib("ecoap_common/include/coap_def.hrl").
+-include("ecoap.hrl").
 
 basic_test_() -> 
 	[

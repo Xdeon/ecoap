@@ -1,7 +1,7 @@
 -module(test_utils).
 -export([text_resource/1, text_resource/2, large_binary/2]).
 
--include_lib("ecoap_common/include/coap_def.hrl").
+-include("ecoap.hrl").
 
 text_resource(Size) ->
     text_resource(undefined, Size).

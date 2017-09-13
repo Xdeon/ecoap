@@ -3,7 +3,7 @@
         coap_observe/4, coap_unobserve/1, handle_notify/3, handle_info/3, coap_ack/2]).
 -export([start/0, stop/0]).
 
--include_lib("ecoap_common/include/coap_def.hrl").
+-include("ecoap.hrl").
 -behaviour(coap_resource).
 
 start() ->
@@ -24,7 +24,7 @@ coap_discover(Prefix, _Args) ->
     [{absolute, Prefix++Name, []} || Name <- mnesia:dirty_all_keys(resources)].
 
 coap_get(_EpID, Prefix, Name, Query, Request) ->
-    Accept = ecoap_utils:get_option('Accept', Request),
+    Accept = coap_message:get_option('Accept', Request),
     io:format("get ~p ~p ~p accept ~p~n", [Prefix, Name, Query, Accept]),
     case mnesia:dirty_read(resources, Name) of
         [{resources, Name, Content}] -> {ok, Content};

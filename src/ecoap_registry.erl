@@ -17,7 +17,7 @@
 }).
 
 -define(HANDLER_TAB, ?MODULE).
--include_lib("ecoap_common/include/coap_def.hrl").
+-include("ecoap.hrl").
 
 %% API.
 

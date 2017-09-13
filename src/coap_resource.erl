@@ -1,6 +1,6 @@
 -module(coap_resource).
 
--include_lib("ecoap_common/include/coap_def.hrl").
+-include("ecoap.hrl").
 
 -type ecoap_endpoint_id() :: ecoap_udp_socket:ecoap_endpoint_id().
 -type coap_uri() :: core_link:coap_uri().
@@ -17,9 +17,9 @@
 	Prefix :: [binary()],
 	Name :: [binary()],
 	Query :: [binary()],
-	Request :: coap_message(),
+	Request :: coap_message:coap_message(),
 	Content :: coap_content(),
-	Error :: error_code(),
+	Error :: coap_message:error_code(),
 	Reason :: binary().
 
 % POST handler
@@ -27,10 +27,10 @@
 	EpID :: ecoap_endpoint_id(),
 	Prefix :: [binary()],
 	Name :: [binary()],
-	Request :: coap_message(),
-	Code :: success_code(),
+	Request :: coap_message:coap_message(),
+	Code :: coap_message:success_code(),
 	Content :: coap_content(),
-	Error :: error_code(),
+	Error :: coap_message:error_code(),
 	Reason :: binary().
 
 % PUT handler
@@ -38,8 +38,8 @@
 	EpID :: ecoap_endpoint_id(),
 	Prefix :: [binary()],
 	Name :: [binary()],
-	Request :: coap_message(),
-	Error :: error_code(),
+	Request :: coap_message:coap_message(),
+	Error :: coap_message:error_code(),
 	Reason :: binary().
 
 % DELETE handler
@@ -47,8 +47,8 @@
 	EpID :: ecoap_endpoint_id(),
 	Prefix :: [binary()],
 	Name :: [binary()],
-	Request :: coap_message(),
-	Error :: error_code(),
+	Request :: coap_message:coap_message(),
+	Error :: coap_message:error_code(),
 	Reason :: binary().
 
 % observe request handler
@@ -56,9 +56,9 @@
 	EpID :: ecoap_endpoint_id(),
 	Prefix :: [binary()],
 	Name :: [binary()],
-	Request :: coap_message(),
+	Request :: coap_message:coap_message(),
 	Obstate :: any(),
-	Error :: error_code(),
+	Error :: coap_message:error_code(),
 	Reason :: binary().
 
 % cancellation request handler
@@ -70,9 +70,9 @@
 % and may return {ok, {error, 'NotAcceptable'}, State} if the format can not be provided anymore
 -callback handle_notify(Info, ObsReq, Obstate) -> {ok, Notification, NewObstate} when
 	Info :: any(),
-	ObsReq :: coap_message(),
+	ObsReq :: coap_message:coap_message(),
 	Obstate :: any(),
-	Notification :: coap_content() | coap_error(),
+	Notification :: coap_content() | coap_message:coap_error(),
 	NewObstate :: any().
 
 % handler for messages sent to the coap_handler process
@@ -83,10 +83,10 @@
 	{noreply, NewObstate} | 
 	{stop, NewObstate} when
 	Info :: any(),
-	ObsReq :: coap_message(),
+	ObsReq :: coap_message:coap_message(),
 	Obstate :: any(),
 	Ref :: any(),
-	Notification :: coap_content() | coap_error(),
+	Notification :: coap_content() | coap_message:coap_error(),
 	NewObstate :: any().
 
 % response to notifications

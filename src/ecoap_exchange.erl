@@ -8,9 +8,9 @@
 -define(ACK_RANDOM_FACTOR, 1000). % ACK_TIMEOUT*0.5
 -define(MAX_RETRANSMIT, 4).
 
--define(PROCESSING_DELAY, 1500). % standard allows 2000
--define(EXCHANGE_LIFETIME, 247000).
-% -define(EXCHANGE_LIFETIME, 1500).
+-define(PROCESSING_DELAY, 1000). % standard allows 2000
+% -define(EXCHANGE_LIFETIME, 247000).
+-define(EXCHANGE_LIFETIME, 1500).
 -define(NON_LIFETIME, 145000).
 
 -record(exchange, {
@@ -29,8 +29,6 @@
 
 -export_type([exchange/0]).
 
--include_lib("ecoap_common/include/coap_def.hrl").
-
 -spec not_expired(integer(), exchange()) -> boolean().
 not_expired(CurrentTime, #exchange{timestamp=Timestamp, expire_time=ExpireTime}) ->
     CurrentTime - Timestamp < ExpireTime.
@@ -45,7 +43,7 @@ received(BinMessage, TransArgs, State=#exchange{stage=Stage}) ->
     ?MODULE:Stage({in, BinMessage}, TransArgs, State).
 
 % process outgoing message
--spec send(coap_message(), ecoap_endpoint:trans_args(), exchange()) -> exchange().
+-spec send(coap_message:coap_message(), ecoap_endpoint:trans_args(), exchange()) -> exchange().
 send(Message, TransArgs, State=#exchange{stage=Stage}) ->
     ?MODULE:Stage({out, Message}, TransArgs, State).
 
@@ -81,20 +79,20 @@ idle(Msg={in, <<1:2, 1:2, _:12, _Tail/bytes>>}, TransArgs, State) ->
 idle(Msg={in, <<1:2, 0:2, _:12, _Tail/bytes>>}, TransArgs, State) ->
     in_con(Msg, TransArgs, State#exchange{expire_time=native_time(?EXCHANGE_LIFETIME)});
 % NON->
-idle(Msg={out, #coap_message{type='NON'}}, TransArgs, State) ->
+idle(Msg={out, #{type:='NON'}}, TransArgs, State) ->
     out_non(Msg, TransArgs, State#exchange{expire_time=native_time(?NON_LIFETIME)});
 % CON->
-idle(Msg={out, #coap_message{type='CON'}}, TransArgs, State) ->
+idle(Msg={out, #{type:='CON'}}, TransArgs, State) ->
     out_con(Msg, TransArgs, State#exchange{expire_time=native_time(?EXCHANGE_LIFETIME)}).
 
 % --- incoming NON
 -spec in_non({in, binary()}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
 in_non({in, BinMessage}, TransArgs, State) ->
-    case catch coap_message:decode(BinMessage) of
-        #coap_message{code = Method} = Message when is_atom(Method) ->
+    case catch {ok, coap_message:decode(BinMessage)} of
+        {ok, #{code := Method} = Message} when is_atom(Method) ->
             handle_request(Message, TransArgs, State),
             check_next_state(got_non, State);
-        #coap_message{} = Message ->
+        {ok, Message} ->
             handle_response(Message, TransArgs, State),
             check_next_state(got_non, State);
         % shall we send reset?
@@ -108,7 +106,7 @@ got_non({in, _Message}, _TransArgs, State) ->
     next_state(got_non, State).
 
 % --- outgoing NON
--spec out_non({out, coap_message()}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
+-spec out_non({out, coap_message:coap_message()}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
 out_non({out, Message}, #{sock:=Socket, sock_module:=SocketModule, ep_id:=EpID}, State) ->
     %io:fwrite("~p send outgoing non msg ~p~n", [self(), Message]),
     BinMessage = coap_message:encode(Message),
@@ -118,10 +116,12 @@ out_non({out, Message}, #{sock:=Socket, sock_module:=SocketModule, ep_id:=EpID},
 % we may get reset
 -spec sent_non({in, binary()}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
 sent_non({in, BinMessage}, TransArgs, State)->
-    case catch coap_message:decode(BinMessage) of
-        #coap_message{type='RST'} = Rst ->
+    case catch {ok, coap_message:decode(BinMessage)} of
+        {ok, #{type := 'RST'} = Rst} ->
             handle_error(Rst, 'RST', TransArgs, State),
             next_state(got_rst, State);
+        {ok, _} ->
+            next_state(sent_non, State);
         _ -> 
             next_state(sent_non, State)
     end.
@@ -133,28 +133,28 @@ got_rst({in, _BinMessage}, _TransArgs, State)->
 % --- incoming CON->ACK|RST
 -spec in_con({in, binary()}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
 in_con({in, BinMessage}, TransArgs, State) ->
-    case catch coap_message:decode(BinMessage) of
-        #coap_message{code=undefined, id=MsgId} ->
+    case catch {ok, coap_message:decode(BinMessage)} of
+        {ok, #{code := undefined, id := MsgId}} ->
             % provoked reset
             go_rst_sent(ecoap_utils:rst(MsgId), TransArgs, State);
-        #coap_message{code=Method} = Message when is_atom(Method) ->
+        {ok, #{code := Method} = Message} when is_atom(Method) ->
             handle_request(Message, TransArgs, State),
             go_await_aack(Message, TransArgs, State);
-        #coap_message{} = Message ->
+        {ok, Message} ->
             handle_response(Message, TransArgs, State),
             go_await_aack(Message, TransArgs, State);
         _ ->
-            go_rst_sent(ecoap_utils:rst(ecoap_utils:get_id(BinMessage)), TransArgs, State)
+            go_rst_sent(ecoap_utils:rst(coap_message:get_id(BinMessage)), TransArgs, State)
     end.
 
--spec go_await_aack(coap_message(), ecoap_endpoint:trans_args(), exchange()) -> exchange().
+-spec go_await_aack(coap_message:coap_message(), ecoap_endpoint:trans_args(), exchange()) -> exchange().
 go_await_aack(Message, TransArgs, State) ->
     % we may need to ack the message
     EmptyACK = ecoap_utils:ack(Message),
     BinAck = coap_message:encode(EmptyACK),
     next_state(await_aack, TransArgs, State#exchange{msgbin=BinAck}, ?PROCESSING_DELAY).
 
--spec await_aack({in, binary()} | {timeout, await_aack} | {out, coap_message()}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
+-spec await_aack({in, binary()} | {timeout, await_aack} | {out, coap_message:coap_message()}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
 await_aack({in, _BinMessage}, _TransArgs, State) ->
     % ignore retransmission
     next_state(await_aack, State);
@@ -167,19 +167,19 @@ await_aack({timeout, await_aack}, #{sock:=Socket, sock_module:=SocketModule, ep_
 await_aack({out, Ack}, TransArgs, State) ->
     % set correct type for a piggybacked response
     Ack2 = case Ack of
-        #coap_message{type='CON'} -> Ack#coap_message{type='ACK'};
+        #{type := 'CON'} -> Ack#{type := 'ACK'};
         Else -> Else
     end,
     go_pack_sent(Ack2, TransArgs, State).
 
--spec go_pack_sent(coap_message(), ecoap_endpoint:trans_args(), exchange()) -> exchange().
+-spec go_pack_sent(coap_message:coap_message(), ecoap_endpoint:trans_args(), exchange()) -> exchange().
 go_pack_sent(Ack, #{sock:=Socket, sock_module:=SocketModule, ep_id:=EpID}, State) ->
 	%io:fwrite("~p send ack msg ~p~n", [self(), Ack]),
     BinAck = coap_message:encode(Ack),
     ok = SocketModule:send_datagram(Socket, EpID, BinAck),
     check_next_state(pack_sent, State#exchange{msgbin=BinAck}).
 
--spec go_rst_sent(coap_message(), ecoap_endpoint:trans_args(), exchange()) -> exchange().
+-spec go_rst_sent(coap_message:coap_message(), ecoap_endpoint:trans_args(), exchange()) -> exchange().
 go_rst_sent(RST, #{sock:=Socket, sock_module:=SocketModule, ep_id:=EpID}, State) ->
     BinRST = coap_message:encode(RST),
     ok = SocketModule:send_datagram(Socket, EpID, BinRST),
@@ -212,7 +212,7 @@ pack_sent({timeout, await_aack}, _TransArgs, State) ->
 % TODO: CON->CON does not cancel retransmission of the request
 
 % --- outgoing CON->ACK|RST
--spec out_con({out, coap_message()}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
+-spec out_con({out, coap_message:coap_message()}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
 out_con({out, Message}, TransArgs=#{sock:=Socket, sock_module:=SocketModule, ep_id:=EpID}, State) ->
     %io:fwrite("~p send outgoing con msg ~p~n", [self(), Message]),
     BinMessage = coap_message:encode(Message),
@@ -224,19 +224,19 @@ out_con({out, Message}, TransArgs=#{sock:=Socket, sock_module:=SocketModule, ep_
 % peer ack
 -spec await_pack({in, binary()} | {timeout, await_pack}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
 await_pack({in, BinAck}, TransArgs, State) ->
-    case catch coap_message:decode(BinAck) of
-    	% this is an empty ack for separate response or observe notification
-        #coap_message{type='ACK', code=undefined} = Ack ->
+    case catch {ok, coap_message:decode(BinAck)} of
+        % this is an empty ack for separate response or observe notification
+        {ok, #{type := 'ACK', code := undefined} = Ack} ->
             handle_ack(Ack, TransArgs, State),
             % since we can confirm when an outgoing confirmable message
             % has been acknowledged or reset, we can safely clean the msgbin 
             % which won't be used again from this moment
             check_next_state(aack_sent, State#exchange{msgbin= <<>>});
-        #coap_message{type='RST'} = Rst ->
+        {ok, #{type := 'RST'} = Rst} ->
             handle_error(Rst, 'RST', TransArgs, State),
             check_next_state(aack_sent, State#exchange{msgbin= <<>>});
-        #coap_message{} = Ack ->
-        	handle_response(Ack, TransArgs, State),
+        {ok, Ack} ->
+            handle_response(Ack, TransArgs, State),
             check_next_state(aack_sent, State#exchange{msgbin= <<>>});
         % shall we inform the receiver the error?
         _ ->
@@ -266,11 +266,11 @@ cancelled({_, _}, _TransArgs, State) ->
     State.
 
 % utility functions
-handle_request(Message=#coap_message{code=Method, options=Options}, 
+handle_request(Message=#{code := Method, options := Options}, 
     #{ep_id:=EpID, handler_sup:=HdlSupPid, endpoint_pid:=EndpointPid, handler_regs:=HandlerRegs}, #exchange{receiver=undefined}) ->
     %io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
-    Uri = ecoap_utils:get_option('Uri-Path', Options, []),
-    Query = ecoap_utils:get_option('Uri-Query', Options, []),
+    Uri = coap_message:get_option('Uri-Path', Options, []),
+    Query = coap_message:get_option('Uri-Query', Options, []),
     case get_handler(HdlSupPid, EndpointPid, {Method, Uri, Query}, HandlerRegs) of
         {ok, Pid} ->
             Pid ! {coap_request, EpID, EndpointPid, undefined, Message},
@@ -310,8 +310,8 @@ get_handler(SupPid, EndpointPid, HandlerID, HandlerRegs) ->
             {ok, Pid}
     end.
 
-request_complete(EndpointPid, #coap_message{options=Options}, Receiver) ->
-    case ecoap_utils:get_option('Observe', Options) of
+request_complete(EndpointPid, #{options := Options}, Receiver) ->
+    case coap_message:get_option('Observe', Options) of
         undefined ->
             EndpointPid ! {request_complete, Receiver},
             ok;
