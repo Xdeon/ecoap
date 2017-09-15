@@ -4,7 +4,6 @@
 -export([start/0, stop/0]).
 -export([fib/1]).
 
--include("ecoap.hrl").
 -behaviour(coap_resource).
 
 start() ->
@@ -25,9 +24,12 @@ coap_discover(Prefix, _Args) ->
     [{absolute, Prefix, []}].
 
 coap_get(_EpID, [<<"benchmark">>], _Name, _Query, _Request) ->
-    {ok, #coap_content{payload = <<"hello world">>}};
+    Content = coap_content:set_payload(<<"hello world">>, coap_content:new()),
+    {ok, Content};
 coap_get(_EpID, [<<"fibonacci">>], _Name, [], _Request) ->
-    {ok, #coap_content{payload = <<"fibonacci(20) = ", (integer_to_binary(fib(20)))/binary>>}};
+    Payload = <<"fibonacci(20) = ", (integer_to_binary(fib(20)))/binary>>,
+    Content = coap_content:set_format(<<"text/plain">>, coap_content:set_payload(Payload, coap_content:new())),
+    {ok, Content};
 coap_get(_EpID, [<<"fibonacci">>], _Name, [Query|_], _Request) ->
     Num = case re:run(Query, "^n=[0-9]+$") of
         {match, _} ->
@@ -35,17 +37,22 @@ coap_get(_EpID, [<<"fibonacci">>], _Name, [Query|_], _Request) ->
         nomatch -> 
             <<"20">>
     end,
-    {ok, #coap_content{payload= <<"fibonacci(", Num/binary, ") = ", (integer_to_binary(fib(binary_to_integer(Num))))/binary>>}};
+    Payload = <<"fibonacci(", Num/binary, ") = ", (integer_to_binary(fib(binary_to_integer(Num))))/binary>>,
+    Content = coap_content:set_format(<<"text/plain">>, coap_content:set_payload(Payload, coap_content:new())),
+    {ok, Content};
 coap_get(_EpID, [<<"helloWorld">>], _Name, _Query, _Request) ->
-    {ok, #coap_content{payload = <<"Hello World!">>, format = 0}};
+    Content = coap_content:set_format(<<"text/plain">>, coap_content:set_payload(<<"Hello World">>, coap_content:new())),
+    {ok, Content};
 coap_get(_EpID, [<<"shutdown">>], _Name, _Query, _Request) ->
-    {ok, #coap_content{payload = <<"Send a POST request to this resource to shutdown the server">>}};
+    Content = coap_content:set_payload(<<"Send a POST request to this resource to shutdown the server">>, coap_content:new()),
+    {ok, Content};
 coap_get(_EpID, _Prefix, _Name, _Query, _Request) ->
     {error, 'NotFound'}.
 
 coap_post(_EpID, [<<"shutdown">>], _Name, _Request) ->
     _ = spawn(fun() -> io:format("Shutting down everything in 1 second~n"), timer:sleep(1000), benchmark:stop() end),
-    {ok, 'Changed', #coap_content{payload = <<"Shutting down">>}};
+    Content = coap_content:set_payload(<<"Shutting down">>, coap_content:new()),
+    {ok, 'Changed', Content};
 coap_post(_EpID, _Prefix, _Name, _Request) ->
     {error, 'MethodNotAllowed'}.
 

@@ -3,7 +3,6 @@
         coap_observe/4, coap_unobserve/1, handle_notify/3, handle_info/3, coap_ack/2]).
 -export([start/0, stop/0]).
 
--include("ecoap.hrl").
 -behaviour(coap_resource).
 
 start() ->
@@ -32,13 +31,13 @@ coap_get(_EpID, Prefix, Name, Query, Request) ->
     end.
 
 coap_post(_EpID, Prefix, Name, Request) -> 
-    Content = ecoap_utils:get_content(Request),
+    Content = coap_content:get_content(Request),
     io:format("post ~p ~p ~p~n", [Prefix, Name, Content]),
     {error, 'MethodNotAllowed'}.
-    % {ok, 'Created', #coap_content{options=#{'Location-Path' => Prefix++Name}}}.
+    % {ok, 'Created', coap_content:set_options(#{'Location-Path' => Prefix++Name}, coap_content:new())}.
 
 coap_put(_EpID, Prefix, Name, Request) ->
-    Content = ecoap_utils:get_content(Request),
+    Content = coap_content:get_content(Request),
     io:format("put ~p ~p ~p~n", [Prefix, Name, Content]),
     mnesia:dirty_write(resources, {resources, Name, Content}),
     ecoap_handler:notify(Prefix++Name, Content),

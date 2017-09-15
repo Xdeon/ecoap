@@ -34,17 +34,17 @@
 -record(req, {
 	method = undefined :: coap_message:coap_method(),
 	options = undefined :: coap_message:optionset(),
-	content = undefined :: coap_content(),
+	content = undefined :: coap_content:coap_content(),
 	fragment = <<>> :: binary()
 }).
 
 -type from() :: {pid(), term()}.
 -type req() :: #req{}.
--type request_content() :: binary() | coap_content().
--type response() :: {ok, coap_message:success_code(), coap_content()} | 
+-type request_content() :: binary() | coap_content:coap_content().
+-type response() :: {ok, coap_message:success_code(), coap_content:coap_content()} | 
 					{error, timeout} |
 					{error, coap_message:error_code()} | 
-					{error, coap_message:error_code(), coap_content()}.
+					{error, coap_message:error_code(), coap_content:coap_content()}.
 -opaque state() :: #state{}.
 -export_type([state/0]).
 
@@ -144,14 +144,14 @@ assemble_request(Method, Uri, Options, Content) ->
 							coap_message:add_option('Uri-Port', PortNo, Options)))),
 	{{PeerIP, PortNo}, {Method, Options2, convert_content(Content)}}.
 
-convert_content(Content=#coap_content{}) -> Content;
-convert_content(Content) when is_binary(Content) -> #coap_content{payload=Content}.
+convert_content(Content) when is_binary(Content) -> coap_content:set_payload(Content, coap_content:new());
+convert_content(Content) -> Content.
 
 request_block(EndpointPid, Method, ROpt, Content) ->
     request_block(EndpointPid, Method, ROpt, undefined, Content).
 
 request_block(EndpointPid, Method, ROpt, Block1, Content) ->
-    ecoap_endpoint:send(EndpointPid, ecoap_utils:set_content(Content, Block1,
+    ecoap_endpoint:send(EndpointPid, coap_content:set_content(Content, Block1,
         ecoap_utils:request('CON', Method, <<>>, ROpt))).
 
 handle_response(EndpointPid, _Message=#{code:={ok, 'Continue'}, options:=Options1}, 
@@ -187,9 +187,9 @@ send_response(From, Res) ->
 	ok.
 
 return_response({ok, Code}, Message) ->
-    {ok, Code, ecoap_utils:get_content(Message, extended)};
+    {ok, Code, coap_content:get_content(Message, extended)};
 return_response({error, Code}, #{payload:= <<>>}) ->
     {error, Code};
 return_response({error, Code}, Message) ->
-    {error, Code, ecoap_utils:get_content(Message)}.
+    {error, Code, coap_content:get_content(Message)}.
 

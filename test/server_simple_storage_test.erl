@@ -23,7 +23,7 @@ coap_post(_EpId, _Prefix, _Suffix, _Request) ->
     {error, 'MethodNotAllowed', ?NOT_IMPLEMENTED}.
 
 coap_put(_EpId, _Prefix, [Name], Request) ->    
-    Content = ecoap_utils:get_content(Request),
+    Content = coap_content:get_content(Request),
     mnesia:dirty_write(resources, {resources, Name, Content}).
 
 coap_delete(_EpId, _Prefix, [Name], _Request) ->

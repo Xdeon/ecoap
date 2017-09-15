@@ -17,7 +17,7 @@ coap_get(_EpID, [<<"reflect">>], [], _Query, _Request) ->
     {error, 'NotFound'}.
 
 coap_post(_EpID, _Prefix, [], Request) ->
-	Content = ecoap_utils:get_content(Request),
+	Content = coap_content:get_content(Request),
     {ok, 'Content', Content}.
 
 coap_put(_EpID, _Prefix, [], _Request) ->

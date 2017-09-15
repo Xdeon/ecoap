@@ -33,9 +33,9 @@ response_compose_test_() ->
                 payload:=Payload}, 
                     ecoap_utils:response({ok, 'Content'}, Content, Request)),
         ?_assertEqual(Content,
-            ecoap_utils:get_content(ecoap_utils:response({ok, 'Content'}, Content, Request))),
+            coap_content:get_content(ecoap_utils:response({ok, 'Content'}, Content, Request))),
         ?_assertEqual(#coap_content{etag= <<"ETag">>, format= <<"text/plain">>, options=#{'Location-Path' => [<<"new_path">>]}}, 
-            ecoap_utils:get_content(Request2, extended)),
+            coap_content:get_content(Request2, extended)),
         ?_assertEqual(#{'Location-Path' => [<<"new_path">>]}, ecoap_utils:get_extra_options(Request2))
     ].
 

@@ -1,7 +1,5 @@
 -module(coap_resource).
 
--include("ecoap.hrl").
-
 -type ecoap_endpoint_id() :: ecoap_udp_socket:ecoap_endpoint_id().
 -type coap_uri() :: core_link:coap_uri().
 
@@ -18,7 +16,7 @@
 	Name :: [binary()],
 	Query :: [binary()],
 	Request :: coap_message:coap_message(),
-	Content :: coap_content(),
+	Content :: coap_content:coap_content(),
 	Error :: coap_message:error_code(),
 	Reason :: binary().
 
@@ -29,7 +27,7 @@
 	Name :: [binary()],
 	Request :: coap_message:coap_message(),
 	Code :: coap_message:success_code(),
-	Content :: coap_content(),
+	Content :: coap_content:coap_content(),
 	Error :: coap_message:error_code(),
 	Reason :: binary().
 
@@ -72,7 +70,7 @@
 	Info :: any(),
 	ObsReq :: coap_message:coap_message(),
 	Obstate :: any(),
-	Notification :: coap_content() | coap_message:coap_error(),
+	Notification :: coap_content:coap_content() | coap_message:coap_error(),
 	NewObstate :: any().
 
 % handler for messages sent to the coap_handler process
@@ -86,7 +84,7 @@
 	ObsReq :: coap_message:coap_message(),
 	Obstate :: any(),
 	Ref :: any(),
-	Notification :: coap_content() | coap_message:coap_error(),
+	Notification :: coap_content:coap_content() | coap_message:coap_error(),
 	NewObstate :: any().
 
 % response to notifications

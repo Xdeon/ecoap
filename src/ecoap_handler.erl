@@ -24,7 +24,7 @@
 	module = undefined :: module(), 
 	args = undefined :: any(), 
 	insegs = undefined :: orddict:orddict(), 
-	last_response = undefined :: undefined | {ok, coap_message:success_code(), coap_content()} | coap_message:coap_success() | coap_message:coap_error(), 
+	last_response = undefined :: undefined | {ok, coap_message:success_code(), coap_content:coap_content()} | coap_message:coap_success() | coap_message:coap_error(), 
 	observer = undefined :: undefined | coap_message:coap_message(), 
 	obseq = undefined :: non_neg_integer(), 
 	obstate = undefined :: any(), 
@@ -72,11 +72,11 @@ handle_cast({coap_notify, _Info}, State=#state{observer=undefined}) ->
     {noreply, State};
 handle_cast({coap_notify, Info}, State=#state{observer=Observer, module=Module, obstate=ObState}) ->
     case invoke_callback(Module, handle_notify, [Info, Observer, ObState]) of
-        {ok, Content=#coap_content{}, ObState2} ->
-            return_resource(Observer, Content, State#state{obstate=ObState2});
         {ok, {error, Code}, ObState2} ->
             {ok, State2} = cancel_observer(Observer, State#state{obstate=ObState2}),
             return_response(Observer, {error, Code}, State2);
+        {ok, Content, ObState2} ->
+            return_resource(Observer, Content, State#state{obstate=ObState2});
         % server internal error
         {error, Error} ->
             {ok, State2} = cancel_observer(Observer, State),
@@ -108,12 +108,12 @@ handle_info({coap_error, _EpID, _EndpointPid, _Ref, _Error}, State=#state{observ
     {stop, normal, State2};
 handle_info(Info, State=#state{module=Module, observer=Observer, obstate=ObState}) ->
     case invoke_callback(Module, handle_info, [Info, Observer, ObState]) of
-        {notify, Ref, Content=#coap_content{}, ObState2} ->
-            return_resource(Ref, Observer, {ok, 'Content'}, Content, State#state{obstate=ObState2});
         {notify, Ref, {error, Code}, ObState2} ->
             % should we wait for ack (of the error response, if applicable) before terminate?
             {ok, State2} = cancel_observer(Observer, State#state{obstate=ObState2}),
             return_response(Ref, Observer, {error, Code}, <<>>, State2);
+        {notify, Ref, Content, ObState2} ->
+            return_resource(Ref, Observer, {ok, 'Content'}, Content, State#state{obstate=ObState2});
         {noreply, ObState2} ->
             {noreply, State#state{obstate=ObState2}};
         {stop, ObState2} ->
@@ -199,7 +199,8 @@ check_preconditions(EpID, Request, Content, State) ->
 
 if_match(Request, {error, 'NotFound'}) ->
     not coap_message:has_option('If-Match', Request);
-if_match(Request, #coap_content{etag=ETag}) ->
+if_match(Request, Content) ->
+    ETag = coap_content:get_etag(Content),
     case coap_message:get_option('If-Match', Request, []) of
         % empty string matches any existing representation
         [] -> true;
@@ -209,7 +210,7 @@ if_match(Request, #coap_content{etag=ETag}) ->
 
 if_none_match(_Request, {error, _}) ->
     true;
-if_none_match(Request, #coap_content{}) ->
+if_none_match(Request, _Content) ->
     not coap_message:has_option('If-None-Match', Request).
 
 handle_method(_EpID, Request=#{code:='GET'}, {error, Code}, State) ->
@@ -277,7 +278,7 @@ cancel_observer(_Request, State=#state{uri=Uri, module=Module, obstate=ObState})
     {ok, State#state{observer=undefined, obstate=undefined}}.
 
 handle_post(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
-    % Content = ecoap_utils:get_content(Request),
+    % Content = coap_content:get_content(Request),
     case invoke_callback(Module, coap_post, [EpID, Prefix, Suffix, Request]) of
         {ok, Code, Content} ->
             return_resource([], Request, {ok, Code}, Content, State);
@@ -288,7 +289,7 @@ handle_post(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=Mod
     end.
 
 handle_put(EpID, Request, Content, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
-    % Content = ecoap_utils:get_content(Request),
+    % Content = coap_content:get_content(Request),
     case invoke_callback(Module, coap_put, [EpID, Prefix, Suffix, Request]) of
         ok ->
             return_response(Request, created_or_changed(Content), State);
@@ -298,10 +299,10 @@ handle_put(EpID, Request, Content, State=#state{prefix=Prefix, suffix=Suffix, mo
             return_response([], Request, {error, Error}, Reason, State)
     end.
 
-created_or_changed(#coap_content{}) ->
-    {ok, 'Changed'};
 created_or_changed({error, 'NotFound'}) ->
-    {ok, 'Created'}.
+    {ok, 'Created'};
+created_or_changed(_Content) ->
+    {ok, 'Changed'}.
 
 handle_delete(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
     case invoke_callback(Module, coap_delete, [EpID, Prefix, Suffix, Request]) of
@@ -316,13 +317,14 @@ handle_delete(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=M
 return_resource(Request, Content, State) ->
     return_resource([], Request, {ok, 'Content'}, Content, State).
 
-return_resource(Ref, Request, {ok, Code}, Content=#coap_content{etag=ETag}, State) ->
+return_resource(Ref, Request, {ok, Code}, Content, State) ->
+    ETag = coap_content:get_etag(Content),
     Response = case lists:member(ETag, coap_message:get_option('ETag', Request, [])) of
             true ->
-                ecoap_utils:set_content(#coap_content{etag=ETag},
+                coap_content:set_content(coap_content:set_etag(ETag, coap_content:new()),
                     ecoap_utils:response({ok, 'Valid'}, Request));
             false ->
-                ecoap_utils:set_content(Content, coap_message:get_option('Block2', Request),
+                coap_content:set_content(Content, coap_message:get_option('Block2', Request),
                     ecoap_utils:response({ok, Code}, Request))
     end,
     send_observable(Ref, Request, Response, State#state{last_response={ok, Code, Content}}).

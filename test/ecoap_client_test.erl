@@ -1,7 +1,6 @@
 -module(ecoap_client_test).
 
 -include_lib("eunit/include/eunit.hrl").
--include("ecoap.hrl").
 
 basic_test_() ->
     {setup,
@@ -17,7 +16,7 @@ basic_test_() ->
 basic(Pid) ->
 	[
         ?_assertEqual(ok, ecoap_client:ping(Pid, "coap://coap.me:5683")),
-		?_assertEqual({ok, 'Content', #coap_content{format = <<"text/plain">>, payload = <<"world">>}}, 
+		?_assertEqual({ok, 'Content', coap_content:set_format(<<"text/plain">> coap_content:set_payload(<<"world">>, coap_content:new()))}, 
 			ecoap_client:request(Pid, 'GET', "coap://coap.me:5683/hello")),
 		?_assertEqual({error, 'InternalServerError', #coap_content{format = <<"text/plain">>, payload = <<"Oops: broken">>}}, 
 			ecoap_client:request(Pid, 'GET', "coap://coap.me:5683/broken")),

@@ -44,7 +44,7 @@
 	method = undefined :: undefined | coap_message:coap_method(),
 	options = #{} :: coap_message:optionset(),
 	token = <<>> :: binary(),
-	content = undefined :: undefined | coap_content(),
+	content = undefined :: undefined | coap_content:coap_content(),
 	fragment = <<>> :: binary(),
 	% req_ref is the original request reference that user started, 
 	% which is inheritated among successive request(s), if any
@@ -62,13 +62,13 @@
 -include("ecoap.hrl").
 
 -type req() :: #req{}.
--type request_content() :: binary() | coap_content().
--type response() :: {ok, coap_message:success_code(), coap_content()} | 
+-type request_content() :: binary() | coap_content:coap_content().
+-type response() :: {ok, coap_message:success_code(), coap_content:coap_content()} | 
 					{error, timeout} |
 					{error, coap_message:error_code()} | 
-					{error, coap_message:error_code(), coap_content()} | 
+					{error, coap_message:error_code(), coap_content:coap_content()} | 
 					{separate, reference()}.
--type observe_response() :: {ok, reference(), pid(), non_neg_integer(), coap_message:success_code(), coap_content()} | response().
+-type observe_response() :: {ok, reference(), pid(), non_neg_integer(), coap_message:success_code(), coap_content:coap_content()} | response().
 
 -type observe_key() :: {ecoap_udp_socket:ecoap_endpoint_id(), [binary()], atom() | non_neg_integer()}.
 -type block_key() :: {ecoap_udp_socket:ecoap_endpoint_id(), [binary()]}.
@@ -109,7 +109,7 @@ ping(Pid, Uri) ->
 
 -spec request(pid(), coap_message:coap_method(), string()) -> response().
 request(Pid, Method, Uri) ->
-	request(Pid, Method, Uri, #coap_content{}, #{}, infinity).
+	request(Pid, Method, Uri, coap_content:new(), #{}, infinity).
 
 -spec request(pid(), coap_message:coap_method(), string(), request_content()) -> response().
 request(Pid, Method, Uri, Content) -> 
@@ -136,7 +136,7 @@ request(Pid, Method, Uri, Content, Options, Timeout) ->
 
 -spec async_request(pid(), coap_message:coap_method(), string()) -> {ok, reference()}.
 async_request(Pid, Method, Uri) ->
-	async_request(Pid, Method, Uri, #coap_content{}, #{}).
+	async_request(Pid, Method, Uri, coap_content:new(), #{}).
 
 -spec async_request(pid(), coap_message:coap_method(), string(), request_content()) -> {ok, reference()}.
 async_request(Pid, Method, Uri, Content) -> 
@@ -324,11 +324,11 @@ assemble_observe_request(Uri, Options) ->
 								coap_message:add_option('Uri-Port', PortNo, Options))))),
 	EpID = {PeerIP, PortNo},
 	Key = {EpID, Path, Accpet},
-	Req = {'CON', 'GET', Options2, #coap_content{}},
+	Req = {'CON', 'GET', Options2, coap_content:new()},
 	{EpID, Key, Req}.
 
-convert_content(Content=#coap_content{}) -> Content;
-convert_content(Content) when is_binary(Content) -> #coap_content{payload=Content}.
+convert_content(Content) when is_binary(Content) -> coap_content:set_payload(Content, coap_content:new());
+convert_content(Content) -> Content.
 
 -ifdef(TEST).
 
@@ -487,7 +487,7 @@ request_block(EpID, EndpointPid, Type, Method, ROpt, Content) ->
     request_block(EpID, EndpointPid, Type, Method, ROpt, undefined, Content).
 
 request_block(EpID, EndpointPid, Type, Method, ROpt, Block1, Content) ->
-	RequestMessage = ecoap_utils:set_content(Content, Block1, ecoap_utils:request(Type, Method, <<>>, ROpt)),
+	RequestMessage = coap_content:set_content(Content, Block1, ecoap_utils:request(Type, Method, <<>>, ROpt)),
 	{ok, Ref} = ecoap_endpoint:send(EndpointPid, RequestMessage),
 	HasBlock = coap_message:has_option('Block1', RequestMessage) orelse coap_message:has_option('Block2', RequestMessage),
 	BlockKey = case HasBlock of 
@@ -678,8 +678,8 @@ send_response(ReplyPid, ReqRef, ObsKey, Obseq, SubPids, Res) ->
 	ok.
 
 return_response({ok, Code}, Message) ->
-    {ok, Code, ecoap_utils:get_content(Message, extended)};
+    {ok, Code, coap_content:get_content(Message, extended)};
 return_response({error, Code}, #{payload:= <<>>}) ->
     {error, Code};
 return_response({error, Code}, Message) ->
-    {error, Code, ecoap_utils:get_content(Message)}.
+    {error, Code, coap_content:get_content(Message)}.

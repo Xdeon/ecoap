@@ -21,7 +21,7 @@ coap_post(_EpID, _Prefix, _Suffix, _Request) ->
     {error, 'MethodNotAllowed'}.
 
 coap_put(_EpID, Prefix, [], Request) ->
-	Content = ecoap_utils:get_content(Request),
+	Content = coap_content:get_content(Request),
     mnesia:dirty_write(resources, {resources, [], Content}),
     ecoap_handler:notify(Prefix, Content),
     ok.
