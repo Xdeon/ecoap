@@ -22,21 +22,15 @@ response_compose_test_() ->
                                     'Observe' => 12, 
                                     'Location-Path' => [<<"new_path">>]}},
     Payload = <<"Payload">>,
-    Content = #coap_content{etag= <<"ETag">>, max_age=30, format= <<"text/plain">>, payload=Payload},
     [
         ?_assertEqual(Request#{code:={error, 'NotFound'}, options:=#{}}, 
-            ecoap_utils:response({error, 'NotFound'}, Request)),
+            ecoap_request:response({error, 'NotFound'}, Request)),
         ?_assertEqual(Request#{code:={ok, 'Content'}, options:=#{}, payload:=Payload}, 
-            ecoap_utils:response({ok, 'Content'}, Payload, Request)),
+            ecoap_request:response({ok, 'Content'}, Payload, Request)),
         ?_assertEqual(Request#{code:={ok, 'Content'}, 
             options:=#{'ETag' => [<<"ETag">>], 'Max-Age' => 30, 'Content-Format' => <<"text/plain">>}, 
                 payload:=Payload}, 
-                    ecoap_utils:response({ok, 'Content'}, Content, Request)),
-        ?_assertEqual(Content,
-            coap_content:get_content(ecoap_utils:response({ok, 'Content'}, Content, Request))),
-        ?_assertEqual(#coap_content{etag= <<"ETag">>, format= <<"text/plain">>, options=#{'Location-Path' => [<<"new_path">>]}}, 
-            coap_content:get_content(Request2, extended)),
-        ?_assertEqual(#{'Location-Path' => [<<"new_path">>]}, ecoap_utils:get_extra_options(Request2))
+                    ecoap_request:response({ok, 'Content'}, Content, Request))
     ].
 
 uri_test_() ->

@@ -205,7 +205,7 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgI
                         ecoap_exchange:received(BinMessage, TransArgs, init_exchange(TrId, Receiver)));
                 error ->
                     % token was not recognized
-                    BinRST = coap_message:encode(ecoap_utils:rst(MsgId)),
+                    BinRST = coap_message:encode(ecoap_request:rst(MsgId)),
                     %io:fwrite("<- reset~n"),
                     ok = SocketModule:send_datagram(Socket, EpID, BinRST),
                     {noreply, State}

@@ -6,7 +6,7 @@
 text_resource(Size) ->
     text_resource(undefined, Size).
 text_resource(ETag, Size) ->
-    #coap_content{etag=ETag, format= <<"text/plain">>, payload=large_binary(Size, <<"X">>)}.
+	{large_binary(Size, <<"X">>), #{'ETag'=>ETag, 'Content-Format'=> <<"text/plain">>}}.
 
 large_binary(Size, Acc) when Size > 2*byte_size(Acc) ->
     large_binary(Size, <<Acc/binary, Acc/binary>>);

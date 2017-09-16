@@ -1,9 +1,6 @@
 -module(ecoap_utils).
 
--export([
-    requires_ack/1, request/2, request/3, request/4, ack/1, rst/1, response/1, response/2, response/3,
-    decode_uri/1, encode_uri/1
-    ]).
+-export([decode_uri/1, encode_uri/1]).
 
 -include("ecoap.hrl").
 
@@ -97,62 +94,3 @@ hex_octet(N) when N > 15 ->
     hex_octet(N bsr 4) ++ hex_octet(N band 15);
 hex_octet(N) ->
     [N - 10 + $A].
-
--spec requires_ack(coap_message:coap_message()) -> boolean().
-requires_ack(#{type := 'CON'}) -> true;
-requires_ack(#{type := 'NON'}) -> false.
-
--spec request(coap_message:coap_type(), coap_message:coap_method()) -> coap_message:coap_message().
-request(Type, Code) ->
-    request(Type, Code, <<>>, #{}).
-
--spec request(coap_message:coap_type(), coap_message:coap_method(), coap_content:coap_content() | binary()) -> coap_message:coap_message().
-request(Type, Code, Payload) ->
-    request(Type, Code, Payload, #{}).
-
--spec request(coap_message:coap_type(), coap_message:coap_method(), coap_content:coap_content() | binary(), coap_message:optionset()) -> coap_message:coap_message().
-request(Type, Code, Payload, Options) when is_binary(Payload) ->
-    coap_message:set_payload(Payload,
-        (coap_message:new())#{type:=Type, code:=Code, options:=Options});
-request(Type, Code, Content, Options) ->
-    coap_content:set_content(Content,
-        (coap_message:new())#{type:=Type, code:=Code, options:=Options}).
-
--spec ack(coap_message:coap_message() | non_neg_integer()) -> coap_message:coap_message().
-ack(#{id := MsgId}) -> 
-    (coap_message:new())#{type:='ACK', id:=MsgId};
-ack(MsgId) ->
-    (coap_message:new())#{type:='ACK', id:=MsgId}.
-
--spec rst(coap_message:coap_message() | non_neg_integer()) -> coap_message:coap_message().
-rst(#{id := MsgId}) -> 
-    (coap_message:new())#{type:='RST', id:=MsgId};
-rst(MsgId) -> 
-    (coap_message:new())#{type:='RST', id:=MsgId}.
-
--spec response(coap_message:coap_message()) -> coap_message:coap_message().
-response(#{type:='NON', token:=Token}) ->
-    (coap_message:new())#{
-        type:='NON',
-        token:=Token
-    };
-response(#{type:='CON', id:=MsgId, token:=Token}) ->
-    (coap_message:new())#{
-        type:='CON',
-        id:=MsgId,
-        token:=Token
-    }.
-
--spec response(undefined | coap_message:coap_success() | coap_message:coap_error(), coap_message:coap_message()) -> coap_message:coap_message().
-response(Code, Request) ->
-    (response(Request))#{code:=Code}.
-
--spec response(undefined | coap_message:coap_success() | coap_message:coap_error(), coap_content:coap_content() | binary(), coap_message:coap_message()) -> coap_message:coap_message().
-response(Code, Payload, Request) when is_binary(Payload) ->
-    coap_message:set_code(Code,
-        coap_message:set_payload(Payload,
-            response(Request)));
-response(Code, Payload, Request) ->
-    coap_message:set_code(Code,
-        coap_content:set_content(Payload,
-            response(Request))).

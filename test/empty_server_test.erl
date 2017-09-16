@@ -60,7 +60,7 @@ unknown_handler_test_() ->
 unknown_handler(_State) ->
     [
     % provoked reset
-    ?_assertMatch({ok, 'Content', #coap_content{payload= <<>>}}, ecoap_simple_client:request('GET', "coap://127.0.0.1/.well-known/core")),
+    ?_assertMatch({ok, 'Content', <<>>, #{}}, ecoap_simple_client:request('GET', "coap://127.0.0.1/.well-known/core")),
     ?_assertEqual({error,'InternalServerError'}, ecoap_simple_client:request('GET', "coap://127.0.0.1/unknown"))
     ].
 

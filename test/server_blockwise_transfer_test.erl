@@ -12,11 +12,12 @@ coap_discover(Prefix, _Args) ->
 
 % resource generator
 coap_get(_EpID, [<<"text">>], [Size], _Query, _Request) ->
-    {ok, test_utils:text_resource(binary_to_integer(Size))};
+    {Payload, Options} = test_utils:text_resource(binary_to_integer(Size)),
+    {ok, Payload, Options};
 coap_get(_EpID, [<<"reflect">>], [], _Query, _Request) ->
     {error, 'NotFound'}.
 
-coap_post(_EpID, _Prefix, [], Request) ->
+coap_post(_EpID, _Prefix, [], #{payload:=Payload, options:=Options}) ->
 	Content = coap_content:get_content(Request),
     {ok, 'Content', Content}.
 

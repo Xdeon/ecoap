@@ -34,17 +34,16 @@
 -record(req, {
 	method = undefined :: coap_message:coap_method(),
 	options = undefined :: coap_message:optionset(),
-	content = undefined :: coap_content:coap_content(),
+	content = undefined :: binary(),
 	fragment = <<>> :: binary()
 }).
 
 -type from() :: {pid(), term()}.
 -type req() :: #req{}.
--type request_content() :: binary() | coap_content:coap_content().
--type response() :: {ok, coap_message:success_code(), coap_content:coap_content()} | 
+-type response() :: {ok, coap_message:success_code(), binary(), coap_message:optionset()} | 
 					{error, timeout} |
 					{error, coap_message:error_code()} | 
-					{error, coap_message:error_code(), coap_content:coap_content()}.
+					{error, coap_message:error_code(), binary(), coap_message:optionset()}.
 -opaque state() :: #state{}.
 -export_type([state/0]).
 
@@ -75,11 +74,11 @@ ping(Uri) ->
 request(Method, Uri) ->
 	request(Method, Uri, <<>>, #{}).
 
--spec request(coap_message:coap_method(), string(), request_content()) -> response().
+-spec request(coap_message:coap_method(), string(), binary()) -> response().
 request(Method, Uri, Content) ->
 	request(Method, Uri, Content, #{}).	
 
--spec request(coap_message:coap_method(), string(), request_content(), coap_message:optionset()) -> response().
+-spec request(coap_message:coap_method(), string(), binary(), coap_message:optionset()) -> response().
 request(Method, Uri, Content, Options) ->
 	{ok, Pid} = start_link(),
 	{EpID, Req} = assemble_request(Method, Uri, Options, Content),
@@ -142,17 +141,14 @@ assemble_request(Method, Uri, Options, Content) ->
 					coap_message:add_option('Uri-Query', Query,
 						coap_message:add_option('Uri-Host', Host, 
 							coap_message:add_option('Uri-Port', PortNo, Options)))),
-	{{PeerIP, PortNo}, {Method, Options2, convert_content(Content)}}.
-
-convert_content(Content) when is_binary(Content) -> coap_content:set_payload(Content, coap_content:new());
-convert_content(Content) -> Content.
+	{{PeerIP, PortNo}, {Method, Options2, Content}}.
 
 request_block(EndpointPid, Method, ROpt, Content) ->
     request_block(EndpointPid, Method, ROpt, undefined, Content).
 
 request_block(EndpointPid, Method, ROpt, Block1, Content) ->
-    ecoap_endpoint:send(EndpointPid, coap_content:set_content(Content, Block1,
-        ecoap_utils:request('CON', Method, <<>>, ROpt))).
+    ecoap_endpoint:send(EndpointPid, ecoap_request:set_payload(Content, Block1,
+        ecoap_request:request('CON', Method, ROpt))).
 
 handle_response(EndpointPid, _Message=#{code:={ok, 'Continue'}, options:=Options1}, 
 	State=#state{req=#req{method=Method, options=Options2, content=Content}}) ->
@@ -168,7 +164,7 @@ handle_response(EndpointPid, Message=#{code:={ok, Code}, options:=Options1, payl
          	% more blocks follow, ask for more
             % no payload for requests with Block2 with NUM != 0
         	{ok, Ref2} = ecoap_endpoint:send(EndpointPid,
-            	ecoap_utils:request('CON', Method, <<>>, coap_message:add_option('Block2', {Num+1, false, Size}, Options2))),
+            	ecoap_request:request('CON', Method, coap_message:add_option('Block2', {Num+1, false, Size}, Options2))),
 				{noreply, State#state{ref=Ref2, req=Req#req{fragment= <<Fragment/binary, Data/binary>>}}};
 		 _Else ->
 		 	Res = return_response({ok, Code}, Message#{payload:= <<Fragment/binary, Data/binary>>}),
@@ -186,10 +182,9 @@ send_response(From, Res) ->
 	_ = gen_server:reply(From, Res),
 	ok.
 
-return_response({ok, Code}, Message) ->
-    {ok, Code, coap_content:get_content(Message, extended)};
+return_response({ok, Code}, #{payload:=Payload, options:=Options}) ->
+    {ok, Code, Payload, Options};
 return_response({error, Code}, #{payload:= <<>>}) ->
     {error, Code};
-return_response({error, Code}, Message) ->
-    {error, Code, coap_content:get_content(Message)}.
-
+return_response({error, Code}, #{payload:=Payload, options:=Options}) ->
+    {error, Code, Payload, Options}.

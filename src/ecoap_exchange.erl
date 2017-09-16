@@ -136,7 +136,7 @@ in_con({in, BinMessage}, TransArgs, State) ->
     case catch {ok, coap_message:decode(BinMessage)} of
         {ok, #{code := undefined, id := MsgId}} ->
             % provoked reset
-            go_rst_sent(ecoap_utils:rst(MsgId), TransArgs, State);
+            go_rst_sent(ecoap_request:rst(MsgId), TransArgs, State);
         {ok, #{code := Method} = Message} when is_atom(Method) ->
             handle_request(Message, TransArgs, State),
             go_await_aack(Message, TransArgs, State);
@@ -144,13 +144,13 @@ in_con({in, BinMessage}, TransArgs, State) ->
             handle_response(Message, TransArgs, State),
             go_await_aack(Message, TransArgs, State);
         _ ->
-            go_rst_sent(ecoap_utils:rst(coap_message:get_id(BinMessage)), TransArgs, State)
+            go_rst_sent(ecoap_request:rst(coap_message:get_id(BinMessage)), TransArgs, State)
     end.
 
 -spec go_await_aack(coap_message:coap_message(), ecoap_endpoint:trans_args(), exchange()) -> exchange().
 go_await_aack(Message, TransArgs, State) ->
     % we may need to ack the message
-    EmptyACK = ecoap_utils:ack(Message),
+    EmptyACK = ecoap_request:ack(Message),
     BinAck = coap_message:encode(EmptyACK),
     next_state(await_aack, TransArgs, State#exchange{msgbin=BinAck}, ?PROCESSING_DELAY).
 
@@ -249,7 +249,7 @@ await_pack({timeout, await_pack}, TransArgs=#{sock:=Socket, sock_module:=SocketM
     Timeout2 = Timeout*2,
     next_state(await_pack, TransArgs, State#exchange{retry_time=Timeout2, retry_count=Count+1}, Timeout2);
 await_pack({timeout, await_pack}, TransArgs, State=#exchange{trid={out, MsgId}}) ->
-    handle_error(ecoap_utils:rst(MsgId), timeout, TransArgs, State),
+    handle_error(ecoap_request:rst(MsgId), timeout, TransArgs, State),
     check_next_state(aack_sent, State#exchange{msgbin= <<>>}).
 
 -spec aack_sent({in, binary()} | {timeout, await_pack}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
@@ -277,7 +277,7 @@ handle_request(Message=#{code := Method, options := Options},
             ok;
         {error, shutdown} ->
         	{ok, _} = ecoap_endpoint:send(EndpointPid,
-                ecoap_utils:response({error, 'NotFound'}, Message)),
+                ecoap_request:response({error, 'NotFound'}, Message)),
             ok
     end.
 
