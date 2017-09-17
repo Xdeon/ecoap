@@ -8,7 +8,7 @@
 -include("ecoap.hrl").
 
 -record(coap_content, {
-    etag = undefined :: undefined | binary(),
+    etag = [] :: [binary()],
     max_age = ?DEFAULT_MAX_AGE :: non_neg_integer(),
     format = undefined :: undefined | binary() | non_neg_integer(),
     payload = <<>> :: binary()
@@ -35,23 +35,20 @@ coap_get(_EpID, Prefix, Name, Query, Request) ->
     Accept = coap_message:get_option('Accept', Request),
     io:format("get ~p ~p ~p accept ~p~n", [Prefix, Name, Query, Accept]),
     case mnesia:dirty_read(resources, Name) of
-        [{resources, Name, Content}] -> 
-            {Payload, Options} = content_to_response(Content),
-            {ok, Payload, Options};
-        [] -> 
-            {error, 'NotFound'}
+        [{resources, Name, Content}] -> {ok, from_record(Content)};
+        [] -> {error, 'NotFound'}
     end.
 
 coap_post(_EpID, Prefix, Name, Request) -> 
-    Content = get_content(Request),
+    Content = coap_content:get_content(Request),
     io:format("post ~p ~p ~p~n", [Prefix, Name, Content]),
     {error, 'MethodNotAllowed'}.
     % {ok, 'Created', coap_content:set_options(#{'Location-Path' => Prefix++Name}, coap_content:new())}.
 
 coap_put(_EpID, Prefix, Name, Request) ->
-    Content = get_content(Request),
+    Content = coap_content:get_content(Request),
     io:format("put ~p ~p ~p~n", [Prefix, Name, Content]),
-    mnesia:dirty_write(resources, {resources, Name, Content}),
+    mnesia:dirty_write(resources, {resources, Name, to_record(Content)}),
     ecoap_handler:notify(Prefix++Name, Content),
     ok.
 
@@ -71,24 +68,21 @@ coap_unobserve({state, Prefix, Name}) ->
     io:format("unobserve ~p ~p~n", [Prefix, Name]),
     ok.
 
-handle_notify(Notification, _ObsReq, State) ->
-    {ok, Notification, State}.
+handle_notify(Info, _ObsReq, State) -> 
+    {ok, Info, State}.
 
 handle_info(_Info, _ObsReq, State) -> 
     {noreply, State}.
 
 coap_ack(_Ref, State) -> {ok, State}.
 
+from_record(#coap_content{etag=ETag, max_age=MaxAge, format=Format, payload=Payload}) ->
+    #{payload=>Payload, options=>#{'ETag' => ETag, 'Max-Age' => MaxAge, 'Content-Format' => Format}}.
 
-get_content(#{options:=Options, payload:=Payload}) ->
+to_record(#{payload:=Payload, options:=Options}) ->
     #coap_content{
-        etag = case coap_message:get_option('ETag', Options) of
-                   [ETag] -> ETag;
-                   _ -> undefined
-            end,
+        etag = coap_message:get_option('ETag', Options, []),
         max_age = coap_message:get_option('Max-Age', Options, ?DEFAULT_MAX_AGE),
         format = coap_message:get_option('Content-Format', Options),
-        payload = Payload}.
-
-content_to_response(#coap_content{etag=ETag, max_age=MaxAge, format=Format, payload=Payload}) ->
-    {Payload, #{'ETag' => ETag, 'Max-Age' => MaxAge, 'Content-Format' => Format}}.
+        payload = Payload
+    }.

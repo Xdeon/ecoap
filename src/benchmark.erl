@@ -24,11 +24,11 @@ coap_discover(Prefix, _Args) ->
     [{absolute, Prefix, []}].
 
 coap_get(_EpID, [<<"benchmark">>], _Name, _Query, _Request) ->
-    {ok, <<"hello world">>};
+    {ok, #{payload => <<"hello world">>}};
 
 coap_get(_EpID, [<<"fibonacci">>], _Name, [], _Request) ->
     Payload = <<"fibonacci(20) = ", (integer_to_binary(fib(20)))/binary>>,
-    {ok, Payload, #{'Content-Format' => <<"text/plain">>}};
+    {ok, #{payload => Payload, options => #{'Content-Format' => <<"text/plain">>}}};
 
 coap_get(_EpID, [<<"fibonacci">>], _Name, [Query|_], _Request) ->
     Num = case re:run(Query, "^n=[0-9]+$") of
@@ -38,20 +38,20 @@ coap_get(_EpID, [<<"fibonacci">>], _Name, [Query|_], _Request) ->
             <<"20">>
     end,
     Payload = <<"fibonacci(", Num/binary, ") = ", (integer_to_binary(fib(binary_to_integer(Num))))/binary>>,
-    {ok, Payload, #{'Content-Format' => <<"text/plain">>}};
+    {ok, #{payload => Payload, options => #{'Content-Format' => <<"text/plain">>}}};
 
 coap_get(_EpID, [<<"helloWorld">>], _Name, _Query, _Request) ->
-    {ok, <<"Hello World">>, #{'Content-Format' => <<"text/plain">>}};
+    {ok, #{payload => <<"Hello World">>, options => #{'Content-Format' => <<"text/plain">>}}};
 
 coap_get(_EpID, [<<"shutdown">>], _Name, _Query, _Request) ->
-    {ok, <<"Send a POST request to this resource to shutdown the server">>};
+    {ok, #{payload => <<"Send a POST request to this resource to shutdown the server">>}};
 
 coap_get(_EpID, _Prefix, _Name, _Query, _Request) ->
     {error, 'NotFound'}.
 
 coap_post(_EpID, [<<"shutdown">>], _Name, _Request) ->
     _ = spawn(fun() -> io:format("Shutting down everything in 1 second~n"), timer:sleep(1000), benchmark:stop() end),
-    {ok, 'Changed', <<"Shutting down">>};
+    {ok, 'Changed', #{payload => <<"Shutting down">>}};
 
 coap_post(_EpID, _Prefix, _Name, _Request) ->
     {error, 'MethodNotAllowed'}.

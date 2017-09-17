@@ -11,27 +11,25 @@
 
 % GET handler
 -callback coap_get(EpID, Prefix, Name, Query, Request) -> 
-	{ok, Payload} | {ok, Payload, Options} | {error, Error} | {error, Error, Reason} when
+	{ok, Content} | {error, Error} | {error, Error, Reason} when
 	EpID :: ecoap_endpoint_id(),
 	Prefix :: [binary()],
 	Name :: [binary()],
 	Query :: [binary()],
 	Request :: coap_message:coap_message(),
-	Payload :: binary(),
-	Options :: coap_message:optionset(),
+	Content :: map(),
 	Error :: coap_message:error_code(),
 	Reason :: binary().
 
 % POST handler
 -callback coap_post(EpID, Prefix, Name, Request) -> 
-	{ok, Code, Payload} | {ok, Code, Payload, Options} | {error, Error} | {error, Error, Reason} when
+	{ok, Code, Content} | {error, Error} | {error, Error, Reason} when
 	EpID :: ecoap_endpoint_id(),
 	Prefix :: [binary()],
 	Name :: [binary()],
 	Request :: coap_message:coap_message(),
 	Code :: coap_message:success_code(),
-	Payload :: binary(),
-	Options :: coap_message:optionset(),
+	Content :: map(),
 	Error :: coap_message:error_code(),
 	Reason :: binary().
 
@@ -71,12 +69,11 @@
 % one can check Content-Format of notifications according to original observe request ObsReq 
 % and may return {ok, {error, 'NotAcceptable'}, State} if the format can not be provided anymore
 -callback handle_notify(Info, ObsReq, Obstate) -> 
-	{ok, Payload, NewObstate} | {ok, Payload, Options, NewObstate} | {ok, {error, Error}, NewObstate} when
+	{ok, Content, NewObstate} | {ok, {error, Error}, NewObstate} when
 	Info :: any(),
 	ObsReq :: coap_message:coap_message(),
 	Obstate :: any(),
-	Payload :: binary(),
-	Options :: coap_message:optionset(),
+	Content :: map(),
 	Error :: coap_message:error_code(),
 	NewObstate :: any().
 
@@ -84,8 +81,7 @@
 % could be used to generate notifications
 % the function can be used to generate tags which correlate outgoing CON notifications with incoming ACKs
 -callback handle_info(Info, ObsReq, Obstate) -> 
-	{notify, Ref, Payload, NewObstate} | 
-	{notify, Ref, Payload, Options, NewObstate} |
+	{notify, Ref, Content, NewObstate} | 
 	{notify, Ref, {error, Error}, NewObstate} |
 	{noreply, NewObstate} | 
 	{stop, NewObstate} when
@@ -93,8 +89,7 @@
 	ObsReq :: coap_message:coap_message(),
 	Obstate :: any(),
 	Ref :: any(),
-	Payload :: binary(),
-	Options :: coap_message:optionset(),
+	Content :: map(),
 	Error :: coap_message:error_code(),
 	NewObstate :: any().
 

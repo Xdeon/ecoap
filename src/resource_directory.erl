@@ -12,7 +12,7 @@ coap_get(_EpID, _Prefix, [], Query, _Request) ->
     Links = core_link:encode(filter(ecoap_registry:get_links(), Query)),
     Payload = list_to_binary(Links),
     Options = #{'ETag' => [binary:part(crypto:hash(sha, Links), {0,4})], 'Content-Format' => <<"application/link-format">>},
-    {ok, Payload, Options};
+    {ok, #{payload=>Payload, options=>Options}};
 coap_get(_EpID, _Prefix, _Else, _Query, _Request) ->
     {error, 'NotFound'}.
 
