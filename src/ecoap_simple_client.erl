@@ -40,10 +40,10 @@
 
 -type from() :: {pid(), term()}.
 -type req() :: #req{}.
--type response() :: {ok, coap_message:success_code(), binary(), coap_message:optionset()} | 
+-type response() :: {ok, coap_message:success_code(), coap_content:coap_content()} | 
 					{error, timeout} |
 					{error, coap_message:error_code()} | 
-					{error, coap_message:error_code(), binary(), coap_message:optionset()}.
+					{error, coap_message:error_code(), coap_content:coap_content()}.
 -opaque state() :: #state{}.
 -export_type([state/0]).
 
@@ -182,9 +182,9 @@ send_response(From, Res) ->
 	_ = gen_server:reply(From, Res),
 	ok.
 
-return_response({ok, Code}, #{payload:=Payload, options:=Options}) ->
-    {ok, Code, Payload, Options};
+return_response({ok, Code}, Message) ->
+    {ok, Code, coap_content:get_content(Message)};
 return_response({error, Code}, #{payload:= <<>>}) ->
     {error, Code};
-return_response({error, Code}, #{payload:=Payload, options:=Options}) ->
-    {error, Code, Payload, Options}.
+return_response({error, Code}, Message) ->
+    {error, Code, coap_content:get_content(Message)}.
