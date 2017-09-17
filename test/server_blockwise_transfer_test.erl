@@ -12,14 +12,12 @@ coap_discover(Prefix, _Args) ->
 
 % resource generator
 coap_get(_EpID, [<<"text">>], [Size], _Query, _Request) ->
-    {Payload, Options} = test_utils:text_resource(binary_to_integer(Size)),
-    {ok, Payload, Options};
+    {ok, test_utils:text_resource(binary_to_integer(Size))};
 coap_get(_EpID, [<<"reflect">>], [], _Query, _Request) ->
     {error, 'NotFound'}.
 
-coap_post(_EpID, _Prefix, [], #{payload:=Payload, options:=Options}) ->
-	Content = coap_content:get_content(Request),
-    {ok, 'Content', Content}.
+coap_post(_EpID, _Prefix, [], Request) ->
+    {ok, 'Content', coap_content:get_content(Request)}.
 
 coap_put(_EpID, _Prefix, [], _Request) ->
     ok.
@@ -52,18 +50,43 @@ blockwise_transfer_test_() ->
 blockwise_transfer(Client) ->
     [
     % discovery
-    ?_assertMatch({ok,'Content',#coap_content{format= <<"application/link-format">>, payload= <<"</reflect>,</text>">>}},
-        ecoap_client:request(Client, 'GET', "coap://127.0.0.1/.well-known/core")),
+    ?_assertMatch({ok, 'Content', 
+        #{payload:= <<"</reflect>,</text>">>, options:=#{'Content-Format':= <<"application/link-format">>}}}, 
+            ecoap_client:request(Client, 'GET', "coap://127.0.0.1/.well-known/core")),
     % resource access
-    ?_assertEqual({ok,'Content',test_utils:text_resource(128)}, ecoap_client:request(Client, 'GET', "coap://127.0.0.1/text/128")),
-    ?_assertEqual({ok,'Content',test_utils:text_resource(1024)}, ecoap_client:request(Client, 'GET', "coap://127.0.0.1/text/1024")),
-    ?_assertEqual({ok,'Content',test_utils:text_resource(1984)}, ecoap_client:request(Client, 'GET', "coap://127.0.0.1/text/1984")),
-    ?_assertEqual({ok,'Created',#coap_content{}}, ecoap_client:request(Client, 'PUT', "coap://127.0.0.1/reflect", test_utils:text_resource(128))),
-    ?_assertEqual({ok,'Created',#coap_content{}}, ecoap_client:request(Client, 'PUT', "coap://127.0.0.1/reflect", test_utils:text_resource(1024))),
-    ?_assertEqual({ok,'Created',#coap_content{}}, ecoap_client:request(Client, 'PUT', "coap://127.0.0.1/reflect", test_utils:text_resource(1984))),
-    ?_assertEqual({ok,'Content',test_utils:text_resource(128)}, ecoap_client:request(Client, 'POST', "coap://127.0.0.1/reflect", test_utils:text_resource(128))),
-    ?_assertEqual({ok,'Content',test_utils:text_resource(1024)}, ecoap_client:request(Client, 'POST', "coap://127.0.0.1/reflect", test_utils:text_resource(1024))),
-    ?_assertEqual({ok,'Content',test_utils:text_resource(1984)}, ecoap_client:request(Client, 'POST', "coap://127.0.0.1/reflect", test_utils:text_resource(1984)))
+    ?_assertEqual({ok, 'Content', test_utils:text_resource(128)}, ecoap_client:request(Client, 'GET', "coap://127.0.0.1/text/128")),
+    ?_assertEqual({ok, 'Content', test_utils:text_resource(1024)}, ecoap_client:request(Client, 'GET', "coap://127.0.0.1/text/1024")),
+    ?_assertEqual({ok, 'Content', test_utils:text_resource(1984)}, ecoap_client:request(Client, 'GET', "coap://127.0.0.1/text/1984")),
+    ?_assertEqual({ok, 'Created', coap_content:new()}, 
+        begin 
+            #{payload:=Payload, options:=Options} = test_utils:text_resource(128),
+            ecoap_client:request(Client, 'PUT', "coap://127.0.0.1/reflect", Payload, Options) 
+        end),
+    ?_assertEqual({ok, 'Created', coap_content:new()}, 
+        begin
+            #{payload:=Payload, options:=Options} = test_utils:text_resource(1024),
+            ecoap_client:request(Client, 'PUT', "coap://127.0.0.1/reflect", Payload, Options)
+        end),
+    ?_assertEqual({ok, 'Created', coap_content:new()}, 
+        begin
+            #{payload:=Payload, options:=Options} = test_utils:text_resource(1984),
+            ecoap_client:request(Client, 'PUT', "coap://127.0.0.1/reflect", Payload, Options)
+        end),
+    ?_assertEqual({ok, 'Content', test_utils:text_resource(128)}, 
+        begin 
+            #{payload:=Payload, options:=Options} = test_utils:text_resource(128),
+            ecoap_client:request(Client, 'POST', "coap://127.0.0.1/reflect", Payload, Options)
+        end),
+    ?_assertEqual({ok, 'Content', test_utils:text_resource(1024)}, 
+        begin 
+            #{payload:=Payload, options:=Options} = test_utils:text_resource(1024),
+            ecoap_client:request(Client, 'POST', "coap://127.0.0.1/reflect", Payload, Options)
+        end),
+    ?_assertEqual({ok, 'Content', test_utils:text_resource(1984)}, 
+        begin
+            #{payload:=Payload, options:=Options} = test_utils:text_resource(1984),
+            ecoap_client:request(Client, 'POST', "coap://127.0.0.1/reflect", Payload, Options)
+        end)
     ].
 
 % end of file

@@ -6,31 +6,22 @@ request_compose_test_() ->
     Default = coap_message:new(),
     [
         ?_assertEqual(Default#{type:='CON', code:='GET'},
-            ecoap_utils:request('CON', 'GET')),
+            ecoap_request:request('CON', 'GET')),
         ?_assertEqual(Default#{type:='CON', code:='PUT', payload:= <<"payload">>}, 
-            ecoap_utils:request('CON', 'PUT', <<"payload">>)),
+            ecoap_request:request('CON', 'PUT', #{}, <<"payload">>)),
         ?_assertEqual(Default#{type:='CON', code:='PUT', options:=#{'Uri-Path' => [<<"test">>]}, payload:= <<"payload">>}, 
-            ecoap_utils:request('CON', 'PUT', <<"payload">>, #{'Uri-Path' => [<<"test">>]}))
+            ecoap_request:request('CON', 'PUT', #{'Uri-Path' => [<<"test">>]}, <<"payload">>))
     ].
 
 response_compose_test_() ->
     Request = #{type=>'CON', id=>123, code=>'GET', 
                     token=> <<"Token">>, options=>#{'Uri-Path' => [<<"test">>]}, payload=> <<>>},
-    Request2 = Request#{options:=#{'Uri-Path' => [<<"test">>], 
-                                    'ETag' => [<<"ETag">>],
-                                    'Content-Format' => <<"text/plain">>, 
-                                    'Observe' => 12, 
-                                    'Location-Path' => [<<"new_path">>]}},
     Payload = <<"Payload">>,
     [
         ?_assertEqual(Request#{code:={error, 'NotFound'}, options:=#{}}, 
             ecoap_request:response({error, 'NotFound'}, Request)),
         ?_assertEqual(Request#{code:={ok, 'Content'}, options:=#{}, payload:=Payload}, 
-            ecoap_request:response({ok, 'Content'}, Payload, Request)),
-        ?_assertEqual(Request#{code:={ok, 'Content'}, 
-            options:=#{'ETag' => [<<"ETag">>], 'Max-Age' => 30, 'Content-Format' => <<"text/plain">>}, 
-                payload:=Payload}, 
-                    ecoap_request:response({ok, 'Content'}, Content, Request))
+            ecoap_request:response({ok, 'Content'}, Payload, Request))
     ].
 
 uri_test_() ->
