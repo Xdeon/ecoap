@@ -161,6 +161,9 @@ handle(EpID, Request, State=#state{endpoint_pid=EndpointPid, id=ID}) ->
 
 assemble_payload(#{payload:=Payload}, undefined, State) ->
     {ok, Payload, State};
+% in case block1 transfer overlap, we always use the newer one
+assemble_payload(Request, {0, true, Size}, State) ->
+    assemble_payload(Request, {0, true, Size}, State=#state{insegs=orddict:new()});
 assemble_payload(#{payload:=Segment}, {Num, true, Size}, State=#state{insegs=Segs}) ->
     case byte_size(Segment) of
         Size when Num*Size < ?MAX_BODY_SIZE -> {'Continue', State#state{insegs=orddict:store(Num, Segment, Segs)}};
