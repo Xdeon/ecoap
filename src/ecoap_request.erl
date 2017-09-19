@@ -40,7 +40,7 @@ rst(MsgId) ->
 
 -spec response(undefined | coap_message:coap_success() | coap_message:coap_error(), coap_message:coap_message()) -> coap_message:coap_message().
 response(Code, Request) ->
-    (response(Request))#{code:=Code}.
+    Request#{code:=Code, options:=#{}, payload:= <<>>}.
 
 -spec response(undefined | coap_message:coap_success() | coap_message:coap_error(), binary(), coap_message:coap_message()) -> coap_message:coap_message().
 response(Code, Payload, Request) when is_binary(Payload) ->
@@ -49,17 +49,8 @@ response(Code, Payload, Request) when is_binary(Payload) ->
             response(Request))).
 
 -spec response(coap_message:coap_message()) -> coap_message:coap_message().
-response(#{type:='NON', token:=Token}) ->
-    (coap_message:new())#{
-        type:='NON',
-        token:=Token
-    };
-response(#{type:='CON', id:=MsgId, token:=Token}) ->
-    (coap_message:new())#{
-        type:='CON',
-        id:=MsgId,
-        token:=Token
-    }.
+response(Request) ->
+    Request#{options:=#{}, payload:= <<>>}.
 
 set_code(Code, Msg) ->
 	coap_message:set_code(Code, Msg).
