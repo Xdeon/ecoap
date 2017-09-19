@@ -24,7 +24,7 @@ coap_discover(Prefix, _Args) ->
     [{absolute, Prefix, []}].
 
 coap_get(_EpID, [<<"benchmark">>], _Name, _Query, _Request) ->
-    {ok, #{payload => <<"hello world">>}};
+    {ok, #{payload => <<"hello world">>, options => #{}}};
 
 coap_get(_EpID, [<<"fibonacci">>], _Name, [], _Request) ->
     Payload = <<"fibonacci(20) = ", (integer_to_binary(fib(20)))/binary>>,
@@ -44,14 +44,14 @@ coap_get(_EpID, [<<"helloWorld">>], _Name, _Query, _Request) ->
     {ok, #{payload => <<"Hello World">>, options => #{'Content-Format' => <<"text/plain">>}}};
 
 coap_get(_EpID, [<<"shutdown">>], _Name, _Query, _Request) ->
-    {ok, #{payload => <<"Send a POST request to this resource to shutdown the server">>}};
+    {ok, #{payload => <<"Send a POST request to this resource to shutdown the server">>, options => #{}}};
 
 coap_get(_EpID, _Prefix, _Name, _Query, _Request) ->
     {error, 'NotFound'}.
 
 coap_post(_EpID, [<<"shutdown">>], _Name, _Request) ->
     _ = spawn(fun() -> io:format("Shutting down everything in 1 second~n"), timer:sleep(1000), benchmark:stop() end),
-    {ok, 'Changed', #{payload => <<"Shutting down">>}};
+    {ok, 'Changed', #{payload => <<"Shutting down">>, options => #{}}};
 
 coap_post(_EpID, _Prefix, _Name, _Request) ->
     {error, 'MethodNotAllowed'}.
