@@ -4,7 +4,7 @@
 -include("ecoap.hrl").
 
 -record(coap_content, {
-    etag = undefined :: undefined | binary(),
+    etag = [] :: [binary()],
     max_age = ?DEFAULT_MAX_AGE :: non_neg_integer(),
     format = undefined :: undefined | binary() | non_neg_integer(),
     payload = <<>> :: binary()
