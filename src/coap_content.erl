@@ -5,8 +5,8 @@
 
 -type coap_content() ::
     #{
-        payload => binary(),
-        options => coap_message:optionset()
+        payload := binary(),
+        options := coap_message:optionset()
     }.
 
 -export_type([coap_content/0]).
