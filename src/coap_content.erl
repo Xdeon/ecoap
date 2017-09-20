@@ -1,5 +1,5 @@
 -module(coap_content).
--export([new/0, set_payload/2, set_options/2, get_payload/1, get_options/1]).
+-export([new/0, new/1, new/2, set_payload/2, set_options/2, get_payload/1, get_options/1]).
 -export([get_content/1]).
 % -export([normalize/1]).
 
@@ -14,6 +14,14 @@
 -spec new() -> coap_content().
 new() ->
     #{payload=> <<>>, options=>#{}}.
+
+-spec new(binary()) -> coap_content().
+new(Payload) ->
+    #{payload=>Payload, options=>#{}}.
+
+-spec new(binary(), coap_message:optionset()) -> coap_content().
+new(Payload, Options) ->
+    #{payload=>Payload, options=>Options}.
 
 -spec set_payload(binary(), map()) -> coap_content().
 set_payload(Payload, Content) ->
@@ -31,12 +39,6 @@ get_payload(Content) ->
 get_options(Content) ->
     maps:get(options, Content, #{}).
 
-% -spec normalize(map()) -> coap_content().
-% normalize(Content=#{payload:=_, options:=_}) -> Content;
-% normalize(Content=#{payload:=_}) -> Content#{options=>#{}};
-% normalize(Content=#{options:=_}) -> Content#{payload=> <<>>};
-% normalize(_) -> new().
-
 -spec get_content(coap_message:coap_message()) -> coap_content().
 get_content(Message) ->
     #{payload=>coap_message:get_payload(Message), options=>filter_options(coap_message:get_options(Message))}.
@@ -47,6 +49,10 @@ get_content(Message) ->
 %     }).
 
 % new() -> #coap_content{}.
+
+% new(Payload) -> #coap_content{payload=Payload}.
+
+% new(Payload, Options) -> #coap_content{payload=Payload, options=Options}.
 
 % set_payload(Payload, Content) -> Content#coap_content{payload=Payload}.
 
