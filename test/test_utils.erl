@@ -11,9 +11,9 @@
 }).
 
 text_resource(Size) ->
-	#{payload => large_binary(Size, <<"X">>), options => #{'Content-Format'=> <<"text/plain">>}}.
+    coap_content:set_payload(large_binary(Size, <<"X">>), coap_content:options(#{'Content-Format'=> <<"text/plain">>}, coap_content:new())).
 text_resource(ETag, Size) ->
-	#{payload => large_binary(Size, <<"X">>), options => #{'ETag'=>ETag, 'Content-Format'=> <<"text/plain">>}}.
+    coap_content:set_payload(large_binary(Size, <<"X">>), coap_content:options(#{'ETag'=>ETag, 'Content-Format'=> <<"text/plain">>}, coap_content:new())).
 
 large_binary(Size, Acc) when Size > 2*byte_size(Acc) ->
     large_binary(Size, <<Acc/binary, Acc/binary>>);
