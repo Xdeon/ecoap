@@ -82,7 +82,7 @@ handle_cast({coap_notify, Info}, State=#state{observer=Observer, module=Module, 
             {ok, State2} = cancel_observer(Observer, State#state{obstate=ObState2}),
             return_response(Observer, {error, Code}, State2);
         {ok, Content, ObState2} ->
-            return_resource(Observer, content(Content), State#state{obstate=ObState2});
+            return_resource(Observer, Content, State#state{obstate=ObState2});
         % server internal error
         {error, Error} ->
             {ok, State2} = cancel_observer(Observer, State),
@@ -119,7 +119,7 @@ handle_info(Info, State=#state{module=Module, observer=Observer, obstate=ObState
             {ok, State2} = cancel_observer(Observer, State#state{obstate=ObState2}),
             return_response(Ref, Observer, {error, Code}, <<>>, State2);
         {notify, Ref, Content, ObState2} ->
-            return_resource(Ref, Observer, {ok, 'Content'}, content(Content), State#state{obstate=ObState2});
+            return_resource(Ref, Observer, {ok, 'Content'}, Content, State#state{obstate=ObState2});
         {noreply, ObState2} ->
             {noreply, State#state{obstate=ObState2}};
         {stop, ObState2} ->
@@ -141,7 +141,7 @@ code_change(_OldVsn, State, _Extra) ->
 
 handle(EpID, Request, State=#state{endpoint_pid=EndpointPid, id=ID}) ->
 	Block1 = coap_message:get_option('Block1', Request),
-    case catch assemble_payload(Request, Block1, State) of
+    case catch assemble_payload(coap_message:get_payload(Request), Block1, State) of
         {error, Code} ->
             return_response(Request, {error, Code}, State);
         {'Continue', State2} ->
@@ -152,12 +152,12 @@ handle(EpID, Request, State=#state{endpoint_pid=EndpointPid, id=ID}) ->
                     ecoap_request:response({ok, 'Continue'}, Request))),
             set_timeout(?EXCHANGE_LIFETIME, State2);
         {ok, Payload, State2} ->
-            process_request(EpID, Request#{payload:=Payload}, State2)
+            process_request(EpID, coap_message:set_payload(Payload, Request), State2)
     end.
 
-assemble_payload(#{payload:=Payload}, undefined, State) ->
+assemble_payload(Payload, undefined, State) ->
     {ok, Payload, State};
-assemble_payload(#{payload:=Segment}, {Num, true, Size}, State=#state{insegs=Segs}) ->
+assemble_payload(Segment, {Num, true, Size}, State=#state{insegs=Segs}) ->
     % in case block1 transfer overlap, we always use the newer one
     Segs2 = case Num of
         0 -> orddict:new();
@@ -168,7 +168,7 @@ assemble_payload(#{payload:=Segment}, {Num, true, Size}, State=#state{insegs=Seg
         Size -> {error, 'RequestEntityTooLarge'};
         _Else -> {error, 'BadRequest'}
     end;
-assemble_payload(#{payload:=Segment}, {_Num, false, _Size}, State=#state{insegs=Segs}) ->
+assemble_payload(Segment, {_Num, false, _Size}, State=#state{insegs=Segs}) ->
     Payload = orddict:fold(
         fun (Num1, Segment1, Acc) when Num1*byte_size(Segment1) == byte_size(Acc) ->
                 <<Acc/binary, Segment1/binary>>;
@@ -190,7 +190,7 @@ process_request(EpID, Request, State) ->
 check_resource(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, query=Query, module=Module}) ->
     case invoke_callback(Module, coap_get, [EpID, Prefix, Suffix, Query, Request]) of
         {ok, Content} ->
-            check_preconditions(EpID, Request, content(Content), State);
+            check_preconditions(EpID, Request, Content, State);
         {error, 'NotFound'} = R ->
             check_preconditions(EpID, Request, R, State);
         {error, Code} ->
@@ -202,19 +202,19 @@ check_resource(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, query=Q
 check_preconditions(EpID, Request, Content, State) ->
     case if_match(Request, Content) andalso if_none_match(Request, Content) of
         true ->
-            handle_method(EpID, Request, Content, State);
+            handle_method(EpID, Request, coap_message:get_code(Request), Content, State);
         false ->
             return_response(Request, {error, 'PreconditionFailed'}, State)
     end.
 
 if_match(Request, {error, 'NotFound'}) ->
     not coap_message:has_option('If-Match', Request);
-if_match(Request, #{options:=Options}) ->
+if_match(Request, Content) ->
     case coap_message:get_option('If-Match', Request, []) of
         % empty string matches any existing representation
         [] -> true;
         % match exact resources
-        List -> lists:member(get_etag(Options), List)
+        List -> lists:member(get_etag(coap_content:get_options(Content)), List)
     end.
 
 if_none_match(_Request, {error, _}) ->
@@ -222,10 +222,10 @@ if_none_match(_Request, {error, _}) ->
 if_none_match(Request, _Content) ->
     not coap_message:has_option('If-None-Match', Request).
 
-handle_method(_EpID, Request=#{code:='GET'}, {error, Code}, State) ->
+handle_method(_EpID, Request, 'GET', {error, Code}, State) ->
     return_response(Request, {error, Code}, State);
 
-handle_method(EpID, Request=#{code:='GET'}, Content, State) ->
+handle_method(EpID, Request, 'GET', Content, State) ->
      case coap_message:get_option('Observe', Request) of
         0 ->
             handle_observe(EpID, Request, Content, State);
@@ -237,16 +237,16 @@ handle_method(EpID, Request=#{code:='GET'}, Content, State) ->
             return_response(Request, {error, 'BadOption'}, State)
     end;
 
-handle_method(EpID, Request=#{code:='POST'}, _Content, State) ->
+handle_method(EpID, Request, 'POST', _Content, State) ->
     handle_post(EpID, Request, State);
 
-handle_method(EpID, Request=#{code:='PUT'}, Content, State) ->
+handle_method(EpID, Request, 'PUT', Content, State) ->
     handle_put(EpID, Request, Content, State);
 
-handle_method(EpID, Request=#{code:='DELETE'}, _Content, State) ->
+handle_method(EpID, Request, 'DELETE', _Content, State) ->
     handle_delete(EpID, Request, State);
 
-handle_method(_EpID, Request, _Content, State) ->
+handle_method(_EpID, Request, _, _Content, State) ->
     return_response(Request, {error, 'MethodNotAllowed'}, State).
 
 handle_observe(EpID, Request, Content, 
@@ -270,11 +270,15 @@ handle_observe(_EpID, Request, Content, State) ->
     % subsequent observe request from the same user
     return_resource(Request, Content, State#state{observer=Request}).
 
-handle_unobserve(_EpID, Request=#{token:=Token}, Content, State=#state{observer=#{token:=Token}}) ->
-    {ok, State2} = cancel_observer(Request, State),
-    return_resource(Request, Content, State2);
-handle_unobserve(_EpID, Request, Content, State) ->
-    return_resource(Request, Content, State).
+handle_unobserve(_EpID, Request, Content, State=#state{observer=Observer}) ->
+    RequestToken = coap_message:get_token(Request),
+    case coap_message:get_token(Observer) of
+        RequestToken -> 
+            {ok, State2} = cancel_observer(Request, State),
+            return_resource(Request, Content, State2);
+        _Else ->
+            return_resource(Request, Content, State)
+    end.
 
 cancel_observer(_Request, State=#state{uri=Uri, module=Module, obstate=ObState}) ->
     ok = Module:coap_unobserve(ObState),
@@ -289,7 +293,7 @@ cancel_observer(_Request, State=#state{uri=Uri, module=Module, obstate=ObState})
 handle_post(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
     case invoke_callback(Module, coap_post, [EpID, Prefix, Suffix, Request]) of
         {ok, Code, Content} ->
-            return_resource([], Request, {ok, Code}, content(Content), State);
+            return_resource([], Request, {ok, Code}, Content, State);
         {error, Error} ->
             return_response(Request, {error, Error}, State);
         {error, Error, Reason} ->
@@ -324,7 +328,9 @@ handle_delete(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=M
 return_resource(Request, Content, State) ->
     return_resource([], Request, {ok, 'Content'}, Content, State).
 
-return_resource(Ref, Request, {ok, Code}, Content=#{payload:=Payload, options:=Options}, State) ->
+return_resource(Ref, Request, {ok, Code}, Content, State) ->
+    Payload = coap_content:get_payload(Content),
+    Options = coap_content:get_options(Content),
     ETag = get_etag(Options),
     Response = case lists:member(ETag, coap_message:get_option('ETag', Request, [])) of
             true ->
@@ -332,20 +338,21 @@ return_resource(Ref, Request, {ok, Code}, Content=#{payload:=Payload, options:=O
                     ecoap_request:response({ok, 'Valid'}, Request));
             false ->
                 ecoap_request:set_payload(Payload, coap_message:get_option('Block2', Request), 
-                    coap_message:set_options(Options, ecoap_request:response({ok, Code}, Request)))
+                    coap_message:merge_options(Options, ecoap_request:response({ok, Code}, Request)))
     end,
     send_observable(Ref, Request, Response, State#state{last_response={ok, Code, Content}}). 
 
 send_observable(Ref, _Request, Response, State=#state{observer=undefined}) ->
     send_response(Ref, Response, State);
-send_observable(Ref, Request=#{token:=Token}, Response, State=#state{observer=Observer, obseq=Seq}) ->
-    case {coap_message:get_option('Observe', Request), Observer} of
+send_observable(Ref, Request, Response, State=#state{observer=Observer, obseq=Seq}) ->
+    RequestToken = coap_message:get_token(Request),
+    case {coap_message:get_option('Observe', Request), coap_message:get_token(Observer)} of
         % when requested observe and is observing, return the sequence number
-        {0, #{token:=Token}} ->
+        {0, RequestToken} ->
             send_response(Ref, coap_message:set_option('Observe', Seq, Response), State#state{obseq=next_seq(Seq)});
         _Else ->
             send_response(Ref, Response, State)
-    end.    
+    end.       
 
 return_response(Request, Code, State) ->
     return_response([], Request, Code, <<>>, State).
@@ -392,12 +399,12 @@ next_seq(Seq) ->
         true -> 0
     end.
 
-content(Content) -> coap_content:normalize(Content).
+% content(Content) -> coap_content:normalize(Content).
 
 get_etag(Options) ->
     case coap_message:get_option('ETag', Options) of
         [ETag] -> ETag;
-        undefined -> undefined
+        _ -> undefined
     end.
 
 % uri_suffix(Prefix, #coap_message{options=Options}) ->

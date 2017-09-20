@@ -10,8 +10,11 @@
 -type block_opt() :: {non_neg_integer(), boolean(), non_neg_integer()}.
 
 -spec requires_ack(coap_message:coap_message()) -> boolean().
-requires_ack(#{type := 'CON'}) -> true;
-requires_ack(#{type := 'NON'}) -> false.
+requires_ack(Msg) ->
+    case coap_message:get_type(Msg) of
+        'CON' -> true;
+        'NON' -> false
+    end.
 
 -spec request(coap_message:coap_type(), coap_message:coap_method()) -> coap_message:coap_message().
 request(Type, Code) ->
@@ -23,37 +26,31 @@ request(Type, Code, Options) ->
 
 -spec request(coap_message:coap_type(), coap_message:coap_method(), coap_message:optionset(), binary()) -> coap_message:coap_message().
 request(Type, Code, Options, Payload) when is_binary(Payload) ->
-    coap_message:set_payload(Payload,
-        (coap_message:new())#{type:=Type, code:=Code, options:=Options}).
+    set_payload(Payload, coap_message:new(Type, Code, 0, <<>>, Options, <<>>)).
 
 -spec ack(coap_message:coap_message() | non_neg_integer()) -> coap_message:coap_message().
-ack(Request) when is_map(Request) ->
-    Request#{type:='ACK', options:=#{}, payload:= <<>>};
-ack(MsgId) ->
-    (coap_message:new())#{type:='ACK', id:=MsgId}.
+ack(MsgId) when is_integer(MsgId) ->
+    coap_message:new('ACK', undefined, MsgId, <<>>, #{}, <<>>);
+ack(Request) ->
+    ack(coap_message:get_id(Request)).
 
 -spec rst(coap_message:coap_message() | non_neg_integer()) -> coap_message:coap_message().
-rst(Request) when is_map(Request) -> 
-    Request#{type:='RST', options:=#{}, payload:= <<>>};
-rst(MsgId) -> 
-    (coap_message:new())#{type:='RST', id:=MsgId}.
+rst(MsgId) when is_integer(MsgId) ->
+    coap_message:new('RST', undefined, MsgId, <<>>, #{}, <<>>);
+rst(Request) ->
+    rst(coap_message:get_id(Request)).
 
 -spec response(coap_message:coap_message()) -> coap_message:coap_message().
 response(Request) ->
-    Request#{options:=#{}, payload:= <<>>}.
+    coap_message:set_options(#{}, coap_message:set_payload(<<>>, Request)).
 
 -spec response(undefined | coap_message:coap_success() | coap_message:coap_error(), coap_message:coap_message()) -> coap_message:coap_message().
 response(Code, Request) ->
-    Request#{code:=Code, options:=#{}, payload:= <<>>}.
+    coap_message:set_code(Code, response(Request)).
 
 -spec response(undefined | coap_message:coap_success() | coap_message:coap_error(), binary(), coap_message:coap_message()) -> coap_message:coap_message().
 response(Code, Payload, Request) when is_binary(Payload) ->
-   set_code(Code,
-        set_payload(Payload,
-            response(Request))).
-
-set_code(Code, Msg) ->
-	coap_message:set_code(Code, Msg).
+    coap_message:set_code(Code, set_payload(Payload, response(Request))).
 
 set_payload(Payload, Msg) ->
 	set_payload(Payload, undefined, Msg).
@@ -69,10 +66,13 @@ set_payload(Payload, Block, Msg) ->
 	set_payload_block(Payload, Block, Msg).
 
 -spec set_payload_block(binary(), block_opt(), coap_message:coap_message()) -> coap_message:coap_message().
-set_payload_block(Content, Block, Msg=#{code:=Code}) when is_atom(Code) ->
-    set_payload_block(Content, 'Block1', Block, Msg);
 set_payload_block(Content, Block, Msg) ->
-    set_payload_block(Content, 'Block2', Block, Msg).
+    case coap_message:get_code(Msg) of
+        Code when is_atom(Code) ->
+            set_payload_block(Content, 'Block1', Block, Msg);
+        _ -> 
+            set_payload_block(Content, 'Block2', Block, Msg)
+    end.
 
 -spec set_payload_block(binary(), 'Block1' | 'Block2', block_opt(), coap_message:coap_message()) -> coap_message:coap_message().
 set_payload_block(Content, BlockId, {Num, _, Size}, Msg) when byte_size(Content) > (Num+1)*Size ->

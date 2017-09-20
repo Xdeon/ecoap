@@ -6,7 +6,7 @@ PROJECT_ENV = [{port, 5683}, {socket_opts, [{recbuf, 1048576}, {sndbuf, 1048576}
 
 LOCAL_DEPS = crypto
 DEPS = ecoap_common
-dep_ecoap_common = git https://Xdeon@bitbucket.org/Xdeon/ecoap_common.git using_map_as_message
+dep_ecoap_common = git https://Xdeon@bitbucket.org/Xdeon/ecoap_common.git eliminate_cross_module_record
 
 COMPILE_FIRST = coap_resource
 

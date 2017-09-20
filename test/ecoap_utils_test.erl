@@ -3,24 +3,22 @@
 -include("ecoap.hrl").
 
 request_compose_test_() ->
-    Default = coap_message:new(),
     [
-        ?_assertEqual(Default#{type:='CON', code:='GET'},
+        ?_assertEqual(coap_message:new('CON', 'GET', 0, <<>>, #{}, <<>>),
             ecoap_request:request('CON', 'GET')),
-        ?_assertEqual(Default#{type:='CON', code:='PUT', payload:= <<"payload">>}, 
+        ?_assertEqual(coap_message:new('CON', 'PUT', 0, <<>>, #{}, <<"payload">>),
             ecoap_request:request('CON', 'PUT', #{}, <<"payload">>)),
-        ?_assertEqual(Default#{type:='CON', code:='PUT', options:=#{'Uri-Path' => [<<"test">>]}, payload:= <<"payload">>}, 
+        ?_assertEqual(coap_message:new('CON', 'PUT', 0, <<>>, #{'Uri-Path' => [<<"test">>]}, <<"payload">>),
             ecoap_request:request('CON', 'PUT', #{'Uri-Path' => [<<"test">>]}, <<"payload">>))
     ].
 
 response_compose_test_() ->
-    Request = #{type=>'CON', id=>123, code=>'GET', 
-                    token=> <<"Token">>, options=>#{'Uri-Path' => [<<"test">>]}, payload=> <<>>},
+    Request = coap_message:new('CON', 'GET', 123, <<"Token">>, #{'Uri-Path' => [<<"test">>]}, <<>>),
     Payload = <<"Payload">>,
     [
-        ?_assertEqual(Request#{code:={error, 'NotFound'}, options:=#{}}, 
+        ?_assertEqual(coap_message:new('CON', {error, 'NotFound'}, 123, <<"Token">>, #{}, <<>>),
             ecoap_request:response({error, 'NotFound'}, Request)),
-        ?_assertEqual(Request#{code:={ok, 'Content'}, options:=#{}, payload:=Payload}, 
+        ?_assertEqual(coap_message:new('CON', {ok, 'Content'}, 123, <<"Token">>, #{}, Payload),
             ecoap_request:response({ok, 'Content'}, Payload, Request))
     ].
 

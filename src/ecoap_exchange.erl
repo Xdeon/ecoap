@@ -72,32 +72,34 @@ in_transit(_State) ->
     false.
 
 % ->NON
--spec idle({in | out, binary()}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
+-spec idle({in, binary()} | {out, coap_message:coap_message()}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
 idle(Msg={in, <<1:2, 1:2, _:12, _Tail/bytes>>}, TransArgs, State) ->
     in_non(Msg, TransArgs, State#exchange{expire_time=native_time(?NON_LIFETIME)});
 % ->CON
 idle(Msg={in, <<1:2, 0:2, _:12, _Tail/bytes>>}, TransArgs, State) ->
     in_con(Msg, TransArgs, State#exchange{expire_time=native_time(?EXCHANGE_LIFETIME)});
-% NON->
-idle(Msg={out, #{type:='NON'}}, TransArgs, State) ->
-    out_non(Msg, TransArgs, State#exchange{expire_time=native_time(?NON_LIFETIME)});
-% CON->
-idle(Msg={out, #{type:='CON'}}, TransArgs, State) ->
-    out_con(Msg, TransArgs, State#exchange{expire_time=native_time(?EXCHANGE_LIFETIME)}).
+
+idle(Msg={out, Message}, TransArgs, State) ->
+    case coap_message:get_type(Message) of
+        'NON' -> out_non(Msg, TransArgs, State#exchange{expire_time=native_time(?NON_LIFETIME)}); % NON-> 
+        'CON' -> out_con(Msg, TransArgs, State#exchange{expire_time=native_time(?EXCHANGE_LIFETIME)}) % CON->
+    end.
 
 % --- incoming NON
 -spec in_non({in, binary()}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
 in_non({in, BinMessage}, TransArgs, State) ->
     case catch {ok, coap_message:decode(BinMessage)} of
-        {ok, #{code := Method} = Message} when is_atom(Method) ->
-            handle_request(Message, TransArgs, State),
-            check_next_state(got_non, State);
         {ok, Message} ->
-            handle_response(Message, TransArgs, State),
-            check_next_state(got_non, State);
+            case coap_message:get_code(Message) of
+                Method when is_atom(Method) ->
+                    handle_request(Message, TransArgs, State),
+                    check_next_state(got_non, State);
+                _ ->
+                    handle_response(Message, TransArgs, State),
+                    check_next_state(got_non, State)
+            end;
         % shall we send reset?
-        _ -> 
-            next_state(undefined, State)
+        _ -> next_state(undefined, State)
     end.
 
 -spec got_non({in, binary()}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
@@ -117,13 +119,15 @@ out_non({out, Message}, #{sock:=Socket, sock_module:=SocketModule, ep_id:=EpID},
 -spec sent_non({in, binary()}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
 sent_non({in, BinMessage}, TransArgs, State)->
     case catch {ok, coap_message:decode(BinMessage)} of
-        {ok, #{type := 'RST'} = Rst} ->
-            handle_error(Rst, 'RST', TransArgs, State),
-            next_state(got_rst, State);
-        {ok, _} ->
-            next_state(sent_non, State);
-        _ -> 
-            next_state(sent_non, State)
+        {ok, Message} ->
+            case coap_message:get_type(Message) of
+                'RST' ->
+                    handle_error(Message, 'RST', TransArgs, State),
+                    next_state(got_rst, State);
+                _ -> 
+                    next_state(sent_non, State)
+            end;
+        _ -> next_state(sent_non, State)
     end.
 
 -spec got_rst({in, binary()}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
@@ -134,15 +138,18 @@ got_rst({in, _BinMessage}, _TransArgs, State)->
 -spec in_con({in, binary()}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
 in_con({in, BinMessage}, TransArgs, State) ->
     case catch {ok, coap_message:decode(BinMessage)} of
-        {ok, #{code := undefined, id := MsgId}} ->
-            % provoked reset
-            go_rst_sent(ecoap_request:rst(MsgId), TransArgs, State);
-        {ok, #{code := Method} = Message} when is_atom(Method) ->
-            handle_request(Message, TransArgs, State),
-            go_await_aack(Message, TransArgs, State);
         {ok, Message} ->
-            handle_response(Message, TransArgs, State),
-            go_await_aack(Message, TransArgs, State);
+            case coap_message:get_code(Message) of
+                undefined ->
+                    % provoked reset
+                    go_rst_sent(ecoap_request:rst(Message), TransArgs, State);
+                Method when is_atom(Method) ->
+                    handle_request(Message, TransArgs, State),
+                    go_await_aack(Message, TransArgs, State);
+                _ ->
+                    handle_response(Message, TransArgs, State),
+                    go_await_aack(Message, TransArgs, State)
+            end;
         _ ->
             go_rst_sent(ecoap_request:rst(coap_message:get_id(BinMessage)), TransArgs, State)
     end.
@@ -166,9 +173,9 @@ await_aack({timeout, await_aack}, #{sock:=Socket, sock_module:=SocketModule, ep_
 
 await_aack({out, Ack}, TransArgs, State) ->
     % set correct type for a piggybacked response
-    Ack2 = case Ack of
-        #{type := 'CON'} -> Ack#{type := 'ACK'};
-        Else -> Else
+    Ack2 = case coap_message:get_type(Ack) of
+        'CON' -> coap_message:set_type('ACK', Ack);
+        _ -> Ack
     end,
     go_pack_sent(Ack2, TransArgs, State).
 
@@ -225,23 +232,27 @@ out_con({out, Message}, TransArgs=#{sock:=Socket, sock_module:=SocketModule, ep_
 -spec await_pack({in, binary()} | {timeout, await_pack}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
 await_pack({in, BinAck}, TransArgs, State) ->
     case catch {ok, coap_message:decode(BinAck)} of
-        % this is an empty ack for separate response or observe notification
-        {ok, #{type := 'ACK', code := undefined} = Ack} ->
-            handle_ack(Ack, TransArgs, State),
-            % since we can confirm when an outgoing confirmable message
-            % has been acknowledged or reset, we can safely clean the msgbin 
-            % which won't be used again from this moment
-            check_next_state(aack_sent, State#exchange{msgbin= <<>>});
-        {ok, #{type := 'RST'} = Rst} ->
-            handle_error(Rst, 'RST', TransArgs, State),
-            check_next_state(aack_sent, State#exchange{msgbin= <<>>});
-        {ok, Ack} ->
-            handle_response(Ack, TransArgs, State),
-            check_next_state(aack_sent, State#exchange{msgbin= <<>>});
-        % shall we inform the receiver the error?
-        _ ->
-            next_state(await_pack, State)            
+        {ok, Message} ->
+            case {coap_message:get_type(Message), coap_message:get_code(Message)} of
+                {'ACK', undefined} ->
+                    % this is an empty ack for separate response or observe notification
+                    handle_ack(Message, TransArgs, State),
+                    % since we can confirm when an outgoing confirmable message
+                    % has been acknowledged or reset, we can safely clean the msgbin 
+                    % which won't be used again from this moment
+                    check_next_state(aack_sent, State#exchange{msgbin= <<>>});
+                {'RST', undefined} ->
+                    handle_error(Message, 'RST', TransArgs, State),
+                    check_next_state(aack_sent, State#exchange{msgbin= <<>>});
+                {_, _} ->
+                    handle_response(Message, TransArgs, State),
+                    check_next_state(aack_sent, State#exchange{msgbin= <<>>})
+            end;
+        _ -> 
+            % shall we inform the receiver the error?
+            next_state(await_pack, State)    
     end;
+
 await_pack({timeout, await_pack}, TransArgs=#{sock:=Socket, sock_module:=SocketModule, ep_id:=EpID}, State=#exchange{msgbin=BinMessage, retry_time=Timeout, retry_count=Count}) when Count < ?MAX_RETRANSMIT ->
     % BinMessage = coap_message:encode(Message),
     %io:fwrite("resend msg for ~p time~n", [Count]),
@@ -266,11 +277,12 @@ cancelled({_, _}, _TransArgs, State) ->
     State.
 
 % utility functions
-handle_request(Message=#{code := Method, options := Options}, 
-    #{ep_id:=EpID, handler_sup:=HdlSupPid, endpoint_pid:=EndpointPid, handler_regs:=HandlerRegs}, #exchange{receiver=undefined}) ->
+handle_request(Message, #{ep_id:=EpID, handler_sup:=HdlSupPid, endpoint_pid:=EndpointPid, handler_regs:=HandlerRegs}, 
+    #exchange{receiver=undefined}) ->
     %io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
-    Uri = coap_message:get_option('Uri-Path', Options, []),
-    Query = coap_message:get_option('Uri-Query', Options, []),
+    Method = coap_message:get_code(Message),
+    Uri = coap_message:get_option('Uri-Path', Message, []),
+    Query = coap_message:get_option('Uri-Query', Message, []),
     case get_handler(HdlSupPid, EndpointPid, {Method, Uri, Query}, HandlerRegs) of
         {ok, Pid} ->
             Pid ! {coap_request, EpID, EndpointPid, undefined, Message},
@@ -310,8 +322,8 @@ get_handler(SupPid, EndpointPid, HandlerID, HandlerRegs) ->
             {ok, Pid}
     end.
 
-request_complete(EndpointPid, #{options := Options}, Receiver) ->
-    case coap_message:get_option('Observe', Options) of
+request_complete(EndpointPid, Message, Receiver) ->
+    case coap_message:get_option('Observe', Message) of
         undefined ->
             EndpointPid ! {request_complete, Receiver},
             ok;

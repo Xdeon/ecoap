@@ -24,11 +24,11 @@ coap_discover(Prefix, _Args) ->
     [{absolute, Prefix, []}].
 
 coap_get(_EpID, [<<"benchmark">>], _Name, _Query, _Request) ->
-    {ok, #{payload => <<"hello world">>, options => #{}}};
+    {ok, coap_content:set_payload(<<"hello world">>, coap_content:new())};
 
 coap_get(_EpID, [<<"fibonacci">>], _Name, [], _Request) ->
     Payload = <<"fibonacci(20) = ", (integer_to_binary(fib(20)))/binary>>,
-    {ok, #{payload => Payload, options => #{'Content-Format' => <<"text/plain">>}}};
+    {ok, coap_content:set_payload(Payload, coap_content:set_options(#{'Content-Format' => <<"text/plain">>}, coap_content:new()))};
 
 coap_get(_EpID, [<<"fibonacci">>], _Name, [Query|_], _Request) ->
     Num = case re:run(Query, "^n=[0-9]+$") of
@@ -38,20 +38,20 @@ coap_get(_EpID, [<<"fibonacci">>], _Name, [Query|_], _Request) ->
             <<"20">>
     end,
     Payload = <<"fibonacci(", Num/binary, ") = ", (integer_to_binary(fib(binary_to_integer(Num))))/binary>>,
-    {ok, #{payload => Payload, options => #{'Content-Format' => <<"text/plain">>}}};
+    {ok, coap_content:set_payload(Payload, coap_content:set_options(#{'Content-Format' => <<"text/plain">>}, coap_content:new()))};
 
 coap_get(_EpID, [<<"helloWorld">>], _Name, _Query, _Request) ->
-    {ok, #{payload => <<"Hello World">>, options => #{'Content-Format' => <<"text/plain">>}}};
+    {ok, coap_content:set_payload(<<"Hello World">>, coap_content:set_options(#{'Content-Format' => <<"text/plain">>}, coap_content:new()))};
 
 coap_get(_EpID, [<<"shutdown">>], _Name, _Query, _Request) ->
-    {ok, #{payload => <<"Send a POST request to this resource to shutdown the server">>, options => #{}}};
+    {ok, coap_content:set_payload(<<"Send a POST request to this resource to shutdown the server">>, coap_content:new())};
 
 coap_get(_EpID, _Prefix, _Name, _Query, _Request) ->
     {error, 'NotFound'}.
 
 coap_post(_EpID, [<<"shutdown">>], _Name, _Request) ->
     _ = spawn(fun() -> io:format("Shutting down everything in 1 second~n"), timer:sleep(1000), benchmark:stop() end),
-    {ok, 'Changed', #{payload => <<"Shutting down">>, options => #{}}};
+    {ok, 'Changed', coap_content:set_payload(<<"Shutting down">>, coap_content:new())};
 
 coap_post(_EpID, _Prefix, _Name, _Request) ->
     {error, 'MethodNotAllowed'}.

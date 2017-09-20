@@ -1,7 +1,7 @@
 -module(coap_content).
 -export([new/0, set_payload/2, set_options/2, get_payload/1, get_options/1]).
 -export([get_content/1]).
--export([normalize/1]).
+% -export([normalize/1]).
 
 -type coap_content() ::
     #{
@@ -31,15 +31,33 @@ get_payload(Content) ->
 get_options(Content) ->
     maps:get(options, Content, #{}).
 
--spec normalize(map()) -> coap_content().
-normalize(Content=#{payload:=_, options:=_}) -> Content;
-normalize(Content=#{payload:=_}) -> Content#{options=>#{}};
-normalize(Content=#{options:=_}) -> Content#{payload=> <<>>};
-normalize(_) -> new().
+% -spec normalize(map()) -> coap_content().
+% normalize(Content=#{payload:=_, options:=_}) -> Content;
+% normalize(Content=#{payload:=_}) -> Content#{options=>#{}};
+% normalize(Content=#{options:=_}) -> Content#{payload=> <<>>};
+% normalize(_) -> new().
 
 -spec get_content(coap_message:coap_message()) -> coap_content().
-get_content(#{payload:=Payload, options:=Options}) ->
-    #{payload=>Payload, options=>filter_options(Options)}.
+get_content(Message) ->
+    #{payload=>coap_message:get_payload(Message), options=>filter_options(coap_message:get_options(Message))}.
+
+% -record(coap_content, {
+%     payload = <<>> :: binary(),
+%     options = #{} :: coap_message:optionset()
+%     }).
+
+% new() -> #coap_content{}.
+
+% set_payload(Payload, Content) -> Content#coap_content{payload=Payload}.
+
+% set_options(Options, Content) -> Content#coap_content{options=Options}.
+
+% get_payload(#coap_content{payload=Payload}) -> Payload.
+
+% get_options(#coap_content{options=Options}) -> Options.
+
+% get_content(Request) ->
+%     #coap_content{payload=coap_message:get_payload(Request), options=filter_options(coap_message:get_options(Request))}.
 
 filter_options(Options) ->
     UnusedOptions = ['Uri-Path', 'Uri-Query', 'Block1', 'Block2', 'If-Match', 'If-None-Match'],

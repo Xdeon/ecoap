@@ -88,9 +88,17 @@ terminate(_Reason, #state{socket=Socket}) ->
 code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
-match(#{type:=Type, code:=Code, options:=Options, payload:=Payload},
-	#{type:=Type, id:=MsgId, code:=Code, token:=Token, options:=Options, payload:=Payload}) ->
-	{match, MsgId, Token};
-match(_, _) ->
-	nomatch.
+match(ExpectReq, InBound) ->
+	ReqInfo = get_info(ExpectReq),
+	InBoundInfo = get_info(InBound),
+	case InBoundInfo of
+		ReqInfo -> {match, coap_message:get_id(InBound), coap_message:get_token(InBound)};
+		_ -> nomatch
+	end.
 
+get_info(Message) ->
+	Type = coap_message:get_type(Message),
+	Code = coap_message:get_code(Message),
+	Options = coap_message:get_options(Message),
+	Payload = coap_message:get_payload(Message),
+	{Type, Code, Options, Payload}.
