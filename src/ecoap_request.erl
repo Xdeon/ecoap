@@ -27,16 +27,20 @@ request(Type, Code, Options, Payload) when is_binary(Payload) ->
         (coap_message:new())#{type:=Type, code:=Code, options:=Options}).
 
 -spec ack(coap_message:coap_message() | non_neg_integer()) -> coap_message:coap_message().
-ack(#{id := MsgId}) -> 
-    (coap_message:new())#{type:='ACK', id:=MsgId};
+ack(Request) when is_map(Request) ->
+    Request#{type:='ACK', options:=#{}, payload:= <<>>};
 ack(MsgId) ->
     (coap_message:new())#{type:='ACK', id:=MsgId}.
 
 -spec rst(coap_message:coap_message() | non_neg_integer()) -> coap_message:coap_message().
-rst(#{id := MsgId}) -> 
-    (coap_message:new())#{type:='RST', id:=MsgId};
+rst(Request) when is_map(Request) -> 
+    Request#{type:='RST', options:=#{}, payload:= <<>>};
 rst(MsgId) -> 
     (coap_message:new())#{type:='RST', id:=MsgId}.
+
+-spec response(coap_message:coap_message()) -> coap_message:coap_message().
+response(Request) ->
+    Request#{options:=#{}, payload:= <<>>}.
 
 -spec response(undefined | coap_message:coap_success() | coap_message:coap_error(), coap_message:coap_message()) -> coap_message:coap_message().
 response(Code, Request) ->
@@ -47,10 +51,6 @@ response(Code, Payload, Request) when is_binary(Payload) ->
    set_code(Code,
         set_payload(Payload,
             response(Request))).
-
--spec response(coap_message:coap_message()) -> coap_message:coap_message().
-response(Request) ->
-    Request#{options:=#{}, payload:= <<>>}.
 
 set_code(Code, Msg) ->
 	coap_message:set_code(Code, Msg).
