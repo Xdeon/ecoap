@@ -77,7 +77,7 @@ handle_info(_Info, _ObsReq, State) ->
 coap_ack(_Ref, State) -> {ok, State}.
 
 from_record(#coap_content{etag=ETag, max_age=MaxAge, format=Format, payload=Payload}) ->
-    #{payload=>Payload, options=>#{'ETag' => ETag, 'Max-Age' => MaxAge, 'Content-Format' => Format}}.
+    coap_content:new(Payload, #{'ETag' => ETag, 'Max-Age' => MaxAge, 'Content-Format' => Format}).
 
 to_record(#{payload:=Payload, options:=Options}) ->
     #coap_content{
