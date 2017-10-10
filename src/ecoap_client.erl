@@ -205,7 +205,7 @@ handle_call({observe, Uri, Options}, {Pid, _}, State=#state{sock_pid=SockPid, re
 	ObsKey = {EpID, Path, coap_message:get_option('Accept', Options2)},
 	{Token, Requests2, ObsRegs2} = case maps:find(ObsKey, ObsRegs) of
 		error -> 
-			{ecoap_endpoint:generate_token(), Requests, ObsRegs};
+			{ecoap_message_token:generate_token(), Requests, ObsRegs};
 		{ok, {OldRef, OldToken}} ->
 			{OldToken, maps:remove(OldRef, Requests), maps:remove(ObsKey, ObsRegs)}
 	end,

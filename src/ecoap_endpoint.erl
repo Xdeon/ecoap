@@ -4,7 +4,6 @@
 %% API.
 -export([start_link/4, start_link/3,
         ping/1, send/2, send_message/3, send_request/3, send_response/3, cancel_request/2]).
--export([generate_token/0, generate_token/1]).
 -export([check_alive/1]).
 
 %% gen_server.
@@ -16,9 +15,8 @@
 -export([code_change/3]).
 
 -define(VERSION, 1).
--define(MAX_MESSAGE_ID, 65535). % 16-bit number
+
 -define(SCAN_INTERVAL, 10000). % scan every 10s
--define(TOKEN_LENGTH, 4). % shall be at least 32 random bits
 
 -record(state, {
     trans_args = undefined :: trans_args(),
@@ -76,7 +74,7 @@ send_request(EndpointPid, Ref, Message) ->
     case coap_message:get_token(Message) of
         <<>> -> 
             % when no token is assigned then generate one
-            gen_server:cast(EndpointPid, {send_request, coap_message:set_token(generate_token(), Message), {self(), Ref}});
+            gen_server:cast(EndpointPid, {send_request, coap_message:set_token(ecoap_message_token:generate_token(), Message), {self(), Ref}});
         _ -> 
             % use user defined token
             gen_server:cast(EndpointPid, {send_request, Message, {self(), Ref}})
@@ -108,13 +106,6 @@ check_alive(EndpointPid) ->
         _:R -> exit(R)
     end.
 
--spec generate_token() -> binary().
-generate_token() -> generate_token(?TOKEN_LENGTH).
-
--spec generate_token(non_neg_integer()) -> binary().
-generate_token(TKL) ->
-    crypto:strong_rand_bytes(TKL).
-
 %% gen_server.
 
 % client
@@ -123,7 +114,7 @@ init([undefined, SocketModule, Socket, EpID]) ->
     process_flag(trap_exit, true),
     TransArgs = #{sock=>Socket, sock_module=>SocketModule, ep_id=>EpID, endpoint_pid=>self()},
     Timer = endpoint_timer:start_timer(?SCAN_INTERVAL, start_scan),
-    {ok, #state{nextmid=first_mid(), rescnt=0, timer=Timer, trans_args=TransArgs}};
+    {ok, #state{nextmid=ecoap_message_id:first_mid(), rescnt=0, timer=Timer, trans_args=TransArgs}};
 
 % server 
 init([SupPid, SocketModule, Socket, EpID]) ->
@@ -137,7 +128,7 @@ init([SupPid, SocketModule, Socket, EpID]) ->
           modules => [ecoap_handler_sup]}),
     TransArgs = #{sock=>Socket, sock_module=>SocketModule, ep_id=>EpID, endpoint_pid=>self(), handler_sup=>HdlSupPid, handler_regs=>#{}},
     Timer = endpoint_timer:start_timer(?SCAN_INTERVAL, start_scan),
-    gen_server:enter_loop(?MODULE, [], #state{nextmid=first_mid(), rescnt=0, timer=Timer, trans_args=TransArgs, handler_refs=#{}}).
+    gen_server:enter_loop(?MODULE, [], #state{nextmid=ecoap_message_id:first_mid(), rescnt=0, timer=Timer, trans_args=TransArgs, handler_refs=#{}}).
 
 handle_call(check_alive, _From, State=#state{timer=Timer}) ->
     {reply, ok, State#state{timer=endpoint_timer:kick_timer(Timer)}};
@@ -245,11 +236,8 @@ handle_info({datagram, <<Ver:2, _/bytes>>}, State) when Ver /= ?VERSION ->
     % %io:format("unknown CoAP version~n"),
     {noreply, State};
 
-handle_info(start_scan, State=#state{trans=Trans}) ->
-    CurrentTime = erlang:monotonic_time(),
-    Trans2 = maps:filter(fun(_TrId, TrState) -> ecoap_exchange:not_expired(CurrentTime, TrState) end, Trans),
-    % io:format("scanning~n"),
-    purge_state(State#state{trans=Trans2});
+handle_info(start_scan, State) ->
+    scan_state(State);
 
 handle_info({timeout, TrId, Event}, State=#state{trans=Trans, trans_args=TransArgs}) ->
     case maps:find(TrId, Trans) of
@@ -336,7 +324,7 @@ make_new_request(Message, Receiver, State=#state{tokens=Tokens, nextmid=MsgId, r
     make_new_message(Message, Receiver, State#state{tokens=Tokens2, receivers=Receivers2}).
 
 make_new_message(Message, Receiver, State=#state{nextmid=MsgId}) ->
-    make_message({out, MsgId}, coap_message:set_id(MsgId, Message), Receiver, State#state{nextmid=next_mid(MsgId)}).
+    make_message({out, MsgId}, coap_message:set_id(MsgId, Message), Receiver, State#state{nextmid=ecoap_message_id:next_mid(MsgId)}).
 
 make_message(TrId, Message, Receiver, State=#state{trans_args=TransArgs}) ->
     update_state(State, TrId,
@@ -366,36 +354,22 @@ make_new_response(Message, Receiver, State=#state{trans=Trans, trans_args=TransA
             make_new_message(Message, Receiver, State)
     end.
 
-first_mid() ->
-    _ = rand:seed(exs1024),
-    rand:uniform(?MAX_MESSAGE_ID).
-
-% a MsgId must not be reused within EXCHANGE_LIFETIME
-% no check is done for now that whether a MsgId can be safely reused
-% if that feature is expected, we can have a grouped MsgId tracker 
-% which separate MsgId space into several groups and let one group represent all MsgIds within that range
-% and only track the expire time of the last used MsgId of every group, e.g., an array of size of number of groups 
-% with each element for expire time of one group, so that effectively save memory cost
-% downside is
-% 1. unable to track MsgId precisely since the expire time of a group is determined by the last MsgId of that group
-% 2. have to do with situation of no available MsgId
-% idea comes from:
-% https://github.com/eclipse/californium/issues/323
-% https://github.com/eclipse/californium/pull/271
-% https://github.com/eclipse/californium/pull/328
-
-next_mid(MsgId) ->
-    if
-        MsgId < ?MAX_MESSAGE_ID -> MsgId + 1;
-        true -> 1 % or 0?
-    end.
-
 % find or initialize a new exchange
 create_exchange(TrId, Receiver, #state{trans=Trans}) ->
     maps:get(TrId, Trans, init_exchange(TrId, Receiver)).
 
 init_exchange(TrId, Receiver) ->
     ecoap_exchange:init(TrId, Receiver).
+
+-ifdef(NODEDUP).
+scan_state(State) ->
+    purge_state(State).
+-else.
+scan_state(State=#state{trans=Trans}) ->
+    CurrentTime = erlang:monotonic_time(),
+    Trans2 = maps:filter(fun(_TrId, TrState) -> ecoap_exchange:not_expired(CurrentTime, TrState) end, Trans),
+    purge_state(State#state{trans=Trans2}).
+-endif.
 
 update_state(State=#state{trans=Trans, timer=Timer}, TrId, undefined) ->
     Trans2 = maps:remove(TrId, Trans),
