@@ -18,6 +18,6 @@ EUNIT_OPTS = verbose
 
 ERLC_OPTS += +report +verbose +warn_deprecated_function +warn_deprecated_type +warn_untyped_record +warn_unused_import
 
-ERLC_OPTS += -DNODEDUP
+# ERLC_OPTS += -DNODEDUP
 
 SHELL_OPTS = +K true +spp true
