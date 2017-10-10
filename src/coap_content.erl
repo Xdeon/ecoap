@@ -33,11 +33,11 @@ set_options(Options, Content) ->
 
 -spec get_payload(coap_content()) -> binary().
 get_payload(Content) ->
-    maps:get(payload, Content, <<>>).
+    maps:get(payload, Content).
 
 -spec get_options(coap_content()) -> coap_message:optionset().
 get_options(Content) ->
-    maps:get(options, Content, #{}).
+    maps:get(options, Content).
 
 -spec get_content(coap_message:coap_message()) -> coap_content().
 get_content(Message) ->
