@@ -1,5 +1,5 @@
 -module(test_utils).
--export([text_resource/1, text_resource/2, large_binary/2, from_record/1, to_record/1]).
+-export([text_resource/1, text_resource/2, large_binary/2]).
 
 -include("ecoap.hrl").
 
@@ -20,14 +20,3 @@ large_binary(Size, Acc) when Size > 2*byte_size(Acc) ->
 large_binary(Size, Acc) ->
     Sup = binary:part(Acc, 0, Size-byte_size(Acc)),
     <<Acc/binary, Sup/binary>>.
-
-from_record(#coap_content{etag=ETag, max_age=MaxAge, format=Format, payload=Payload}) ->
-    coap_content:new(Payload, #{'ETag' => ETag, 'Max-Age' => MaxAge, 'Content-Format' => Format}).
-
-to_record(#{payload:=Payload, options:=Options}) ->
-    #coap_content{
-        etag = coap_message:get_option('ETag', Options, []),
-        max_age = coap_message:get_option('Max-Age', Options),
-        format = coap_message:get_option('Content-Format', Options),
-        payload = Payload
-    }.

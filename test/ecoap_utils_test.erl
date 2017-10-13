@@ -1,24 +1,25 @@
 -module(ecoap_utils_test).
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("src/coap_message.hrl").
 -include("ecoap.hrl").
 
 request_compose_test_() ->
     [
-        ?_assertEqual(coap_message:new('CON', 'GET', 0, <<>>, #{}, <<>>),
+        ?_assertEqual(#coap_message{type='CON', code='GET', id=0},
             ecoap_request:request('CON', 'GET')),
-        ?_assertEqual(coap_message:new('CON', 'PUT', 0, <<>>, #{}, <<"payload">>),
+        ?_assertEqual(#coap_message{type='CON', code='PUT', id=0, payload= <<"payload">>},
             ecoap_request:request('CON', 'PUT', #{}, <<"payload">>)),
-        ?_assertEqual(coap_message:new('CON', 'PUT', 0, <<>>, #{'Uri-Path' => [<<"test">>]}, <<"payload">>),
+        ?_assertEqual(#coap_message{type='CON', code='PUT', id=0, options=#{'Uri-Path' => [<<"test">>]}, payload= <<"payload">>},
             ecoap_request:request('CON', 'PUT', #{'Uri-Path' => [<<"test">>]}, <<"payload">>))
     ].
 
 response_compose_test_() ->
-    Request = coap_message:new('CON', 'GET', 123, <<"Token">>, #{'Uri-Path' => [<<"test">>]}, <<>>),
+    Request = #coap_message{type='CON', code='GET', id=123, token= <<"Token">>, options=#{'Uri-Path' => [<<"test">>]}},
     Payload = <<"Payload">>,
     [
-        ?_assertEqual(coap_message:new('CON', {error, 'NotFound'}, 123, <<"Token">>, #{}, <<>>),
+        ?_assertEqual(#coap_message{type='CON', code={error, 'NotFound'}, id=123, token= <<"Token">>},
             ecoap_request:response({error, 'NotFound'}, Request)),
-        ?_assertEqual(coap_message:new('CON', {ok, 'Content'}, 123, <<"Token">>, #{}, Payload),
+        ?_assertEqual(#coap_message{type='CON', code={ok, 'Content'}, id=123, token= <<"Token">>, payload=Payload},
             ecoap_request:response({ok, 'Content'}, Payload, Request))
     ].
 
