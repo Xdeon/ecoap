@@ -28,13 +28,13 @@
 
 -record(state, {
 	sock = undefined :: inet:socket(),
-	endpoint_refs = #{} :: ecoap_endpoint_refs(),
+	% endpoint_refs = #{} :: ecoap_endpoint_refs(),
 	endpoint_pool = undefined :: undefined | pid()
 }).
 
 -opaque state() :: #state{}.
 -type ecoap_endpoint_id() :: {inet:ip_address(), inet:port_number()}.
--type ecoap_endpoint_refs() :: #{reference() => ecoap_endpoint_id()}.
+% -type ecoap_endpoint_refs() :: #{reference() => ecoap_endpoint_id()}.
 
 -export_type([state/0]).
 -export_type([ecoap_endpoint_id/0]).
@@ -95,7 +95,8 @@ handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoint_pool
     	error ->
     		{ok, EpPid} = ecoap_endpoint:start_link(?MODULE, Socket, EpID),
     		store_endpoint(EpID, EpPid),
-    		{reply, {ok, EpPid}, store_endpoint_monitor(EpID, EpPid, State)}
+    		store_endpoint(erlang:monitor(process, EpPid), EpID),
+    		{reply, {ok, EpPid}, State}
     end;
 % get an endpoint when being as a server
 handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoint_pool=PoolPid}) ->
@@ -106,14 +107,15 @@ handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoint_pool
 			case endpoint_sup_sup:start_endpoint(PoolPid, [?MODULE, Socket, EpID]) of
 		        {ok, _, EpPid} ->
 					store_endpoint(EpID, EpPid),
-		            {reply, {ok, EpPid}, store_endpoint_monitor(EpID, EpPid, State)};
+					store_endpoint(erlang:monitor(process, EpPid), EpID),
+		            {reply, {ok, EpPid}, State};
 		        Error ->
 		            {reply, Error, State}
 		    end
 	end;
 % only for debug use
 handle_call(get_all_endpoints, _From, State) ->
-	EpPids = fetch_endpoint_pids(State),
+	EpPids = fetch_endpoint_pids(),
 	{reply, EpPids, State};
 handle_call(_Request, _From, State) ->
 	error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
@@ -137,7 +139,8 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, en
 					%io:fwrite("start endpoint ~p~n", [EpID]),
 					EpPid ! {datagram, Bin},
 					store_endpoint(EpID, EpPid),
-					{noreply, store_endpoint_monitor(EpID, EpPid, State)};
+					store_endpoint(erlang:monitor(process, EpPid), EpID),
+					{noreply, State};
 				{error, _Reason} -> 
 					%io:fwrite("start_endpoint failed: ~p~n", [_Reason]),
 					{noreply, State}
@@ -148,10 +151,11 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, en
 			{noreply, State}
 	end;
 handle_info({'DOWN', Ref, process, _Pid, _Reason}, State) ->
- 	case find_endpoint_monitor(Ref, State) of
+ 	case find_endpoint(Ref) of
  		{ok, EpID} -> 
+ 			erase_endpoint(Ref),
  			erase_endpoint(EpID),
- 			{noreply, erase_endpoint_monitor(Ref, State)};
+ 			{noreply, State};
  		error -> 
  			{noreply, State}
  	end;
@@ -191,47 +195,47 @@ merge_opts(Defaults, Options) ->
 % 		true -> ?HIGH_ACTIVE_PACKETS
 % 	end.
 
-find_endpoint(EpID) ->
-	case get(EpID) of
+find_endpoint(Key) ->
+	case get(Key) of
 		undefined -> error;
-		EpPid -> {ok, EpPid}
+		Val -> {ok, Val}
 	end.
 
-store_endpoint(EpID, EpPid) ->
-	put(EpID, EpPid).
+store_endpoint(Key, Val) ->
+	put(Key, Val).
 
-erase_endpoint(EpID) ->
-	erase(EpID).
+erase_endpoint(Key) ->
+	erase(Key).
 
-find_endpoint_monitor(Ref, #state{endpoint_refs=EndPointRefs}) ->
-	maps:find(Ref, EndPointRefs).
+% find_endpoint_monitor(Ref, #state{endpoint_refs=EndPointRefs}) ->
+% 	maps:find(Ref, EndPointRefs).
 
-store_endpoint_monitor(EpID, EpPid, State=#state{endpoint_refs=EndPointRefs}) ->
-	State#state{endpoint_refs=maps:put(erlang:monitor(process, EpPid), EpID, EndPointRefs)}.
+% store_endpoint_monitor(EpID, EpPid, State=#state{endpoint_refs=EndPointRefs}) ->
+% 	State#state{endpoint_refs=maps:put(erlang:monitor(process, EpPid), EpID, EndPointRefs)}.
 
-erase_endpoint_monitor(Ref, State=#state{endpoint_refs=EndPointRefs}) ->
-	State#state{endpoint_refs=maps:remove(Ref, EndPointRefs)}.
+% erase_endpoint_monitor(Ref, State=#state{endpoint_refs=EndPointRefs}) ->
+% 	State#state{endpoint_refs=maps:remove(Ref, EndPointRefs)}.
 
-fetch_endpoint_pids(#state{endpoint_refs=EndPointRefs}) ->
-	[get(EpID) || EpID <- maps:values(EndPointRefs)].
+fetch_endpoint_pids() ->
+	[Val || {{_, _}, Val} <- get(), is_pid(Val)].
 
--ifdef(TEST).
+% -ifdef(TEST).
 
--include_lib("eunit/include/eunit.hrl").
+% -include_lib("eunit/include/eunit.hrl").
 
-store_endpoint_test() ->
-	EpID = {{127,0,0,1}, 5683},
-	store_endpoint(EpID, self()),
-	State = store_endpoint_monitor(EpID, self(), #state{}),
-	[Ref] = maps:keys(State#state.endpoint_refs),
-	?assertEqual({ok, self()}, find_endpoint(EpID)),
-	?assertEqual({ok, EpID}, find_endpoint_monitor(Ref, State)),
-	?assertEqual([self()], fetch_endpoint_pids(State)),
-	erase_endpoint(EpID),
-	State1 = erase_endpoint_monitor(Ref, State),
-	?assertEqual(error, find_endpoint(EpID)),
-	?assertEqual(error, find_endpoint_monitor(Ref, State1)),
-	?assertEqual([], fetch_endpoint_pids(State1)).
+% store_endpoint_test() ->
+% 	EpID = {{127,0,0,1}, 5683},
+% 	store_endpoint(EpID, self()),
+% 	State = store_endpoint_monitor(EpID, self(), #state{}),
+% 	[Ref] = maps:keys(State#state.endpoint_refs),
+% 	?assertEqual({ok, self()}, find_endpoint(EpID)),
+% 	?assertEqual({ok, EpID}, find_endpoint_monitor(Ref, State)),
+% 	?assertEqual([self()], fetch_endpoint_pids(State)),
+% 	erase_endpoint(EpID),
+% 	State1 = erase_endpoint_monitor(Ref, State),
+% 	?assertEqual(error, find_endpoint(EpID)),
+% 	?assertEqual(error, find_endpoint_monitor(Ref, State1)),
+% 	?assertEqual([], fetch_endpoint_pids(State1)).
 
--endif.
+% -endif.
 
