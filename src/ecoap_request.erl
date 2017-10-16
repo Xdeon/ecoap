@@ -27,14 +27,14 @@ request(Type, Code, Options, Payload) when is_binary(Payload) ->
     set_payload(Payload, #coap_message{type=Type, code=Code, id=0, options=Options}). 
 
 -spec ack(coap_message:coap_message() | non_neg_integer()) -> coap_message:coap_message().
-ack(#coap_message{id=MsgId}) ->
-    #coap_message{type='ACK', id=MsgId};
+ack(Request=#coap_message{}) ->
+    #coap_message{type='ACK', id=Request#coap_message.id};
 ack(MsgId) when is_integer(MsgId) ->
     #coap_message{type='ACK', id=MsgId}.
 
 -spec rst(coap_message:coap_message() | non_neg_integer()) -> coap_message:coap_message().
-rst(#coap_message{id=MsgId}) ->
-    #coap_message{type='RST', id=MsgId};
+rst(Request=#coap_message{}) ->
+    #coap_message{type='RST', id=Request#coap_message.id};
 rst(MsgId) when is_integer(MsgId) ->
     #coap_message{type='RST', id=MsgId}.
 
