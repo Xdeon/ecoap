@@ -152,8 +152,7 @@ in_con({in, BinMessage}, TransArgs, State) ->
 -spec go_await_aack(coap_message:coap_message(), ecoap_endpoint:trans_args(), exchange()) -> exchange().
 go_await_aack(Message, TransArgs, State) ->
     % we may need to ack the message
-    EmptyACK = ecoap_request:ack(Message),
-    BinAck = coap_message:encode(EmptyACK),
+    BinAck = coap_message:encode(ecoap_request:ack(Message)),
     next_state(await_aack, TransArgs, State#exchange{msgbin=BinAck}, ?PROCESSING_DELAY).
 
 -spec await_aack({in, binary()} | {timeout, await_aack} | {out, coap_message:coap_message()}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
@@ -269,11 +268,11 @@ cancelled({_, _}, _TransArgs, State) ->
     State.
 
 % utility functions
-handle_request(Message=#coap_message{code=Method, options=Options}, 
+handle_request(Message=#coap_message{code=Method}, 
     #{ep_id:=EpID, handler_sup:=HdlSupPid, endpoint_pid:=EndpointPid, handler_regs:=HandlerRegs}, #exchange{receiver=undefined}) ->
     %io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
-    Uri = coap_message:get_option('Uri-Path', Options, []),
-    Query = coap_message:get_option('Uri-Query', Options, []),
+    Uri = coap_message:get_option('Uri-Path', Message, []),
+    Query = coap_message:get_option('Uri-Query', Message, []),
     case get_handler(HdlSupPid, EndpointPid, {Method, Uri, Query}, HandlerRegs) of
         {ok, Pid} ->
             Pid ! {coap_request, EpID, EndpointPid, undefined, Message},
