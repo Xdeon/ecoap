@@ -3,7 +3,7 @@
 
 %% API.
 -export([start_link/0, start_link/3, close/1]).
--export([get_endpoint/2, get_all_endpoints/1]).
+-export([get_endpoint/2, get_all_endpoints/1, get_endpoint_count/1]).
 -export([send_datagram/3]).
 
 %% gen_server.
@@ -28,7 +28,8 @@
 
 -record(state, {
 	sock = undefined :: inet:socket(),
-	endpoint_pool = undefined :: undefined | pid()
+	endpoint_pool = undefined :: undefined | pid(),
+	endpoint_count = 0 :: non_neg_integer()
 }).
 
 -opaque state() :: #state{}.
@@ -64,6 +65,10 @@ get_endpoint(Pid, {PeerIP, PeerPortNo}) ->
 get_all_endpoints(Pid) ->
 	gen_server:call(Pid, get_all_endpoints).
 
+-spec get_endpoint_count(pid()) -> non_neg_integer().
+get_endpoint_count(Pid) ->
+	gen_server:call(Pid, get_endpoint_count).
+
 %% module specific send function 
 -spec send_datagram(inet:socket(), ecoap_udp_socket:ecoap_endpoint_id(), binary()) -> ok.
 send_datagram(Socket, {PeerIP, PeerPortNo}, Datagram) ->
@@ -86,7 +91,7 @@ init(SupPid, InPort, Opts) ->
     gen_server:enter_loop(?MODULE, [], State#state{endpoint_pool=Pid}, {local, ?MODULE}).
 
 % get an endpoint when being as a client
-handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoint_pool=undefined}) ->
+handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoint_pool=undefined, endpoint_count=Count}) ->
     case find_endpoint(EpID) of
     	{ok, EpPid} ->
     		{reply, {ok, EpPid}, State};
@@ -94,10 +99,10 @@ handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoint_pool
     		{ok, EpPid} = ecoap_endpoint:start_link(?MODULE, Socket, EpID),
     		store_endpoint(EpID, EpPid),
     		store_endpoint(erlang:monitor(process, EpPid), EpID),
-    		{reply, {ok, EpPid}, State}
+    		{reply, {ok, EpPid}, State#state{endpoint_count=Count+1}}
     end;
 % get an endpoint when being as a server
-handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoint_pool=PoolPid}) ->
+handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoint_pool=PoolPid, endpoint_count=Count}) ->
 	case find_endpoint(EpID) of
 		{ok, EpPid} ->
 			{reply, {ok, EpPid}, State};
@@ -106,7 +111,7 @@ handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoint_pool
 		        {ok, _, EpPid} ->
 					store_endpoint(EpID, EpPid),
 					store_endpoint(erlang:monitor(process, EpPid), EpID),
-		            {reply, {ok, EpPid}, State};
+		            {reply, {ok, EpPid}, State#state{endpoint_count=Count+1}};
 		        Error ->
 		            {reply, Error, State}
 		    end
@@ -115,6 +120,8 @@ handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoint_pool
 handle_call(get_all_endpoints, _From, State) ->
 	EpPids = fetch_endpoint_pids(),
 	{reply, EpPids, State};
+handle_call(get_endpoint_count, _From, State=#state{endpoint_count=Count}) ->
+	{reply, Count, State};
 handle_call(_Request, _From, State) ->
 	error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
 	{noreply, State}.
@@ -125,7 +132,7 @@ handle_cast(_Msg, State) ->
 	error_logger:error_msg("unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
 	{noreply, State}.
 
-handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, endpoint_pool=PoolPid}) ->
+handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, endpoint_pool=PoolPid, endpoint_count=Count}) ->
 	EpID = {PeerIP, PeerPortNo},
 	case find_endpoint(EpID) of
 		{ok, EpPid} ->
@@ -138,7 +145,7 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, en
 					EpPid ! {datagram, Bin},
 					store_endpoint(EpID, EpPid),
 					store_endpoint(erlang:monitor(process, EpPid), EpID),
-					{noreply, State};
+					{noreply, State#state{endpoint_count=Count+1}};
 				{error, _Reason} -> 
 					%io:fwrite("start_endpoint failed: ~p~n", [_Reason]),
 					{noreply, State}
@@ -148,12 +155,12 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, en
 			%io:fwrite("client recv unexpected packet~n"),
 			{noreply, State}
 	end;
-handle_info({'DOWN', Ref, process, _Pid, _Reason}, State) ->
+handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{endpoint_count=Count}) ->
  	case find_endpoint(Ref) of
  		{ok, EpID} -> 
  			erase_endpoint(Ref),
  			erase_endpoint(EpID),
- 			{noreply, State};
+ 			{noreply, State#state{endpoint_count=Count-1}};
  		error -> 
  			{noreply, State}
  	end;
