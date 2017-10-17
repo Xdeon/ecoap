@@ -21,20 +21,18 @@
 % -define(LOW_ACTIVE_PACKETS, 200).
 % -define(HIGH_ACTIVE_PACKETS, 400).
 % -define(CONCURRENCY_THRESHOLD, 2000).
--define(ACTIVE_PACKETS, 100).
+-define(ACTIVE_PACKETS, 200).
 
 -define(DEFAULT_SOCK_OPTS,
 	[binary, {active, ?ACTIVE_PACKETS}, {reuseaddr, true}]).
 
 -record(state, {
 	sock = undefined :: inet:socket(),
-	% endpoint_refs = #{} :: ecoap_endpoint_refs(),
 	endpoint_pool = undefined :: undefined | pid()
 }).
 
 -opaque state() :: #state{}.
 -type ecoap_endpoint_id() :: {inet:ip_address(), inet:port_number()}.
-% -type ecoap_endpoint_refs() :: #{reference() => ecoap_endpoint_id()}.
 
 -export_type([state/0]).
 -export_type([ecoap_endpoint_id/0]).
@@ -206,15 +204,6 @@ store_endpoint(Key, Val) ->
 
 erase_endpoint(Key) ->
 	erase(Key).
-
-% find_endpoint_monitor(Ref, #state{endpoint_refs=EndPointRefs}) ->
-% 	maps:find(Ref, EndPointRefs).
-
-% store_endpoint_monitor(EpID, EpPid, State=#state{endpoint_refs=EndPointRefs}) ->
-% 	State#state{endpoint_refs=maps:put(erlang:monitor(process, EpPid), EpID, EndPointRefs)}.
-
-% erase_endpoint_monitor(Ref, State=#state{endpoint_refs=EndPointRefs}) ->
-% 	State#state{endpoint_refs=maps:remove(Ref, EndPointRefs)}.
 
 fetch_endpoint_pids() ->
 	[Val || {{_, _}, Val} <- get(), is_pid(Val)].
