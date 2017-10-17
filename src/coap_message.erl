@@ -146,9 +146,9 @@ get_option(Option, Source) ->
     get_option(Option, Source, undefined).
 
 -spec get_option(coap_option(), coap_message() | optionset(), term()) -> term().
-get_option(Option, Options, Default) when is_map(Options) ->
-    get_option_helper(Option, Options, Default);
 get_option(Option, #coap_message{options=Options}, Default) ->
+    get_option_helper(Option, Options, Default);
+get_option(Option, Options, Default) ->
     get_option_helper(Option, Options, Default).
 
 get_option_helper(Option, Options, Default) ->
@@ -178,28 +178,28 @@ add_options(Options1, Options2) ->
     maps:merge(Options1, Options2).
 
 -spec has_option(coap_option(), coap_message() | optionset()) -> boolean().
-has_option(Option, Options) when is_map(Options) ->
-    has_option_helper(Option, Options);
 has_option(Option, #coap_message{options=Options}) ->
+    has_option_helper(Option, Options);
+has_option(Option, Options) ->
     has_option_helper(Option, Options).
 
 has_option_helper(Option, Options) ->
     maps:is_key(Option, Options).
 
 -spec remove_option(coap_option(), Source) -> Source when Source :: coap_message() | optionset().
-remove_option(Option, Options) when is_map(Options) ->
-    remove_option_helper(Option, Options);
 remove_option(Option, Msg=#coap_message{options=Options}) ->
-    Msg#coap_message{options=remove_option_helper(Option, Options)}.
+    Msg#coap_message{options=remove_option_helper(Option, Options)};
+remove_option(Option, Options) ->
+    remove_option_helper(Option, Options).
 
 remove_option_helper(Option, Options) ->
     maps:remove(Option, Options).
 
 -spec remove_options([coap_option()], Source) -> Source when Source :: coap_message() | optionset().
-remove_options(OptionList, Options) when is_map(Options) ->
-    remove_options_helper(OptionList, Options);
 remove_options(OptionList, Msg=#coap_message{options=Options}) ->
-    Msg#coap_message{options=remove_options_helper(OptionList, Options)}.
+    Msg#coap_message{options=remove_options_helper(OptionList, Options)};
+remove_options(OptionList, Options) ->
+    remove_options_helper(OptionList, Options).
 
 remove_options_helper(OptionList, Options) ->
     maps:without(OptionList, Options).
