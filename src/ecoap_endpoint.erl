@@ -327,7 +327,8 @@ make_message(TrId, Message, Receiver, State=#state{trans_args=TransArgs}) ->
 
 make_new_response(Message=#coap_message{id=MsgId}, Receiver, State=#state{trans=Trans, trans_args=TransArgs}) ->
     % io:format("The response: ~p~n", [Message]),
-    case maps:find({in, MsgId}, Trans) of
+    TrId = {in, MsgId},
+    case maps:find(TrId, Trans) of
         {ok, TrState} ->
             % coap_transport:awaits_response is used to 
             % check if we are in the case that
@@ -335,7 +336,7 @@ make_new_response(Message=#coap_message{id=MsgId}, Receiver, State=#state{trans=
             case ecoap_exchange:awaits_response(TrState) of
                 true ->
                 % we are about to send ACK by calling coap_exchange:send, we make the state change to pack_sent
-                    update_state(State, {in, MsgId},
+                    update_state(State, TrId,
                         ecoap_exchange:send(Message, TransArgs, TrState));
                 false ->
                     % send separate response or observe notification
