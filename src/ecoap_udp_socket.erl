@@ -18,10 +18,11 @@
 %% TODO: are configurable {active, N} necessary here?
 %% parameters below highly depend on experiments
 %% they give acceptable performance on AWS EC2 instance
--define(LOW_ACTIVE_PACKETS, 200).
+-define(LOW_ACTIVE_PACKETS, 100).
+-define(MEDIUM_ACTIVE_PACKETS, 200).
 -define(HIGH_ACTIVE_PACKETS, 400).
--define(CONCURRENCY_THRESHOLD, 2000).
-% -define(ACTIVE_PACKETS, 200).
+-define(LOW_CONCURRENCY_THRESHOLD, 800).
+-define(HIGH_CONCURRENCY_THRESHOLD, 2000).
 
 -define(DEFAULT_SOCK_OPTS,
 	[binary, {active, ?LOW_ACTIVE_PACKETS}, {reuseaddr, true}]).
@@ -196,7 +197,8 @@ merge_opts(Defaults, Options) ->
 next_active_packets(State) ->
 	Concurrency = State#state.endpoint_count,
 	if 
-		Concurrency < ?CONCURRENCY_THRESHOLD -> ?LOW_ACTIVE_PACKETS;
+		Concurrency < ?LOW_CONCURRENCY_THRESHOLD -> ?LOW_ACTIVE_PACKETS;
+		Concurrency < ?HIGH_CONCURRENCY_THRESHOLD -> ?MEDIUM_ACTIVE_PACKETS;
 		true -> ?HIGH_ACTIVE_PACKETS
 	end.
 
