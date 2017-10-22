@@ -11,6 +11,7 @@
 -module(core_link).
 
 -export([decode/1, encode/1]).
+-export([process_param_value/1]).
 
 -type coap_uri() :: {'absolute', [binary()], [coap_uri_param()]}.
 -type coap_uri_param() :: {atom(), binary() | [binary()]}.
@@ -73,17 +74,17 @@ param_value_to_list(Value) when is_binary(Value) ->
     binary_to_list(Value);
 
 param_value_to_list(Values) when is_list(Values) ->
-    binary_to_list(process_param_value(Values, <<>>)).
+    binary_to_list(process_param_value(Values)).
+
+process_param_value(Values) ->
+    process_param_value(Values, <<>>).
 
 process_param_value([], Acc) -> Acc;
 process_param_value([H], Acc) -> <<Acc/binary, H/binary>>;
 process_param_value([H|Rest], Acc) -> process_param_value(Rest, <<Acc/binary, H/binary, " ">>).    
 
 content_type_to_int(Value) when is_binary(Value) ->
-    case coap_iana:encode_content_format(Value) of
-        Num when is_integer(Num) -> integer_to_list(Num);
-        _ -> ["\"",  binary_to_list(Value), "\""]
-    end;
+    integer_to_list(coap_iana:encode_content_format(Value));
 content_type_to_int(Value) when is_integer(Value) ->
     integer_to_list(Value).
 

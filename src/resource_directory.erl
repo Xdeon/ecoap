@@ -5,8 +5,8 @@
 
 -behaviour(coap_resource).
 
-coap_discover(_Prefix, _Args) ->
-    [].
+coap_discover(Prefix, _Args) ->
+    [{absolute, Prefix, []}].
 
 coap_get(_EpID, _Prefix, [], Query, _Request) ->
     Links = core_link:encode(filter(ecoap_registry:get_links(), Query)),
@@ -52,20 +52,28 @@ wildcard_value(Value) ->
         _Else -> {global, Value}
     end.
 
-match_link({_Type, _Uri, Attrs}, Name, Value0) ->
+match_link({_Type, _Uri, Attrs}, Name, Value) ->
     lists:any(
-        fun (AttrVal) ->
-            case Value0 of
-                {prefix, Value} -> match_param(AttrVal, fun(Actual) -> binary:part(Actual, 0, byte_size(Value)) =:= Value end);
-                {global, Value} -> match_param(AttrVal, fun(Actual) -> Actual =:= Value end)
-            end
+        fun(AttrVal) ->
+            % AttrVal can be integer, binary, or a list of integer/binary
+            match_attrval(AttrVal, Value)
         end,
         proplists:get_all_values(Name, Attrs)).
 
-match_param([_|_]=AttrVal, MatchFun) ->
-    lists:any(MatchFun, AttrVal);
-match_param(AttrVal, MatchFun) ->
-    MatchFun(AttrVal).
+match_attrval([_|_]=AttrVal, Value) ->
+    lists:any(fun(Elem) -> match(Elem, Value) end, AttrVal);
+match_attrval(AttrVal, Value) ->
+    match(AttrVal, Value).
+
+match(AttrVal, Value) ->
+    AttrVal2 = convert_attrval(AttrVal),
+    case Value of
+        {prefix, Val} -> binary:part(AttrVal2, 0, byte_size(Val)) =:= Val;
+        {global, Val} -> AttrVal2 =:= Val
+    end.
+
+convert_attrval(AttrVal) when is_integer(AttrVal) -> integer_to_binary(AttrVal);
+convert_attrval(AttrVal) -> AttrVal.
 
 -ifdef(TEST).
 
@@ -81,6 +89,7 @@ attribute_query_test_() ->
     ?_assertEqual(Sensors, core_link:encode(filter(Link, parse_query("if=sensor&bar=one")))),
     ?_assertEqual(Sensors, core_link:encode(filter(Link, parse_query("foo&bar=one")))),
     ?_assertEqual(Sensors, core_link:encode(filter(Link, parse_query("bar=one&bar=two")))),
+    ?_assertEqual(Sensors, core_link:encode(filter(Link, parse_query("bar=one*")))),
     ?_assertEqual("", core_link:encode(filter(Link, parse_query("bar=one&bar=three"))))
     ]. 
 

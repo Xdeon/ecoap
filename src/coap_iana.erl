@@ -147,7 +147,7 @@ decode_content_format(60) -> <<"application/cbor">>;
 % unknown content-format
 decode_content_format(FormatCode) -> FormatCode.
 
--spec encode_content_format(binary()) -> content_formats_code() | binary().
+-spec encode_content_format(binary() | content_formats_code()) -> content_formats_code().
 encode_content_format(<<"text/plain">>) -> 0;
 encode_content_format(<<"application/link-format">>) -> 40;
 encode_content_format(<<"application/xml">>) -> 41;
@@ -155,7 +155,7 @@ encode_content_format(<<"application/octet-stream">>) -> 42;
 encode_content_format(<<"application/exi">>) -> 47;
 encode_content_format(<<"application/json">>) -> 50;
 encode_content_format(<<"application/cbor">>) -> 60;
-encode_content_format(Format) -> Format.
+encode_content_format(Format) when is_integer(Format) -> Format.
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
