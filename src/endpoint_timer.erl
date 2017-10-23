@@ -34,10 +34,10 @@ restart_timer(State=#timer_state{interval=Time, msg=Msg}) ->
 	State#timer_state{kicked=false, timer=Timer}.
 
 -spec kick_timer(timer_state()) -> timer_state().
+kick_timer(State=#timer_state{kicked=true}) ->
+	State;
 kick_timer(State=#timer_state{kicked=false}) ->
-	State#timer_state{kicked=true};
-kick_timer(State) ->
-	State.
+	State#timer_state{kicked=true}.
 
 -spec is_kicked(timer_state()) -> boolean().
 is_kicked(#timer_state{kicked=Kicked}) ->
