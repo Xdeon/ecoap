@@ -25,7 +25,7 @@
     receivers = #{} :: #{receiver() => {binary(), trid()}},
 	nextmid = undefined :: coap_message:msg_id(),
 	rescnt = undefined :: non_neg_integer(),
-    handler_refs = undefined :: undefined | #{reference() => tuple()},
+    handler_refs = undefined :: undefined | #{pid() => tuple() | undefined},
     timer = undefined :: endpoint_timer:timer_state()
 }).
 
@@ -246,9 +246,23 @@ handle_info({request_complete, Receiver}, State=#state{tokens=Tokens, receivers=
     {Token, _} = maps:get(Receiver, Receivers, {undefined, undefined}),
     {noreply, State#state{tokens=maps:remove(Token, Tokens), receivers=maps:remove(Receiver, Receivers)}};
 
-% Only monitor possible observe handlers instead of every new spawned handler
-% so that we can save some extra message traffic
-handle_info({register_handler, ID, Pid}, State=#state{rescnt=Count, trans_args=TransArgs=#{handler_regs:=Regs}, handler_refs=Refs}) ->
+handle_info({handler_started, Pid}, State=#state{rescnt=Count, handler_refs=Refs}) ->
+    erlang:monitor(process, Pid),
+    {noreply, State#state{rescnt=Count+1, handler_refs=maps:put(Pid, undefined, Refs)}};
+
+handle_info({'DOWN', _Ref, process, Pid, _Reason}, State=#state{rescnt=Count, trans_args=TransArgs=#{handler_regs:=Regs}, handler_refs=Refs}) ->
+    case maps:find(Pid, Refs) of
+        {ok, undefined} ->
+            {noreply, State#state{rescnt=Count-1, handler_refs=maps:remove(Pid, Refs)}};
+        {ok, ID} -> 
+            {noreply, State#state{rescnt=Count-1, trans_args=TransArgs#{handler_regs:=maps:remove(ID, Regs)}, handler_refs=maps:remove(Pid, Refs)}};
+        error -> 
+            {noreply, State}
+    end;
+
+% Only record pid of possible observe/blockwise handlers instead of every new spawned handler
+% so that we have better parallelism
+handle_info({register_handler, ID, Pid}, State=#state{trans_args=TransArgs=#{handler_regs:=Regs}, handler_refs=Refs}) ->
     case maps:find(ID, Regs) of
         {ok, Pid} -> 
             % handler already registered
@@ -259,17 +273,7 @@ handle_info({register_handler, ID, Pid}, State=#state{rescnt=Count, trans_args=T
             {noreply, State};
         error ->
             % io:format("register_ecoap_handler ~p for ~p~n", [Pid, ID]),
-            Ref = erlang:monitor(process, Pid),
-            {noreply, State#state{rescnt=Count+1, trans_args=TransArgs#{handler_regs:=maps:put(ID, Pid, Regs)}, handler_refs=maps:put(Ref, ID, Refs)}}
-    end;
-
-handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{rescnt=Count, trans_args=TransArgs=#{handler_regs:=Regs}, handler_refs=Refs}) ->
-    case maps:find(Ref, Refs) of
-        {ok, ID} -> 
-            % io:format("ecoap_handler_completed~n"),
-            {noreply, State#state{rescnt=Count-1, trans_args=TransArgs#{handler_regs:=maps:remove(ID, Regs)}, handler_refs=maps:remove(Ref, Refs)}};
-        error -> 
-            {noreply, State}
+            {noreply, State#state{trans_args=TransArgs#{handler_regs:=maps:put(ID, Pid, Regs)}, handler_refs=maps:update(Pid, ID, Refs)}}
     end;
     
 handle_info(_Info, State) ->
@@ -330,21 +334,25 @@ make_new_response(Message=#coap_message{id=MsgId}, Receiver, State=#state{trans=
     TrId = {in, MsgId},
     case maps:find(TrId, Trans) of
         {ok, TrState} ->
+            % io:format("find TrState of ~p~n", [TrId]),
             % coap_transport:awaits_response is used to 
             % check if we are in the case that
             % we received a CON request, have its state stored, but did not send its ACK yet
             case ecoap_exchange:awaits_response(TrState) of
                 true ->
+                % io:format("~p is awaits_response~n", [TrId]),
                 % we are about to send ACK by calling coap_exchange:send, we make the state change to pack_sent
                     update_state(State, TrId,
                         ecoap_exchange:send(Message, TransArgs, TrState));
                 false ->
+                    % io:format("~p is not awaits_response~n", [TrId]),
                     % send separate response or observe notification
                     % TODO: decide whether to send a CON notification considering other notifications may be in transit
                     %       and how to keep the retransimit counter for a newer notification when the former one timed out
                     make_new_message(Message, Receiver, State)
             end;
         error ->
+            % io:format("did not find TrState of ~p~n", [TrId]),
             % send NON response
             make_new_message(Message, Receiver, State)
     end.

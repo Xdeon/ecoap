@@ -64,7 +64,7 @@ init([EndpointPid, ID={_, Uri, Query}]) ->
     case ecoap_registry:match_handler(Uri) of
         {Prefix, Module, Args} ->
         	% %io:fwrite("Prefix:~p Uri:~p~n", [Prefix, Uri]),
-            % EndpointPid ! {handler_started, self()},
+            EndpointPid ! {handler_started, self()},
             {ok, #state{endpoint_pid=EndpointPid, id=ID, uri=Uri, prefix=Prefix, suffix=uri_suffix(Prefix, Uri), query=Query, module=Module, args=Args,
                 insegs=orddict:new(), obseq=0}};
         undefined ->
