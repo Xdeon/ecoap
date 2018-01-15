@@ -26,7 +26,7 @@
 	query = undefined :: [binary()],
 	module = undefined :: module(), 
 	args = undefined :: any(), 
-	insegs = undefined :: orddict:orddict(), 
+	insegs = undefined :: {orddict:orddict(), undefined | binary() | non_neg_integer()}, 
 	last_response = undefined :: last_response(),
 	observer = undefined :: undefined | coap_message:coap_message(), 
 	obseq = undefined :: non_neg_integer(), 
@@ -66,7 +66,7 @@ init([EndpointPid, ID={_, Uri, Query}]) ->
         	% %io:fwrite("Prefix:~p Uri:~p~n", [Prefix, Uri]),
             EndpointPid ! {handler_started, self()},
             {ok, #state{endpoint_pid=EndpointPid, id=ID, uri=Uri, prefix=Prefix, suffix=uri_suffix(Prefix, Uri), query=Query, module=Module, args=Args,
-                insegs=orddict:new(), obseq=0}};
+                insegs={orddict:new(), undefined}, obseq=0}};
         undefined ->
             % use shutdown as reason to avoid crash report logging
             {stop, shutdown}
@@ -142,6 +142,19 @@ code_change(_OldVsn, State, _Extra) ->
 
 %% Internal
 
+%% Workflow
+
+%% Check Block1 option 
+%% (Continue Block1 transfer (upload), terminate if error otherwise assemble payload)
+%% Check Block2 option
+%% (Return designated block and wait for more request(s) until end when Block2 > 0)
+%% Check preconditions
+%% (Terminate if preconditions check failed)
+%% Handle method
+%% (Check Observe option if Method=GET)
+%% (Handle Observe/Unobserve)
+%% Return response
+
 handle(EpID, Request, State=#state{endpoint_pid=EndpointPid, id=ID}) ->
 	Block1 = coap_message:get_option('Block1', Request),
     case catch assemble_payload(Request, Block1, State) of
@@ -160,25 +173,44 @@ handle(EpID, Request, State=#state{endpoint_pid=EndpointPid, id=ID}) ->
 
 assemble_payload(#coap_message{payload=Payload}, undefined, State) ->
     {ok, Payload, State};
-assemble_payload(#coap_message{payload=Segment}, {Num, true, Size}, State=#state{insegs=Segs}) ->
-    % in case block1 transfer overlap, we always use the newer one
-    Segs2 = case Num of
-        0 -> orddict:new();
-        _ -> Segs
-    end,
+
+assemble_payload(Request, Block1={Num, _, _}, State=#state{insegs={Segs, CurrentFormat}}) ->
+    Format = coap_message:get_option('Content-Format', Request),
+    case {Num, orddict:is_empty(Segs)} of
+        {Num, true} when Num > 0 -> 
+            % A server can reject a Block1 transfer with RequestEntityIncomplete when NUM != 0
+            {error, 'RequestEntityIncomplete'};
+        {0, false} ->
+            % in case block1 transfer overlap, we always use the newer one
+            process_blocks(Request, Block1, State#state{insegs={orddict:new(), Format}});
+        {_, _} ->
+            case CurrentFormat of
+                undefined -> 
+                    process_blocks(Request, Block1, State#state{insegs={Segs, Format}});
+                Format ->
+                    process_blocks(Request, Block1, State);
+                _ -> 
+                    % A server can reject a Block1 transfer with RequestEntityIncomplete when 
+                    % a different Content-Format is indicated than expected from the current state of the resource.
+                    {error, 'RequestEntityIncomplete'}
+            end
+    end.
+
+process_blocks(#coap_message{payload=Segment}, {Num, true, Size}, State=#state{insegs={Segs, Format}}) ->
     case byte_size(Segment) of
-        Size when Num*Size < ?MAX_BODY_SIZE -> {'Continue', State#state{insegs=orddict:store(Num, Segment, Segs2)}};
+        Size when Num*Size < ?MAX_BODY_SIZE -> {'Continue', State#state{insegs={orddict:store(Num, Segment, Segs), Format}}};
         Size -> {error, 'RequestEntityTooLarge'};
-        _Else -> {error, 'BadRequest'}
+        _ -> {error, 'BadRequest'}
     end;
-assemble_payload(#coap_message{payload=Segment}, {_Num, false, _Size}, State=#state{insegs=Segs}) ->
+
+process_blocks(#coap_message{payload=Segment}, {_Num, false, _Size}, State=#state{insegs={Segs, _}}) ->
     Payload = orddict:fold(
         fun (Num1, Segment1, Acc) when Num1*byte_size(Segment1) == byte_size(Acc) ->
                 <<Acc/binary, Segment1/binary>>;
             (_, _, _Acc) ->
                 throw({error, 'RequestEntityIncomplete'})
         end, <<>>, Segs),
-    {ok, <<Payload/binary, Segment/binary>>, State#state{insegs=orddict:new()}}.
+    {ok, <<Payload/binary, Segment/binary>>, State#state{insegs={orddict:new(), undefined}}}.
 
 process_request(EpID, Request, State=#state{last_response={ok, Code, Content}}) ->
     case coap_message:get_option('Block2', Request) of
