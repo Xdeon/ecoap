@@ -329,6 +329,8 @@ make_message(TrId, Message, Receiver, State=#state{trans_args=TransArgs}) ->
     update_state(State, TrId,
         ecoap_exchange:send(Message, TransArgs, init_exchange(TrId, Receiver))).
 
+% TODO: decide whether to send a CON notification considering other notifications may be in transit
+%       and how to keep the retransimit counter for a newer notification when the former one timed out
 make_new_response(Message=#coap_message{id=MsgId}, Receiver, State=#state{trans=Trans, trans_args=TransArgs}) ->
     % io:format("The response: ~p~n", [Message]),
     TrId = {in, MsgId},
@@ -340,20 +342,26 @@ make_new_response(Message=#coap_message{id=MsgId}, Receiver, State=#state{trans=
             % we received a CON request, have its state stored, but did not send its ACK yet
             case ecoap_exchange:awaits_response(TrState) of
                 true ->
-                % io:format("~p is awaits_response~n", [TrId]),
-                % we are about to send ACK by calling coap_exchange:send, we make the state change to pack_sent
+                    % io:format("~p is awaits_response~n", [TrId]),
+                    % request is found in store and is in awaits_response state
+                    % we are about to send ACK by calling coap_exchange:send, we make the state change to pack_sent
                     update_state(State, TrId,
                         ecoap_exchange:send(Message, TransArgs, TrState));
                 false ->
                     % io:format("~p is not awaits_response~n", [TrId]),
-                    % send separate response or observe notification
-                    % TODO: decide whether to send a CON notification considering other notifications may be in transit
-                    %       and how to keep the retransimit counter for a newer notification when the former one timed out
+                    % request is found in store but not in awaits_response state
+                    % which means we are in one of the three following cases
+                    % 1. we are going to send a NON response whose original NON request has not expired yet
+                    % 2. ... send a separate response whose original request has been empty acked and not expired yet
+                    % 3. ... send an observe notification whose original request has been responded and not expired yet
                     make_new_message(Message, Receiver, State)
             end;
         error ->
             % io:format("did not find TrState of ~p~n", [TrId]),
-            % send NON response
+            % no TrState is found, which implies the original request has expired
+            % 1. we are going to send a NON response whose original NON request has expired
+            % 2. ... send a separate response whose original request has been empty acked and expired
+            % 3. ... send an observe notification whose original request has been responded and expired
             make_new_message(Message, Receiver, State)
     end.
 
