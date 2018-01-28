@@ -80,7 +80,7 @@ handle_cast({coap_notify, _Info}, State=#state{observer=undefined}) ->
     % ignore unexpected notification
     {noreply, State};
 handle_cast({coap_notify, Info}, State=#state{observer=Observer, module=Module, obstate=ObState}) ->
-    case invoke_callback(Module, handle_notify, [Info, Observer, ObState]) of
+    case coap_resource:handle_notify(Module, Info, Observer, ObState) of
         {ok, {error, Code}, ObState2} ->
             {ok, State2} = cancel_observer(Observer, State#state{obstate=ObState2}),
             return_response(Observer, {error, Code}, State2);
@@ -110,13 +110,13 @@ handle_info({timeout, TRef, cache_expired}, State=#state{timer=TRef}) ->
 handle_info(_Info, State=#state{observer=undefined}) ->
     {noreply, State};
 handle_info({coap_ack, _EpID, _EndpointPid, Ref}, State=#state{module=Module, obstate=ObState}) ->
-    {ok, ObState2} = Module:coap_ack(Ref, ObState),
+    {ok, ObState2} = coap_resource:coap_ack(Module, Ref, ObState),
     {noreply, State#state{obstate=ObState2}};
 handle_info({coap_error, _EpID, _EndpointPid, _Ref, _Error}, State=#state{observer=Observer}) ->
     {ok, State2} = cancel_observer(Observer, State),
     {stop, normal, State2};
 handle_info(Info, State=#state{module=Module, observer=Observer, obstate=ObState}) ->
-    case invoke_callback(Module, handle_info, [Info, Observer, ObState]) of
+    case coap_resource:handle_info(Module, Info, Observer, ObState) of
         {notify, Ref, {error, Code}, ObState2} ->
             % should we wait for ack (of the error response, if applicable) before terminate?
             {ok, State2} = cancel_observer(Observer, State#state{obstate=ObState2}),
@@ -223,7 +223,7 @@ process_request(EpID, Request, State) ->
     check_resource(EpID, Request, State).
 
 check_resource(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, query=Query, module=Module}) ->
-    case invoke_callback(Module, coap_get, [EpID, Prefix, Suffix, Query, Request]) of
+    case coap_resource:coap_get(Module, EpID, Prefix, Suffix, Query, Request) of
         {ok, Content} ->
             check_preconditions(EpID, Request, Content, State);
         {error, 'NotFound'} = R ->
@@ -287,7 +287,7 @@ handle_method(_EpID, Request, _Content, State) ->
 handle_observe(EpID, Request, Content, 
         State=#state{endpoint_pid=EndpointPid, id=ID, prefix=Prefix, suffix=Suffix, uri=Uri, module=Module, observer=undefined}) ->
     % the first observe request from this user to this resource
-    case invoke_callback(Module, coap_observe, [EpID, Prefix, Suffix, Request]) of
+    case coap_resource:coap_observe(Module, EpID, Prefix, Suffix, Request) of
         {ok, ObState} ->
             register_handler(EndpointPid, ID),
             pg2:create({coap_observer, Uri}),
@@ -312,7 +312,7 @@ handle_unobserve(_EpID, Request, Content, State) ->
     return_resource(Request, Content, State).
 
 cancel_observer(_Request, State=#state{uri=Uri, module=Module, obstate=ObState}) ->
-    ok = Module:coap_unobserve(ObState),
+    ok = coap_resource:coap_unobserve(Module, ObState),
     ok = pg2:leave({coap_observer, Uri}, self()),
     % will the last observer to leave this group please turn out the lights
     case pg2:get_members({coap_observer, Uri}) of
@@ -322,7 +322,7 @@ cancel_observer(_Request, State=#state{uri=Uri, module=Module, obstate=ObState})
     {ok, State#state{observer=undefined, obstate=undefined}}.
 
 handle_post(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
-    case invoke_callback(Module, coap_post, [EpID, Prefix, Suffix, Request]) of
+    case coap_resource:coap_post(Module, EpID, Prefix, Suffix, Request) of
         {ok, Code, Content} ->
             return_resource([], Request, {ok, Code}, Content, State);
         {error, Error} ->
@@ -332,7 +332,7 @@ handle_post(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=Mod
     end.
 
 handle_put(EpID, Request, Content, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
-    case invoke_callback(Module, coap_put, [EpID, Prefix, Suffix, Request]) of
+    case coap_resource:coap_put(Module, EpID, Prefix, Suffix, Request) of
         ok ->
             return_response(Request, created_or_changed(Content), State);
         {error, Error} ->
@@ -347,7 +347,7 @@ created_or_changed(_Content) ->
     {ok, 'Changed'}.
 
 handle_delete(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
-    case invoke_callback(Module, coap_delete, [EpID, Prefix, Suffix, Request]) of
+    case coap_resource:coap_delete(Module, EpID, Prefix, Suffix, Request) of
         ok ->
             return_response(Request, {ok, 'Deleted'}, State);
         {error, Error} ->
@@ -443,11 +443,11 @@ get_etag(Options) ->
 uri_suffix(Prefix, Uri) ->
 	lists:nthtail(length(Prefix), Uri).
 
-invoke_callback(Module, Fun, Args) ->
-    case catch {ok, apply(Module, Fun, Args)} of
-        {ok, Response} ->
-            Response;
-        {'EXIT', Error} ->
-            error_logger:error_msg("~p", [Error]),
-            {error, 'InternalServerError'}
-    end.
+% invoke_callback(Module, Fun, Args) ->
+%     case catch {ok, apply(Module, Fun, Args)} of
+%         {ok, Response} ->
+%             Response;
+%         {'EXIT', Error} ->
+%             error_logger:error_msg("~p", [Error]),
+%             {error, 'InternalServerError'}
+%     end.

@@ -64,7 +64,7 @@ coap_unobserve({state, Prefix, Name}) ->
 handle_notify(Info, _ObsReq, State) -> 
     {ok, Info, State}.
 
-handle_info(_Info, _ObsReq, State) -> 
+handle_info(_Info, _ObsReq, State) ->
     {noreply, State}.
 
 coap_ack(_Ref, State) -> {ok, State}.

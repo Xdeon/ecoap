@@ -25,7 +25,7 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-% -spec register_handler([{[binary(), module(), _]}]) -> ok.
+-spec register_handler([{[binary()], module(), _}]) -> ok.
 register_handler(Regs) when is_list(Regs) -> 
     gen_server:call(?MODULE, {register, Regs}).
 
@@ -70,19 +70,16 @@ get_links(Reg) ->
         [], Reg).
 
 get_links(Prefix, Module, Args) ->
-    case catch {ok, apply(Module, coap_discover, [Prefix, Args])} of
-        % for each pattern ask the handler to provide a list of resources
-        {'EXIT', _} -> [];
-        {ok, Response} -> Response
-    end.
+    % for each pattern ask the handler to provide a list of resources
+    coap_resource:coap_discover(Module, Prefix, Args).
 
 %% gen_server.
 init([]) ->
-    % _ = ets:new(?HANDLER_TAB, [set, named_table, protected]),
-    ets:insert(?HANDLER_TAB, {[<<".well-known">>, <<"core">>], resource_directory, undefined}),
+    spawn(fun() -> ecoap_registry:register_handler([{[<<".well-known">>, <<"core">>], resource_directory, undefined}]) end),
     {ok, #state{}}.
 
 handle_call({register, Reg}, _From, State) ->
+    load_handlers(Reg),
     ets:insert(?HANDLER_TAB, Reg),
     {reply, ok, State};    
 handle_call({unregister, Prefix}, _From, State) ->
@@ -102,6 +99,14 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+% in case the system is not run as release, we should manually load all module files
+load_handlers(Reg) ->
+    lists:foreach(fun({_, Module, _}) -> 
+        case code:is_loaded(Module) of
+            {file, _} -> ok;
+            false -> code:load_file(Module)
+        end end, Reg).
 
 -ifdef(TEST).
 

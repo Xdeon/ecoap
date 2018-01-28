@@ -1,6 +1,5 @@
 -module(benchmark).
--export([coap_discover/2, coap_get/5, coap_post/4, coap_put/4, coap_delete/4, 
-        coap_observe/4, coap_unobserve/1, handle_notify/3, handle_info/3, coap_ack/2]).
+-export([coap_discover/2, coap_get/5, coap_post/4]).
 -export([start/0, stop/0]).
 -export([fib/1]).
 
@@ -56,23 +55,23 @@ coap_post(_EpID, [<<"shutdown">>], _Name, _Request) ->
 coap_post(_EpID, _Prefix, _Name, _Request) ->
     {error, 'MethodNotAllowed'}.
 
-coap_put(_EpID, _Prefix, _Name, _Request) ->
-    {error, 'MethodNotAllowed'}.
+% coap_put(_EpID, _Prefix, _Name, _Request) ->
+%     {error, 'MethodNotAllowed'}.
 
-coap_delete(_EpID, _Prefix, _Name, _Request) ->
-    {error, 'MethodNotAllowed'}.
+% coap_delete(_EpID, _Prefix, _Name, _Request) ->
+%     {error, 'MethodNotAllowed'}.
 
-coap_observe(_EpID, _Prefix, _Name, _Request) ->
-    {error, 'MethodNotAllowed'}.
+% coap_observe(_EpID, _Prefix, _Name, _Request) ->
+%     {error, 'MethodNotAllowed'}.
 
-coap_unobserve(_Obstate) ->
-    ok.
+% coap_unobserve(_Obstate) ->
+%     ok.
 
-handle_notify(Notification, _ObsReq, State) ->{ok, Notification, State}.
+% handle_notify(Notification, _ObsReq, State) ->{ok, Notification, State}.
 
-handle_info(_Info, _ObsReq, State) -> {noreply, State}.
+% handle_info(_Info, _ObsReq, State) -> {noreply, State}.
 
-coap_ack(_Ref, State) -> {ok, State}.
+% coap_ack(_Ref, State) -> {ok, State}.
 
 % we consider non-tail-recursive fibonacci function as a CPU intensive task
 % thus when we do benchmarking, it should be tested combined with ordinary resource
