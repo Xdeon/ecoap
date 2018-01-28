@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 %% API.
--export([start_link/0, start_link/3, close/1]).
+-export([start_link/1, start_link/3, close/1]).
 -export([get_endpoint/2, get_all_endpoints/1, get_endpoint_count/1]).
 -export([send_datagram/3]).
 
@@ -42,9 +42,9 @@
 %% API.
 
 %% client
--spec start_link() -> {ok, pid()} | {error, term()}.
-start_link() ->
-	gen_server:start_link(?MODULE, [0, []], []).
+-spec start_link(inet:port_number()) -> {ok, pid()} | {error, term()}.
+start_link(Port) ->
+	gen_server:start_link(?MODULE, [Port, []], []).
 
 %% client
 -spec close(pid()) -> ok.

@@ -64,7 +64,7 @@ init([EndpointPid, ID={_, Uri, Query}]) ->
     case ecoap_registry:match_handler(Uri) of
         {Prefix, Module, Args} ->
         	% %io:fwrite("Prefix:~p Uri:~p~n", [Prefix, Uri]),
-            EndpointPid ! {handler_started, self()},
+            ecoap_endpoint:monitor_handler(EndpointPid, self()),
             {ok, #state{endpoint_pid=EndpointPid, id=ID, uri=Uri, prefix=Prefix, suffix=uri_suffix(Prefix, Uri), query=Query, module=Module, args=Args,
                 insegs={orddict:new(), undefined}, obseq=0}};
         undefined ->
@@ -162,7 +162,7 @@ handle(EpID, Request, State=#state{endpoint_pid=EndpointPid, id=ID}) ->
             return_response(Request, {error, Code}, State);
         {'Continue', State2} ->
             % io:format("Has Block1~n"),
-            register_handler(EndpointPid, ID),
+            ecoap_endpoint:register_handler(EndpointPid, ID, self()),
             {ok, _} = ecoap_endpoint:send_response(EndpointPid, [],
                 coap_message:set_option('Block1', Block1,
                     ecoap_request:response({ok, 'Continue'}, Request))),
@@ -289,7 +289,7 @@ handle_observe(EpID, Request, Content,
     % the first observe request from this user to this resource
     case coap_resource:coap_observe(Module, EpID, Prefix, Suffix, Request) of
         {ok, ObState} ->
-            register_handler(EndpointPid, ID),
+            ecoap_endpoint:register_handler(EndpointPid, ID, self()),
             pg2:create({coap_observer, Uri}),
             ok = pg2:join({coap_observer, Uri}, self()),
             return_resource(Request, Content, State#state{observer=Request, obstate=ObState});
@@ -396,7 +396,7 @@ send_response(Ref, Response, State=#state{endpoint_pid=EndpointPid, observer=Obs
             case coap_message:get_option('Block2', Response) of
                 {_, true, _} ->
                     % client is expected to ask for more blocks
-                    register_handler(EndpointPid, ID),
+                    ecoap_endpoint:register_handler(EndpointPid, ID, self()),
                     set_timeout(?EXCHANGE_LIFETIME, State);
                 _Else ->
                     % no further communication concerning this request
@@ -406,9 +406,6 @@ send_response(Ref, Response, State=#state{endpoint_pid=EndpointPid, observer=Obs
             % notifications will follow
             {noreply, State}
     end.
-
-register_handler(EndpointPid, ID) ->
-    EndpointPid ! {register_handler, ID, self()}, ok. 
 
 set_timeout(Timeout, State=#state{timer=undefined}) ->
     set_timeout0(State, Timeout);

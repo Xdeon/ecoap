@@ -2,14 +2,14 @@
 -behaviour(gen_server).
 
 %% API.
--export([open/0, close/1]).
+-export([open/0, open/1, close/1]).
 -export([ping/2]).
 -export([request/3, request/4, request/5, request/6]).
 -export([request_async/3, request_async/4, request_async/5]).
 -export([observe/2, observe/3, observe_and_wait_response/2, observe_and_wait_response/3]).
 -export([unobserve/2, unobserve/3, unobserve_and_wait_response/2, unobserve_and_wait_response/3]).
 -export([cancel_request/2]).
--export([start_link/0]).
+-export([start_link/1]).
 
 -ifdef(TEST).
 -export([get_reqrefs/1, get_obsregs/1, get_blockregs/1]).
@@ -24,7 +24,8 @@
 -export([code_change/3]).
 
 -record(state, {
-	sock_pid = undefined :: pid(),
+	socket = undefined :: {client_socket, pid()} | {server_socket, pid() | atom()},
+	endpoints = [] :: [pid()],
 	requests = #{} :: #{reference() => {pid(), request()}},
 	ongoing_blocks = #{} :: #{block_key() => reference()},
 	observe_regs = #{} :: #{observe_key() => {reference(), binary()}},
@@ -62,7 +63,11 @@
 %% API.
 -spec open() -> {ok, pid()}.
 open() ->
-	start_link().
+	start_link({port, 0}).
+
+-spec open({port, inet:port_number()} | {socket, pid() | atom()}) -> {ok, pid()}.
+open(Opts) ->
+	start_link(Opts).
 
 -spec close(pid()) -> ok.
 close(Pid) ->
@@ -155,8 +160,9 @@ unobserve_and_wait_response(Pid, Ref, ETag) ->
 			exit(Reason)
 	end.
 
-start_link() ->
-	gen_server:start_link(?MODULE, [], []).
+start_link(Opts) ->
+	gen_server:start_link(?MODULE, [Opts], []).
+
 
 -ifdef(TEST).
 
@@ -174,21 +180,23 @@ get_blockregs(Pid) -> gen_server:call(Pid, get_blockregs).
 
 %% gen_server.
 
-init([]) ->
-	{ok, SockPid} = ecoap_udp_socket:start_link(),
-	{ok, #state{sock_pid=SockPid}}.
+init([{port, Port}]) ->
+	{ok, Socket} = ecoap_udp_socket:start_link(Port),
+	{ok, #state{socket={client_socket, Socket}}};
+init([{socket, Socket}]) ->
+	{ok, #state{socket={server_socket, Socket}}}.
 
-handle_call({ping, Uri}, From, State=#state{sock_pid=SockPid, requests=Requests}) ->
+handle_call({ping, Uri}, From, State=#state{socket=Socket, requests=Requests}) ->
 	{_Scheme, _Host, {PeerIP, PortNo}, _Path, _Query} = ecoap_utils:decode_uri(Uri),
 	EpID = {PeerIP, PortNo},
-	{ok, EndpointPid} = get_endpoint(SockPid, EpID),
+	{ok, EndpointPid} = get_endpoint(Socket, EpID),
 	{ok, Ref} = ecoap_endpoint:ping(EndpointPid),
 	Request = #request{method=undefined, origin_ref=Ref, reply_to=From},
 	{noreply, State#state{requests=maps:put(Ref, {EndpointPid, Request}, Requests)}};
 
-handle_call({request, Sync, Method, Uri, Content, Options}, From, State=#state{sock_pid=SockPid, requests=Requests}) ->
+handle_call({request, Sync, Method, Uri, Content, Options}, From, State=#state{socket=Socket, requests=Requests}) ->
 	{ok, EpID, _, Options2} = make_request(Uri, Options),
-	{ok, EndpointPid} = get_endpoint(SockPid, EpID),
+	{ok, EndpointPid} = get_endpoint(Socket, EpID),
 	{ok, Ref} = request_block(EndpointPid, Method, Options2, Content),
 	case Sync of
 		sync ->
@@ -200,7 +208,7 @@ handle_call({request, Sync, Method, Uri, Content, Options}, From, State=#state{s
 			{reply, {ok, Ref}, State#state{requests=maps:put(Ref, {EndpointPid, Request}, Requests)}}
 	end;
 
-handle_call({observe, Uri, Options}, {Pid, _}, State=#state{sock_pid=SockPid, requests=Requests, observe_regs=ObsRegs}) ->
+handle_call({observe, Uri, Options}, {Pid, _}, State=#state{socket=Socket, requests=Requests, observe_regs=ObsRegs}) ->
 	{ok, EpID, Path, Options2} = make_request(Uri, Options),
 	ObsKey = {EpID, Path, coap_message:get_option('Accept', Options2)},
 	{Token, Requests2, ObsRegs2} = case maps:find(ObsKey, ObsRegs) of
@@ -209,7 +217,7 @@ handle_call({observe, Uri, Options}, {Pid, _}, State=#state{sock_pid=SockPid, re
 		{ok, {OldRef, OldToken}} ->
 			{OldToken, maps:remove(OldRef, Requests), maps:remove(ObsKey, ObsRegs)}
 	end,
-	{ok, EndpointPid} = get_endpoint(SockPid, EpID),
+	{ok, EndpointPid} = get_endpoint(Socket, EpID),
 	{ok, Ref} = ecoap_endpoint:send(EndpointPid,  
 					coap_message:set_token(Token,
 						ecoap_request:request('CON', 'GET', coap_message:add_option('Observe', 0, Options2)))),
@@ -293,8 +301,13 @@ handle_info({coap_ack, _EpID, EndpointPid, Ref}, State=#state{requests=Requests}
 handle_info(_Info, State) ->
 	{noreply, State}.
 
-terminate(_Reason, #state{sock_pid=SockPid}) ->
-	ok = ecoap_udp_socket:close(SockPid),
+terminate(_Reason, #state{socket={client_socket, Socket}}) ->
+	ok = ecoap_udp_socket:close(Socket),
+	ok;
+terminate(_Reason, #state{requests=Requests}) ->
+	% when using external socket, cancel all ongoing requests before termination
+	% because the ecoap_endpoint process(es) may still be alive after our termination  
+	ok = maps:fold(fun(Ref, {EndpointPid, #request{}}, Acc) -> do_cancel_request(EndpointPid, Ref), Acc end, ok, Requests),
 	ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -404,12 +417,18 @@ make_request(Uri, Options) ->
 							coap_message:add_option('Uri-Port', PortNo, Options)))),
  	{ok, EpID, Path, Options2}.
 
-get_endpoint(SockPid, EpID) ->
-	{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpID),
-	case ecoap_endpoint:check_alive(EndpointPid) of
-		true -> {ok, EndpointPid};
-		false -> get_endpoint(SockPid, EpID)
-	end.
+get_endpoint({_, SocketPid}, EpID) ->
+	{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SocketPid, EpID),
+	ok = ecoap_endpoint:monitor_handler(EndpointPid, self()),
+	{ok, EndpointPid}.
+	% case ecoap_endpoint:check_alive(EndpointPid) of
+	% 	true -> 
+	% 		case Mode of
+	% 			client_socket -> {ok, EndpointPid};
+	% 			server_socket -> link(EndpointPid), {ok, EndpointPid}
+	% 		end;
+	% 	false -> get_endpoint(Socket, EpID)
+	% end.
 
 request_block(EndpointPid, Method, RequestOptions, Content) ->
     request_block(EndpointPid, Method, RequestOptions, undefined, Content).
@@ -461,6 +480,26 @@ check_and_cancel_request(Ref, State=#state{requests=Requests, ongoing_blocks=Ong
 		{_, _} ->
 			State
 	end.
+
+% check_and_cancel_request(Ref, State=#state{requests=Requests, ongoing_blocks=OngoingBlocks, request_mapping=RequestMapping, observe_regs=ObsRegs}) ->
+% 	{Requests2, ObsRegs2} = case maps:find(Ref, Requests) of
+% 								{ok, {EndpointPid, #request{origin_ref=Ref, observe_key=ObsKey}}} ->
+% 									do_cancel_request(EndpointPid, Ref),
+% 									{maps:remove(Ref, Requests), maps:remove(ObsKey, ObsRegs)};
+% 								error -> 
+% 									{Requests, ObsRegs}
+% 							end,
+% 	case maps:find(Ref, RequestMapping) of
+% 		{ok, BlockRef} ->
+% 			{EndpointPid, #request{origin_ref=Ref, block_key=BlockKey}} = maps:get(BlockRef, Requests2),
+% 			do_cancel_request(EndpointPid, BlockRef),
+% 			OngoingBlocks2 = maps:remove(BlockKey, OngoingBlocks),
+% 			RequestMapping2 = maps:remove(Ref, RequestMapping),
+% 			Requests3 = maps:remove(BlockRef, Requests2),
+% 			State#state{requests=Requests3, ongoing_blocks=OngoingBlocks2, request_mappinp=RequestMapping2, observe_regs=ObsRegs2};
+% 		error ->
+% 			State#state{requests=Requests2, observe_regs=ObsRegs2};
+% 	end.
 
 do_cancel_request(EndpointPid, Ref) ->
 	ecoap_endpoint:cancel_request(EndpointPid, Ref).
