@@ -1,12 +1,12 @@
 -module(empty_server_test).
 -behaviour(coap_resource).
 
--export([coap_discover/2, coap_get/5, coap_post/4, coap_put/4, coap_delete/4, 
+-export([coap_discover/1, coap_get/5, coap_post/4, coap_put/4, coap_delete/4, 
         coap_observe/4, coap_unobserve/1, handle_notify/3, handle_info/3, coap_ack/2]).
 
 -include_lib("eunit/include/eunit.hrl").
 
-coap_discover(_Prefix, _Args) -> [].
+coap_discover(_Prefix) -> [].
 
 coap_get(_EpID, _Prefix, _Suffix, _Query, _Request) -> {error, 'MethodNotAllowed'}.
 coap_post(_EpID, _Prefix, _Suffix, _Request) -> {error, 'MethodNotAllowed'}.
@@ -24,7 +24,7 @@ empty_server_test_() ->
     {setup,
         fun() ->
             {ok, _} = application:ensure_all_started(ecoap),
-            {ok, Client} = ecoap_client:start_link(),
+            {ok, Client} = ecoap_client:open(),
             Client
         end,
         fun(Client) ->
@@ -52,8 +52,8 @@ unknown_handler_test_() ->
     {setup,
         fun() ->
             {ok, _} = application:ensure_all_started(ecoap),
-            ecoap_registry:register_handler([{[<<"unknown">>], unknown_module, undefined}]),
-            {ok, Client} = ecoap_client:start_link(),
+            ecoap_registry:register_handler([{[<<"unknown">>], unknown_module}]),
+            {ok, Client} = ecoap_client:open(),
             Client
         end,
         fun(Client) ->

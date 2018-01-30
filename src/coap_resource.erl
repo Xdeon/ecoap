@@ -4,9 +4,8 @@
 -type coap_uri() :: core_link:coap_uri().
 
 % called when a client asks for .well-known/core resources
--callback coap_discover(Prefix, Args) -> [Uri] when
+-callback coap_discover(Prefix) -> [Uri] when
 	Prefix :: [binary()],
-	Args :: any(),
 	Uri :: coap_uri().
 
 % GET handler
@@ -107,11 +106,11 @@
 	NewObState :: any().
 -optional_callbacks([coap_ack/2]).	
 
--export([coap_discover/3, coap_get/6, coap_post/5, coap_put/5, coap_delete/5, 
+-export([coap_discover/2, coap_get/6, coap_post/5, coap_put/5, coap_delete/5, 
         coap_observe/5, coap_unobserve/2, handle_notify/4, handle_info/4, coap_ack/3]).
 
-coap_discover(Module, Prefix, Args) ->
-	try Module:coap_discover(Prefix, Args) of
+coap_discover(Module, Prefix) ->
+	try Module:coap_discover(Prefix) of
 		Response -> Response
 	catch Class:Reason ->
 		report_error(Class, Reason),

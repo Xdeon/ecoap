@@ -1,13 +1,13 @@
 -module(server_blockwise_transfer_test).
 -behaviour(coap_resource).
 
--export([coap_discover/2, coap_get/5, coap_post/4, coap_put/4, coap_delete/4, 
+-export([coap_discover/1, coap_get/5, coap_post/4, coap_put/4, coap_delete/4, 
         coap_observe/4, coap_unobserve/1, handle_notify/3, handle_info/3, coap_ack/2]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("src/coap_content.hrl").
 
-coap_discover(Prefix, _Args) ->
+coap_discover(Prefix) ->
     [{absolute, Prefix, []}].
 
 % resource generator
@@ -36,9 +36,9 @@ blockwise_transfer_test_() ->
     {setup,
         fun() ->
             {ok, _} = application:ensure_all_started(ecoap),
-            ecoap_registry:register_handler([{[<<"text">>], ?MODULE, undefined},
-                                             {[<<"reflect">>], ?MODULE, undefined}]),
-            {ok, Client} = ecoap_client:start_link(),
+            ecoap_registry:register_handler([{[<<"text">>], ?MODULE},
+                                             {[<<"reflect">>], ?MODULE}]),
+            {ok, Client} = ecoap_client:open(),
             Client
         end,
         fun(Client) ->

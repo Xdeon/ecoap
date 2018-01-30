@@ -7,7 +7,7 @@
 basic_test_() ->
     {setup,
         fun() ->
-            {ok, Pid} = ecoap_client:start_link(),
+            {ok, Pid} = ecoap_client:open(),
             Pid
         end,
         fun(Pid) ->
@@ -34,7 +34,7 @@ blockwise_test_() ->
     [
     {setup, 
         fun() -> 
-            {ok, Pid} = ecoap_client:start_link(),
+            {ok, Pid} = ecoap_client:open(),
             Pid
         end,
         fun(Pid) ->
@@ -44,7 +44,7 @@ blockwise_test_() ->
     {setup,
         fun() ->
             {ok, Server} = server_stub:start_link(5683),
-            {ok, Client} = ecoap_client:start_link(),
+            {ok, Client} = ecoap_client:open(),
             {Server, Client}
         end,
         fun({Server, Client}) ->

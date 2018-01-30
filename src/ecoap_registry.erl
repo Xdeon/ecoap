@@ -25,7 +25,7 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
--spec register_handler([{[binary()], module(), _}]) -> ok.
+-spec register_handler([{[binary()], module()}]) -> ok.
 register_handler(Regs) when is_list(Regs) -> 
     gen_server:call(?MODULE, {register, Regs}).
 
@@ -38,7 +38,7 @@ get_links() ->
     lists:usort(get_links(ets:tab2list(?HANDLER_TAB))).
     % lists:usort(get_links(?HANDLER_TAB)).
 
--spec match_handler([binary()]) -> {[binary()], module(), _} | undefined.
+-spec match_handler([binary()]) -> {[binary()], module()} | undefined.
 match_handler(Uri) -> match_handler(Uri, ?HANDLER_TAB).
 
 -spec clear_registry() -> true.
@@ -66,16 +66,16 @@ match(Tab, Key, Default) ->
 
 get_links(Reg) ->
     lists:foldl(
-        fun({Prefix, Module, Args}, Acc) -> get_links(Prefix, Module, Args) ++ Acc end,
+        fun({Prefix, Module}, Acc) -> get_links(Prefix, Module) ++ Acc end,
         [], Reg).
 
-get_links(Prefix, Module, Args) ->
+get_links(Prefix, Module) ->
     % for each pattern ask the handler to provide a list of resources
-    coap_resource:coap_discover(Module, Prefix, Args).
+    coap_resource:coap_discover(Module, Prefix).
 
 %% gen_server.
 init([]) ->
-    spawn(fun() -> ecoap_registry:register_handler([{[<<".well-known">>, <<"core">>], resource_directory, undefined}]) end),
+    spawn(fun() -> ecoap_registry:register_handler([{[<<".well-known">>, <<"core">>], resource_directory}]) end),
     {ok, #state{}}.
 
 handle_call({register, Reg}, _From, State) ->
@@ -102,7 +102,7 @@ code_change(_OldVsn, State, _Extra) ->
 
 % in case the system is not run as release, we should manually load all module files
 load_handlers(Reg) ->
-    lists:foreach(fun({_, Module, _}) -> 
+    lists:foreach(fun({_, Module}) -> 
         case code:is_loaded(Module) of
             {file, _} -> ok;
             false -> code:load_file(Module)

@@ -3,13 +3,6 @@
 
 -include("ecoap.hrl").
 
--record(coap_content, {
-    etag = [] :: [binary()],
-    max_age = ?DEFAULT_MAX_AGE :: non_neg_integer(),
-    format = undefined :: undefined | binary() | non_neg_integer(),
-    payload = <<>> :: binary()
-}).
-
 text_resource(Size) ->
     coap_content:new(large_binary(Size, <<"X">>), #{'Content-Format'=> <<"text/plain">>}).
 text_resource(ETag, Size) ->

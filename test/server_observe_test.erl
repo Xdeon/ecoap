@@ -1,14 +1,14 @@
 -module(server_observe_test).
 -behaviour(coap_resource).
 
--export([coap_discover/2, coap_get/5, coap_post/4, coap_put/4, coap_delete/4, 
+-export([coap_discover/1, coap_get/5, coap_post/4, coap_put/4, coap_delete/4, 
         coap_observe/4, coap_unobserve/1, handle_notify/3, handle_info/3, coap_ack/2]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("src/coap_content.hrl").
 
 % resource operations
-coap_discover(Prefix, _Args) ->
+coap_discover(Prefix) ->
     [{absolute, Prefix++Name, []} || Name <- mnesia:dirty_all_keys(resources)].
 
 coap_get(_EpID, _Prefix, Name, _Query, _Request) ->
@@ -51,8 +51,8 @@ observe_test_() ->
             ok = application:start(mnesia),
             {atomic, ok} = mnesia:create_table(resources, []),
             {ok, _} = application:ensure_all_started(ecoap),
-            ecoap_registry:register_handler([{[<<"text">>], ?MODULE, undefined}]),
-            {ok, Client} = ecoap_client:start_link(),
+            ecoap_registry:register_handler([{[<<"text">>], ?MODULE}]),
+            {ok, Client} = ecoap_client:open(),
             Client
         end,
         fun(Client) ->

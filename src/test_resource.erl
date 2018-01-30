@@ -1,5 +1,5 @@
 -module(test_resource).
--export([coap_discover/2, coap_get/5, coap_post/4, coap_put/4, coap_delete/4, 
+-export([coap_discover/1, coap_get/5, coap_post/4, coap_put/4, coap_delete/4, 
         coap_observe/4, coap_unobserve/1, handle_notify/3, handle_info/3, coap_ack/2]).
 -export([start/0, stop/0]).
 
@@ -13,14 +13,14 @@ start() ->
     ok = application:start(mnesia),
     {atomic, ok} = mnesia:create_table(resources, []),
     {ok, _} = application:ensure_all_started(ecoap),
-    ok = ecoap_registry:register_handler([{[], ?MODULE, undefined}]).
+    ok = ecoap_registry:register_handler([{[], ?MODULE}]).
 
 stop() ->
     ok = application:stop(ecoap),
     ok = application:stop(mnesia).
 
 % resource operations
-coap_discover(Prefix, _Args) ->
+coap_discover(Prefix) ->
     io:format("discover ~p~n", [Prefix]),
     [{absolute, Prefix++Name, []} || Name <- mnesia:dirty_all_keys(resources)].
 

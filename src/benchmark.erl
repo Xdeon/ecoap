@@ -1,5 +1,5 @@
 -module(benchmark).
--export([coap_discover/2, coap_get/5, coap_post/4]).
+-export([coap_discover/1, coap_get/5, coap_post/4]).
 -export([start/0, stop/0]).
 -export([fib/1]).
 
@@ -9,17 +9,17 @@ start() ->
     _ = application:stop(ecoap),
     {ok, _} = application:ensure_all_started(ecoap),
     ok = ecoap_registry:register_handler([
-            {[<<"benchmark">>], ?MODULE, undefined},
-            {[<<"fibonacci">>], ?MODULE, undefined},
-            {[<<"helloWorld">>], ?MODULE, undefined},
-            {[<<"shutdown">>], ?MODULE, undefined}
+            {[<<"benchmark">>], ?MODULE},
+            {[<<"fibonacci">>], ?MODULE},
+            {[<<"helloWorld">>], ?MODULE},
+            {[<<"shutdown">>], ?MODULE}
         ]).
 
 stop() ->
     application:stop(ecoap).
 
 % resource operations
-coap_discover(Prefix, _Args) ->
+coap_discover(Prefix) ->
     [{absolute, Prefix, []}].
 
 coap_get(_EpID, [<<"benchmark">>], _Name, _Query, _Request) ->

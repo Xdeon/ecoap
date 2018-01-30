@@ -1,11 +1,11 @@
 -module(resource_directory).
 
--export([coap_discover/2, coap_get/5, coap_post/4, coap_put/4, coap_delete/4,
+-export([coap_discover/1, coap_get/5, coap_post/4, coap_put/4, coap_delete/4,
         coap_observe/4, coap_unobserve/1, handle_notify/3, handle_info/3, coap_ack/2]).
 
 -behaviour(coap_resource).
 
-coap_discover(Prefix, _Args) ->
+coap_discover(Prefix) ->
     [{absolute, Prefix, []}].
 
 coap_get(_EpID, _Prefix, [], Query, _Request) ->

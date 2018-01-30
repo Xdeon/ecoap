@@ -25,7 +25,6 @@
 	suffix = undefined :: [binary()],
 	query = undefined :: [binary()],
 	module = undefined :: module(), 
-	args = undefined :: any(), 
 	insegs = undefined :: {orddict:orddict(), undefined | binary() | non_neg_integer()}, 
 	last_response = undefined :: last_response(),
 	observer = undefined :: undefined | coap_message:coap_message(), 
@@ -62,10 +61,10 @@ notify(Uri, Info) ->
 init([EndpointPid, ID={_, Uri, Query}]) ->
     % the receiver will be determined based on the URI
     case ecoap_registry:match_handler(Uri) of
-        {Prefix, Module, Args} ->
+        {Prefix, Module} ->
         	% %io:fwrite("Prefix:~p Uri:~p~n", [Prefix, Uri]),
             ecoap_endpoint:monitor_handler(EndpointPid, self()),
-            {ok, #state{endpoint_pid=EndpointPid, id=ID, uri=Uri, prefix=Prefix, suffix=uri_suffix(Prefix, Uri), query=Query, module=Module, args=Args,
+            {ok, #state{endpoint_pid=EndpointPid, id=ID, uri=Uri, prefix=Prefix, suffix=uri_suffix(Prefix, Uri), query=Query, module=Module,
                 insegs={orddict:new(), undefined}, obseq=0}};
         undefined ->
             % use shutdown as reason to avoid crash report logging
