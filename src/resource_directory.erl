@@ -1,12 +1,11 @@
 -module(resource_directory).
 
--export([coap_discover/1, coap_get/5, coap_post/4, coap_put/4, coap_delete/4,
-        coap_observe/4, coap_unobserve/1, handle_notify/3, handle_info/3, coap_ack/2]).
+-export([coap_discover/1, coap_get/5]).
 
 -behaviour(coap_resource).
 
-coap_discover(Prefix) ->
-    [{absolute, Prefix, []}].
+coap_discover(_Prefix) ->
+    [].
 
 coap_get(_EpID, _Prefix, [], Query, _Request) ->
     Links = core_link:encode(filter(ecoap_registry:get_links(), Query)),
@@ -15,16 +14,6 @@ coap_get(_EpID, _Prefix, [], Query, _Request) ->
     {ok, coap_content:new(Payload, Options)};
 coap_get(_EpID, _Prefix, _Else, _Query, _Request) ->
     {error, 'NotFound'}.
-
-coap_post(_EpID, _Prefix, _Suffix, _Request) -> {error, 'MethodNotAllowed'}.
-coap_put(_EpID, _Prefix, _Suffix, _Request) -> {error, 'MethodNotAllowed'}.
-coap_delete(_EpID, _Prefix, _Suffix, _Request) -> {error, 'MethodNotAllowed'}.
-
-coap_observe(_EpID, _Prefix, _Suffix, _Request) -> {error, 'MethodNotAllowed'}.
-coap_unobserve(_State) -> ok.
-handle_notify(Notification, _ObsReq, State) -> {ok, Notification, State}.
-handle_info(_Info, _ObsReq, State) -> {noreply, State}.
-coap_ack(_Ref, State) -> {ok, State}.
 
 % uri-query processing
 
