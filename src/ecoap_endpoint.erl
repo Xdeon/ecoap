@@ -24,8 +24,8 @@
 	trans = #{} :: #{trid() => ecoap_exchange:exchange()},
     receivers = #{} :: #{receiver() => {binary(), trid()}},
 	nextmid = undefined :: coap_message:msg_id(),
-	rescnt = undefined :: non_neg_integer(),
-    handler_refs = undefined :: undefined | #{pid() => tuple() | undefined},
+	rescnt = 0 :: non_neg_integer(),
+    handler_refs = #{} ::  #{pid() => tuple() | undefined},
     timer = undefined :: endpoint_timer:timer_state()
 }).
 
@@ -105,7 +105,7 @@ init([undefined, SocketModule, Socket, EpID]) ->
     process_flag(trap_exit, true),
     TransArgs = #{sock=>Socket, sock_module=>SocketModule, ep_id=>EpID, endpoint_pid=>self()},
     Timer = endpoint_timer:start_timer(?SCAN_INTERVAL, start_scan),
-    {ok, #state{nextmid=ecoap_message_id:first_mid(), rescnt=0, timer=Timer, trans_args=TransArgs}};
+    {ok, #state{nextmid=ecoap_message_id:first_mid(), timer=Timer, trans_args=TransArgs}};
 
 % server 
 init([SupPid, SocketModule, Socket, EpID]) ->
@@ -119,7 +119,7 @@ init([SupPid, SocketModule, Socket, EpID]) ->
           modules => [ecoap_handler_sup]}),
     TransArgs = #{sock=>Socket, sock_module=>SocketModule, ep_id=>EpID, endpoint_pid=>self(), handler_sup=>HdlSupPid, handler_regs=>#{}},
     Timer = endpoint_timer:start_timer(?SCAN_INTERVAL, start_scan),
-    gen_server:enter_loop(?MODULE, [], #state{nextmid=ecoap_message_id:first_mid(), rescnt=0, timer=Timer, trans_args=TransArgs, handler_refs=#{}}).
+    gen_server:enter_loop(?MODULE, [], #state{nextmid=ecoap_message_id:first_mid(), timer=Timer, trans_args=TransArgs}).
 
 handle_call(_Request, _From, State) ->
     error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
