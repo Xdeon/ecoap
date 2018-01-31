@@ -2,7 +2,7 @@
 
 -export([coap_discover/1, coap_get/5]).
 
--behaviour(coap_resource).
+-behaviour(ecoap_handler).
 
 coap_discover(_Prefix) ->
     [].

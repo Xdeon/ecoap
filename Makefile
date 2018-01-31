@@ -8,7 +8,7 @@ LOCAL_DEPS = crypto
 # DEPS = ecoap_common
 # dep_ecoap_common = git https://Xdeon@bitbucket.org/Xdeon/ecoap_common.git eliminate_cross_module_record
 
-COMPILE_FIRST = coap_resource
+COMPILE_FIRST = ecoap_handler
 
 include erlang.mk
 

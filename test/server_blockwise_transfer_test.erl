@@ -1,8 +1,7 @@
 -module(server_blockwise_transfer_test).
--behaviour(coap_resource).
+-behaviour(ecoap_handler).
 
--export([coap_discover/1, coap_get/5, coap_post/4, coap_put/4, coap_delete/4, 
-        coap_observe/4, coap_unobserve/1, handle_notify/3, handle_info/3, coap_ack/2]).
+-export([coap_discover/1, coap_get/5, coap_post/4, coap_put/4]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("src/coap_content.hrl").
@@ -21,15 +20,6 @@ coap_post(_EpID, _Prefix, [], Request) ->
 
 coap_put(_EpID, _Prefix, [], _Request) ->
     ok.
-
-coap_delete(_EpID, _Prefix, _Suffix, _Request) -> {error, 'MethodNotAllowed'}.
-
-coap_observe(_EpID, _Prefix, _Suffix, _Request) -> {error, 'MethodNotAllowed'}.
-coap_unobserve(_State) -> ok.
-handle_notify(Notification, _ObsReq, State) -> {ok, Notification, State}.
-handle_info(_Message, _ObsReq, State) -> {noreply, State}.
-coap_ack(_Ref, State) -> {ok, State}.
-
 
 % fixture is my friend
 blockwise_transfer_test_() ->
@@ -51,7 +41,7 @@ blockwise_transfer(Client) ->
     [
     % discovery
     ?_assertMatch({ok, 'Content', 
-        #coap_content{payload= <<"</.well-known/core>,</reflect>,</text>">>, options=#{'Content-Format':= <<"application/link-format">>}}}, 
+        #coap_content{payload= <<"</reflect>,</text>">>, options=#{'Content-Format':= <<"application/link-format">>}}}, 
             ecoap_client:request(Client, 'GET', "coap://127.0.0.1/.well-known/core")),
     % resource access
     ?_assertEqual({ok, 'Content', test_utils:text_resource(128)}, ecoap_client:request(Client, 'GET', "coap://127.0.0.1/text/128")),

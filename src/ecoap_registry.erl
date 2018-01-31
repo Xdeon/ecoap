@@ -71,7 +71,7 @@ get_links(Reg) ->
 
 get_links(Prefix, Module) ->
     % for each pattern ask the handler to provide a list of resources
-    coap_resource:coap_discover(Module, Prefix).
+    ecoap_handler:coap_discover(Module, Prefix).
 
 %% gen_server.
 init([]) ->

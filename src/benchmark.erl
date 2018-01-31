@@ -3,7 +3,7 @@
 -export([start/0, stop/0]).
 -export([fib/1]).
 
--behaviour(coap_resource).
+-behaviour(ecoap_handler).
 
 start() ->
     _ = application:stop(ecoap),
@@ -66,8 +66,6 @@ coap_post(_EpID, _Prefix, _Name, _Request) ->
 
 % coap_unobserve(_Obstate) ->
 %     ok.
-
-% handle_notify(Notification, _ObsReq, State) ->{ok, Notification, State}.
 
 % handle_info(_Info, _ObsReq, State) -> {noreply, State}.
 

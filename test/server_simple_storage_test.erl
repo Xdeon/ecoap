@@ -1,8 +1,7 @@
 -module(server_simple_storage_test).
--behaviour(coap_resource).
+-behaviour(ecoap_handler).
 
--export([coap_discover/1, coap_get/5, coap_post/4, coap_put/4, coap_delete/4, 
-        coap_observe/4, coap_unobserve/1, handle_notify/3, handle_info/3, coap_ack/2]).
+-export([coap_discover/1, coap_get/5, coap_post/4, coap_put/4, coap_delete/4]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("src/coap_content.hrl").
@@ -28,21 +27,6 @@ coap_put(_EpID, _Prefix, Name, Request) ->
 
 coap_delete(_EpID, _Prefix, Name, _Request) ->
     mnesia:dirty_delete(resources, Name).
-
-coap_observe(_EpID, _Prefix, _Name, _Request) -> 
-    {error, 'MethodNotAllowed'}.
-
-coap_unobserve(_State) -> 
-    ok.
-
-handle_notify(Info, _ObsReq, State) -> 
-    {ok, Info, State}.
-
-handle_info(_Info, _ObsReq, State) -> 
-    {noreply, State}.
-
-coap_ack(_Ref, State) -> 
-	{ok, State}.
 
 % fixture is my friend
 server_simple_storage_test_() ->
