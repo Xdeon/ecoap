@@ -49,7 +49,7 @@ start_link(Port) ->
 %% client
 -spec close(pid()) -> ok.
 close(Pid) ->
-	gen_server:cast(Pid, shutdown).
+	gen_server:stop(Pid).
 
 %% server
 -spec start_link(pid(), inet:port_number(), [gen_udp:option()]) -> {ok, pid()} | {error, term()}.
@@ -127,8 +127,6 @@ handle_call(_Request, _From, State) ->
 	error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
 	{noreply, State}.
 
-handle_cast(shutdown, State) ->
-	{stop, normal, State};
 handle_cast(_Msg, State) ->
 	error_logger:error_msg("unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
 	{noreply, State}.

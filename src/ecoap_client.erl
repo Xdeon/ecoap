@@ -304,10 +304,7 @@ handle_info(_Info, State) ->
 terminate(_Reason, #state{socket={client_socket, Socket}}) ->
 	ok = ecoap_udp_socket:close(Socket),
 	ok;
-terminate(_Reason, #state{requests=Requests}) ->
-	% when using external socket, cancel all ongoing requests before termination
-	% because the ecoap_endpoint process(es) may still be alive after our termination  
-	ok = maps:fold(fun(Ref, {EndpointPid, #request{}}, Acc) -> do_cancel_request(EndpointPid, Ref), Acc end, ok, Requests),
+terminate(_Reason, _State) ->
 	ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -417,18 +414,13 @@ make_request(Uri, Options) ->
 							coap_message:add_option('Uri-Port', PortNo, Options)))),
  	{ok, EpID, Path, Options2}.
 
-get_endpoint({_, SocketPid}, EpID) ->
+get_endpoint(Socket={_, SocketPid}, EpID) ->
 	{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SocketPid, EpID),
-	ok = ecoap_endpoint:monitor_handler(EndpointPid, self()),
-	{ok, EndpointPid}.
-	% case ecoap_endpoint:check_alive(EndpointPid) of
-	% 	true -> 
-	% 		case Mode of
-	% 			client_socket -> {ok, EndpointPid};
-	% 			server_socket -> link(EndpointPid), {ok, EndpointPid}
-	% 		end;
-	% 	false -> get_endpoint(Socket, EpID)
-	% end.
+	try link(EndpointPid) of
+		true -> {ok, EndpointPid}
+	catch error:noproc -> 
+		get_endpoint(Socket, EpID)
+	end.
 
 request_block(EndpointPid, Method, RequestOptions, Content) ->
     request_block(EndpointPid, Method, RequestOptions, undefined, Content).

@@ -110,6 +110,7 @@ init([undefined, SocketModule, Socket, EpID]) ->
 % server 
 init([SupPid, SocketModule, Socket, EpID]) ->
     ok = proc_lib:init_ack({ok, self()}),
+    process_flag(trap_exit, true),
     {ok, HdlSupPid} = supervisor:start_child(SupPid, 
         #{id => ecoap_handler_sup,
           start => {ecoap_handler_sup, start_link, []},
@@ -268,6 +269,21 @@ handle_info({'DOWN', _Ref, process, Pid, _Reason}, State=#state{rescnt=Count, tr
         error -> 
             {noreply, State}
     end;
+
+handle_info({'EXIT', Pid, _Reason}, State=#state{receivers=Receivers, tokens=Tokens, trans=Trans}) ->
+    % if this exit signal comes from an embedded client which shares the same socket process with the sever
+    % we should ensure all requests the client issued that have not been completed yet are cancelled
+    {Receivers2, Tokens2, Trans2} =  
+        maps:fold(fun(Receiver={ClientPid, _}, {Token, TrId}, {AccReceivers, AccTokens, AccTrans}) when ClientPid =:= Pid -> 
+                {maps:remove(Receiver, AccReceivers), 
+                 maps:remove(Token, AccTokens), 
+                 case maps:find(TrId, AccTrans) of 
+                    {ok, TrState} -> maps:update(TrId, ecoap_exchange:cancel_msg(TrState), AccTrans); 
+                    error -> AccTrans 
+                 end};
+                (_, _, Acc) -> Acc 
+            end, {Receivers, Tokens, Trans}, Receivers),
+    {noreply, State#state{tokens=Tokens2, trans=Trans2, receivers=Receivers2}};
     
 handle_info(_Info, State) ->
     error_logger:error_msg("unexpected info ~p received by ~p as ~p~n", [_Info, self(), ?MODULE]),
