@@ -44,6 +44,7 @@
 -callback coap_discover(Prefix) -> [Uri] when
     Prefix :: [binary()],
     Uri :: core_link:coap_uri().
+-optional_callbacks([coap_discover/1]). 
 
 % GET handler
 -callback coap_get(EpID, Prefix, Suffix, Query, Request) -> 
@@ -56,6 +57,7 @@
     Content :: map(),
     Error :: coap_message:error_code(),
     Reason :: binary().
+-optional_callbacks([coap_get/5]). 
 
 % POST handler
 -callback coap_post(EpID, Prefix, Suffix, Request) -> 
@@ -184,13 +186,13 @@ handle_info({timeout, TRef, cache_expired}, State=#state{observer=undefined, tim
     {stop, normal, State};
 handle_info({timeout, TRef, cache_expired}, State=#state{timer=TRef}) ->
     % multi-block cache expired, but the observer is still active
-    {noreply, State};
+    {noreply, State#state{last_response=undefined}};
 handle_info({coap_ack, _EpID, _EndpointPid, Ref}, State=#state{module=Module, obstate=ObState}) ->
     try case coap_ack(Module, Ref, ObState) of
         {ok, ObState2} ->
             {noreply, State#state{obstate=ObState2}}
-    end catch Class:{case_clause, BadReply} ->
-        error_terminate(Class, {bad_return_value, BadReply})
+    end catch Class:Reason ->
+        error_terminate(Class, Reason)
     end;
 handle_info({coap_error, _EpID, _EndpointPid, _Ref, _Error}, State=#state{observer=Observer}) ->
     {ok, State2} = cancel_observer(Observer, State),
@@ -207,15 +209,12 @@ handle_info(Info, State=#state{module=Module, observer=Observer, obstate=ObState
         {noreply, ObState2} ->
             {noreply, State#state{obstate=ObState2}};
         {stop, ObState2} ->
-            {ok, State2} = cancel_observer(Observer, State#state{obstate=ObState2}),
-            return_response(Observer, {error, 'ServiceUnavailable'}, State2);
-        % server internal error
-        {error, Error} ->
-            {ok, State2} = cancel_observer(Observer, State),
-            return_response(Observer, {error, Error}, State2)
-    end catch Class:{case_clause, BadReply} ->
-        _ = return_response(Observer, {error, 'InternalServerError'}, State),
-        error_terminate(Class, {bad_return_value, BadReply})
+            handle_notify([], {error, 'ServiceUnavailable'}, ObState2, Observer, State)
+    end catch Class:Reason ->
+        % we get stacktrace here because otherwise it will be overwritten by the cancel_observe function (as it calls pg2:delete/1)
+        Stacktrace = erlang:get_stacktrace(),
+        _ = handle_notify([], {error, 'InternalServerError'}, ObState, Observer, State),
+        error_terminate(Class, Reason, Stacktrace)
     end.
 
 handle_notify(Ref, {error, Code}, ObState2, Observer, State) ->
@@ -322,9 +321,10 @@ check_resource(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, query=Q
             return_response(Request, {error, Code}, State);
         {error, Code, Reason} ->
             return_response([], Request, {error, Code}, Reason, State)
-    end catch Class:{case_clause, BadReply} ->
+    end catch Class:CrashReason ->
+        Stacktrace = erlang:get_stacktrace(),
         _ = return_response(Request, {error, 'InternalServerError'}, State),
-        error_terminate(Class, {bad_return_value, BadReply})
+        error_terminate(Class, CrashReason, Stacktrace)
     end.
 
 check_preconditions(EpID, Request, Content, State) ->
@@ -354,7 +354,7 @@ handle_method(_EpID, Request=#coap_message{code='GET'}, {error, Code}, State) ->
     return_response(Request, {error, Code}, State);
 
 handle_method(EpID, Request=#coap_message{code='GET'}, Content, State) ->
-     case coap_message:get_option('Observe', Request) of
+    case coap_message:get_option('Observe', Request) of
         0 ->
             handle_observe(EpID, Request, Content, State);
         1 ->
@@ -393,9 +393,10 @@ handle_observe(EpID, Request, Content,
             return_response(Request, {error, Error}, State);
         {error, Error, Reason} ->
             return_response([], Request, {error, Error}, Reason, State)
-    end catch Class:{case_clause, BadReply} ->
+    end catch Class:CrashReason ->
+        Stacktrace = erlang:get_stacktrace(),
         _ = return_response(Request, {error, 'InternalServerError'}, State),
-        error_terminate(Class, {bad_return_value, BadReply})
+        error_terminate(Class, CrashReason, Stacktrace)
     end;
 handle_observe(_EpID, Request, Content, State) ->
     % subsequent observe request from the same user
@@ -425,9 +426,10 @@ handle_post(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=Mod
             return_response(Request, {error, Error}, State);
         {error, Error, Reason} ->
             return_response([], Request, {error, Error}, Reason, State)
-    end catch Class:{case_clause, BadReply} ->
+    end catch Class:CrashReason ->
+        Stacktrace = erlang:get_stacktrace(),
         _ = return_response(Request, {error, 'InternalServerError'}, State),
-        error_terminate(Class, {bad_return_value, BadReply})
+        error_terminate(Class, CrashReason, Stacktrace)
     end.
 
 handle_put(EpID, Request, Content, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
@@ -438,9 +440,10 @@ handle_put(EpID, Request, Content, State=#state{prefix=Prefix, suffix=Suffix, mo
             return_response(Request, {error, Error}, State);
         {error, Error, Reason} ->
             return_response([], Request, {error, Error}, Reason, State)
-    end catch Class:{case_clause, BadReply} ->
+    end catch Class:CrashReason ->
+        Stacktrace = erlang:get_stacktrace(),
         _ = return_response(Request, {error, 'InternalServerError'}, State),
-        error_terminate(Class, {bad_return_value, BadReply})
+        error_terminate(Class, CrashReason, Stacktrace)
     end.
 
 created_or_changed({error, 'NotFound'}) ->
@@ -456,9 +459,10 @@ handle_delete(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=M
             return_response(Request, {error, Error}, State);
         {error, Error, Reason} ->
             return_response([], Request, {error, Error}, Reason, State)
-    end catch Class:{case_clause, BadReply} ->
+    end catch Class:CrashReason ->
+        Stacktrace = erlang:get_stacktrace(),
         _ = return_response(Request, {error, 'InternalServerError'}, State),
-        error_terminate(Class, {bad_return_value, BadReply})
+        error_terminate(Class, CrashReason, Stacktrace)
     end.
 
 return_resource(Request, Content, State) ->
@@ -496,20 +500,20 @@ return_response(Ref, Request, Code, Reason, State) ->
 send_response(Ref, Response, State=#state{endpoint_pid=EndpointPid, observer=Observer, id=ID}) ->
     % io:fwrite("<- ~p~n", [Response]),
     {ok, _} = ecoap_endpoint:send_response(EndpointPid, Ref, Response),
-    case Observer of
-        undefined ->
-            case coap_message:get_option('Block2', Response) of
-                {_, true, _} ->
-                    % client is expected to ask for more blocks
-                    ecoap_endpoint:register_handler(EndpointPid, ID, self()),
-                    set_timeout(?EXCHANGE_LIFETIME, State);
-                _Else ->
-                    % no further communication concerning this request
-                    {stop, normal, State}
-            end;
+    case coap_message:get_option('Block2', Response) of
+        {_, true, _} ->
+            % client is expected to ask for more blocks
+            ecoap_endpoint:register_handler(EndpointPid, ID, self()),
+            set_timeout(?EXCHANGE_LIFETIME, State);
         _ ->
-            % notifications will follow
-            {noreply, State}
+            case Observer of
+                undefined ->
+                    % no further communication concerning this request
+                    {stop, normal, State};
+                #coap_message{} ->
+                    % notifications will follow
+                    {noreply, State}
+            end
     end.
 
 set_timeout(Timeout, State=#state{timer=undefined}) ->
@@ -554,88 +558,52 @@ uri_suffix(Prefix, Uri) ->
 %             {error, 'InternalServerError'}
 %     end.
 
-coap_discover(Module, Prefix) ->
-    try Module:coap_discover(Prefix)
-    catch Class:Reason ->
-        report_error(Class, Reason),
-        []
+coap_discover(Module, Prefix) -> 
+    case erlang:function_exported(Module, coap_discover, 1) of
+        true -> Module:coap_discover(Prefix);
+        false -> [{absolute, Prefix, []}]
     end.
 
 coap_get(Module, EpID, Prefix, Suffix, Query, Request) ->
-    try Module:coap_get(EpID, Prefix, Suffix, Query, Request)
-    catch Class:Reason ->
-        report_error(Class, Reason),
-        {error, 'InternalServerError'}
+    case erlang:function_exported(Module, coap_get, 5) of
+        true -> Module:coap_get(EpID, Prefix, Suffix, Query, Request);
+        false -> {error, 'MethodNotAllowed'}
     end.
 
 coap_post(Module, EpID, Prefix, Suffix, Request) ->
     case erlang:function_exported(Module, coap_post, 4) of
-        true -> 
-            try Module:coap_post(EpID, Prefix, Suffix, Request)
-            catch Class:Reason ->
-                report_error(Class, Reason),
-                {error, 'InternalServerError'}
-            end;
-        false ->
-            {error, 'MethodNotAllowed'}
+        true -> Module:coap_post(EpID, Prefix, Suffix, Request);
+        false -> {error, 'MethodNotAllowed'}
     end.
 
 coap_put(Module, EpID, Prefix, Suffix, Request) ->
     case erlang:function_exported(Module, coap_put, 4) of
-        true ->
-            try Module:coap_put(EpID, Prefix, Suffix, Request)
-            catch Class:Reason ->
-                report_error(Class, Reason),
-                {error, 'InternalServerError'}
-            end;
-        false ->
-            {error, 'MethodNotAllowed'}
+        true -> Module:coap_put(EpID, Prefix, Suffix, Request);
+        false -> {error, 'MethodNotAllowed'}
     end.
 
 coap_delete(Module, EpID, Prefix, Suffix, Request) ->
     case erlang:function_exported(Module, coap_delete, 4) of
-        true ->
-            try Module:coap_delete(EpID, Prefix, Suffix, Request)
-            catch Class:Reason ->
-                report_error(Class, Reason),
-                {error, 'InternalServerError'}
-            end;
-        false ->
-            {error, 'MethodNotAllowed'}
+        true -> Module:coap_delete(EpID, Prefix, Suffix, Request);
+        false -> {error, 'MethodNotAllowed'}
     end.
 
 coap_observe(Module, EpID, Prefix, Suffix, Request) ->
     case erlang:function_exported(Module, coap_observe, 4) of
-        true ->
-            try Module:coap_observe(EpID, Prefix, Suffix, Request)
-            catch Class:Reason ->
-                report_error(Class, Reason),
-                {error, 'InternalServerError'}
-            end;
-        false ->
-            {error, 'MethodNotAllowed'}
+        true -> Module:coap_observe(EpID, Prefix, Suffix, Request);
+        false -> {error, 'MethodNotAllowed'}
     end.
 
 coap_unobserve(Module, ObState) ->
     case erlang:function_exported(Module, coap_unobserve, 1) of
-        true ->
-            try Module:coap_unobserve(ObState)
-            catch Class:Reason ->
-                report_error(Class, Reason),
-                ok
-            end;
-        false ->
-            ok
+        true -> Module:coap_unobserve(ObState);
+        false -> ok
     end.
 
 handle_info(Module, Info, ObsReq, ObState) ->
     case erlang:function_exported(Module, handle_info, 3) of
-        true ->
-            try Module:handle_info(Info, ObsReq, ObState)
-            catch Class:Reason ->
-                report_error(Class, Reason),
-                {error, 'InternalServerError'}
-            end;
+        true -> 
+            Module:handle_info(Info, ObsReq, ObState);
         false ->
             case Info of
                 {coap_notify, Msg} ->
@@ -647,18 +615,12 @@ handle_info(Module, Info, ObsReq, ObState) ->
 
 coap_ack(Module, Ref, ObState) ->
     case erlang:function_exported(Module, coap_ack, 2) of
-        true ->
-            try Module:coap_ack(Ref, ObState)
-            catch Class:Reason ->
-                report_error(Class, Reason),
-                {ok, ObState}
-            end;
-        false ->
-            {ok, ObState}
+        true -> Module:coap_ack(Ref, ObState);
+        false -> {ok, ObState}
     end.
-
-report_error(Class, Reason) ->
-    error_logger:error_msg("coap_handler failed: ~p", [{Class, Reason, erlang:get_stacktrace()}]).
 
 error_terminate(Class, Reason) ->
     erlang:raise(Class, Reason, erlang:get_stacktrace()).
+
+error_terminate(Class, Reason, Stacktrace) ->
+    erlang:raise(Class, Reason, Stacktrace).
