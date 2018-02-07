@@ -5,6 +5,7 @@
         coap_observe/4, coap_unobserve/1, handle_info/3, coap_ack/2]).
 
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("src/coap_content.hrl").
 
 coap_discover(_Prefix) -> [].
 
@@ -39,7 +40,7 @@ empty_server(Client) ->
     % discovery
     ?_assertEqual({error, 'NotFound'}, ecoap_client:request(Client, 'GET', "coap://127.0.0.1")),
     ?_assertEqual({error, 'NotFound'}, ecoap_client:request(Client, 'GET', "coap://127.0.0.1/.well-known")),
-    ?_assertMatch({ok, 'Content', _}, ecoap_client:request(Client, 'GET', "coap://127.0.0.1/.well-known/core")),
+    ?_assertMatch({ok, 'Content', #coap_content{payload= <<>>}}, ecoap_client:request(Client, 'GET', "coap://127.0.0.1/.well-known/core")),
     % other methods
     ?_assertEqual({error, 'MethodNotAllowed'}, ecoap_client:request(Client, 'POST', "coap://127.0.0.1/.well-known/core")),
     ?_assertEqual({error, 'MethodNotAllowed'}, ecoap_client:request(Client, 'PUT', "coap://127.0.0.1/.well-known/core")),
@@ -63,9 +64,8 @@ unknown_handler_test_() ->
 
 unknown_handler(Client) ->
     [
-    % provoked reset
-    ?_assertMatch({ok, 'Content', _}, ecoap_client:request(Client, 'GET', "coap://127.0.0.1/.well-known/core")),
-    ?_assertEqual({error,'InternalServerError'}, ecoap_client:request(Client, 'GET', "coap://127.0.0.1/unknown"))
+    ?_assertMatch({ok, 'Content', #coap_content{payload= <<"</unknown>">>}}, ecoap_client:request(Client, 'GET', "coap://127.0.0.1/.well-known/core")),
+    ?_assertEqual({error,'MethodNotAllowed'}, ecoap_client:request(Client, 'GET', "coap://127.0.0.1/unknown"))
     ].
 
 % end of file

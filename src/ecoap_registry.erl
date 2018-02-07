@@ -86,7 +86,7 @@ handle_call({unregister, Prefix}, _From, State) ->
     ets:delete(?HANDLER_TAB, Prefix),
     {reply, ok, State};
 handle_call(_Request, _From, State) ->
-    {reply, ignored, State}.
+    {noreply, State}.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -103,9 +103,10 @@ code_change(_OldVsn, State, _Extra) ->
 % in case the system is not run as release, we should manually load all module files
 load_handlers(Reg) ->
     lists:foreach(fun({_, Module}) -> 
-        case code:is_loaded(Module) of
-            {file, _} -> ok;
-            false -> code:load_file(Module)
+        case code:ensure_loaded(Module) of
+            {module, Module} -> ok;
+            {error, embedded} -> ok;
+            {error, Error} -> error_logger:error_msg("handler module ~p load fail: ~p~n", [Module, Error])
         end end, Reg).
 
 -ifdef(TEST).

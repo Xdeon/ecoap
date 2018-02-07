@@ -149,7 +149,7 @@ close(Pid) ->
 notify(Uri, Info) ->
     case pg2:get_members({coap_observer, Uri}) of
         {error, _} -> ok;
-        List -> [begin Pid ! {coap_notify, Info}, ok end || Pid <- List], ok
+        List -> lists:foreach(fun(Pid) -> Pid ! {coap_notify, Info} end, List)
     end.
 
 %% gen_server.

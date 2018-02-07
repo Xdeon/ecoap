@@ -9,11 +9,13 @@
 -export([observe/2, observe/3, observe_and_wait_response/2, observe_and_wait_response/3]).
 -export([unobserve/2, unobserve/3, unobserve_and_wait_response/2, unobserve_and_wait_response/3]).
 -export([cancel_request/2]).
--export([start_link/1]).
+-export([flush/1]).
 
 -ifdef(TEST).
 -export([get_reqrefs/1, get_obsregs/1, get_blockregs/1]).
 -endif.
+
+-export([start_link/1]).
 
 %% gen_server.
 -export([init/1]).
@@ -158,6 +160,34 @@ unobserve_and_wait_response(Pid, Ref, ETag) ->
 			Response;
 		{'DOWN', Tag, process, Pid, Reason} ->
 			exit(Reason)
+	end.
+
+-spec flush(pid() | reference()) -> ok.
+flush(Pid) when is_pid(Pid) ->
+	flush_pid(Pid);
+flush(Ref) ->
+	flush_ref(Ref).
+
+flush_ref(Ref) ->
+	receive 	
+		{coap_response, Ref, _Pid, _Response} ->
+			flush_ref(Ref);
+		{coap_notify, Ref, _Pid, _ObsSeq, _Response} ->
+			flush_ref(Ref)
+	after 0 ->
+		ok
+	end.
+
+flush_pid(Pid) ->
+	receive
+		{coap_response, _Ref, Pid, _Response} ->
+			flush_pid(Pid);
+		{coap_notify, _Ref, Pid, _ObsSeq, _Response} ->
+			flush_pid(Pid);
+		{'DOWN',  _, process, Pid, _} ->
+			flush_pid(Pid)
+	after 0 ->
+		ok
 	end.
 
 start_link(Opts) ->
@@ -416,8 +446,10 @@ make_request(Uri, Options) ->
 
 get_endpoint(Socket={_, SocketPid}, EpID) ->
 	{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SocketPid, EpID),
-	try link(EndpointPid) of
-		true -> {ok, EndpointPid}
+	try ecoap_endpoint:check_alive(EndpointPid) of
+		ok -> 
+			link(EndpointPid),
+			{ok, EndpointPid}
 	catch error:noproc -> 
 		get_endpoint(Socket, EpID)
 	end.
