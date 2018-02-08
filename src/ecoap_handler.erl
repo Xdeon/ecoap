@@ -13,8 +13,6 @@
 -export([terminate/2]).
 -export([code_change/3]).
 
--define(EXCHANGE_LIFETIME, 247000).
-
 -include("ecoap.hrl").
 -include("coap_message.hrl").
 -include("coap_content.hrl").

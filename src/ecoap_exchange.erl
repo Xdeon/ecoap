@@ -4,15 +4,6 @@
 -export([init/2, received/3, send/3, timeout/3, awaits_response/1, in_transit/1, cancel_msg/1, not_expired/2]).
 -export([idle/3, got_non/3, sent_non/3, got_rst/3, await_aack/3, pack_sent/3, await_pack/3, aack_sent/3, cancelled/3]).
 
--define(ACK_TIMEOUT, 2000).
--define(ACK_RANDOM_FACTOR, 1000). % ACK_TIMEOUT*0.5
--define(MAX_RETRANSMIT, 4).
-
--define(PROCESSING_DELAY, 1000). % standard allows 2000
--define(EXCHANGE_LIFETIME, 247000).
-% -define(EXCHANGE_LIFETIME, 1500).
--define(NON_LIFETIME, 145000).
-
 -record(exchange, {
     timestamp = undefined :: integer(),
     expire_time = undefined :: undefined | non_neg_integer(),
@@ -29,6 +20,7 @@
 
 -export_type([exchange/0]).
 
+-include("ecoap.hrl").
 -include("coap_message.hrl").
 
 -spec not_expired(integer(), exchange()) -> boolean().

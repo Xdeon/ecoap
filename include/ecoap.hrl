@@ -5,3 +5,11 @@
 -define(MAX_BODY_SIZE, 8192).
 
 -define(DEFAULT_MAX_AGE, 60).
+
+-define(ACK_TIMEOUT, 2000).
+-define(ACK_RANDOM_FACTOR, 1000). % ACK_TIMEOUT*0.5
+-define(MAX_RETRANSMIT, 4).
+-define(PROCESSING_DELAY, 1000). % standard allows 2000
+-define(EXCHANGE_LIFETIME, 247000).
+% -define(EXCHANGE_LIFETIME, 1500).
+-define(NON_LIFETIME, 145000).
