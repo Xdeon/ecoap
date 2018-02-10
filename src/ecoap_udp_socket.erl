@@ -139,11 +139,11 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, en
 			{noreply, State};
 		error when is_pid(PoolPid) ->
 			case endpoint_sup_sup:start_endpoint(PoolPid, [?MODULE, Socket, EpID]) of
-				{ok, _, EpPid} -> 
+				{ok, EpSupPid, EpPid} -> 
 					%io:fwrite("start endpoint ~p~n", [EpID]),
 					EpPid ! {datagram, Bin},
 					store_endpoint(EpID, EpPid),
-					store_endpoint(erlang:monitor(process, EpPid), EpID),
+					store_endpoint(erlang:monitor(process, EpPid), {EpID, EpSupPid}),
 					{noreply, State#state{endpoint_count=Count+1}};
 				{error, _Reason} -> 
 					%io:fwrite("start_endpoint failed: ~p~n", [_Reason]),
@@ -154,11 +154,12 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, en
 			%io:fwrite("client recv unexpected packet~n"),
 			{noreply, State}
 	end;
-handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{endpoint_count=Count}) ->
+handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{endpoint_count=Count, endpoint_pool=Pid}) ->
  	case find_endpoint(Ref) of
- 		{ok, EpID} -> 
+ 		{ok, {EpID, EpSupPid}} -> 
  			erase_endpoint(Ref),
  			erase_endpoint(EpID),
+ 			supervisor:terminate_child(Pid, EpSupPid),
  			{noreply, State#state{endpoint_count=Count-1}};
  		error -> 
  			{noreply, State}
