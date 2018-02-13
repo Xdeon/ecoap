@@ -99,7 +99,7 @@ handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoint_pool
     	error ->
     		{ok, EpPid} = ecoap_endpoint:start_link(?MODULE, Socket, EpID),
     		store_endpoint(EpID, EpPid),
-    		store_endpoint(erlang:monitor(process, EpPid), EpID),
+    		store_endpoint(erlang:monitor(process, EpPid), {EpID, undefined}),
     		{reply, {ok, EpPid}, State#state{endpoint_count=Count+1}}
     end;
 % get an endpoint when being as a server
@@ -109,9 +109,9 @@ handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoint_pool
 			{reply, {ok, EpPid}, State};
 		error ->
 			case endpoint_sup_sup:start_endpoint(PoolPid, [?MODULE, Socket, EpID]) of
-		        {ok, _, EpPid} ->
+		        {ok, EpSupPid, EpPid} ->
 					store_endpoint(EpID, EpPid),
-					store_endpoint(erlang:monitor(process, EpPid), EpID),
+					store_endpoint(erlang:monitor(process, EpPid), {EpID, EpSupPid}),
 		            {reply, {ok, EpPid}, State#state{endpoint_count=Count+1}};
 		        Error ->
 		            {reply, Error, State}
@@ -154,12 +154,21 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, en
 			%io:fwrite("client recv unexpected packet~n"),
 			{noreply, State}
 	end;
+handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{endpoint_count=Count, endpoint_pool=undefined}) ->
+ 	case find_endpoint(Ref) of
+ 		{ok, {EpID, undefined}} -> 
+ 			erase_endpoint(Ref),
+ 			erase_endpoint(EpID),
+ 			{noreply, State#state{endpoint_count=Count-1}};
+ 		error -> 
+ 			{noreply, State}
+ 	end;
 handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{endpoint_count=Count, endpoint_pool=Pid}) ->
  	case find_endpoint(Ref) of
  		{ok, {EpID, EpSupPid}} -> 
  			erase_endpoint(Ref),
  			erase_endpoint(EpID),
- 			supervisor:terminate_child(Pid, EpSupPid),
+ 			_ = supervisor:terminate_child(Pid, EpSupPid),
  			{noreply, State#state{endpoint_count=Count-1}};
  		error -> 
  			{noreply, State}
