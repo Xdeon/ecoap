@@ -38,9 +38,16 @@
     coap_message:coap_success() | 
     coap_message:coap_error().
 
+-type observe_state() :: term().
+-type prefix() :: [binary()].
+-type suffix() :: [binary()].
+-type 'query'() :: [binary()].
+-type reason() :: binary().
+-type observe_ref() :: term().
+
 % called when a client asks for .well-known/core resources
 -callback coap_discover(Prefix) -> [Uri] when
-    Prefix :: [binary()],
+    Prefix :: prefix(),
     Uri :: core_link:coap_uri().
 -optional_callbacks([coap_discover/1]). 
 
@@ -48,62 +55,62 @@
 -callback coap_get(EpID, Prefix, Suffix, Query, Request) -> 
     {ok, Content} | {error, Error} | {error, Error, Reason} when
     EpID :: ecoap_udp_socket:ecoap_endpoint_id(),
-    Prefix :: [binary()],
-    Suffix :: [binary()],
-    Query :: [binary()],
+    Prefix :: prefix(),
+    Suffix :: suffix(),
+    Query :: 'query'(),
     Request :: coap_message:coap_message(),
-    Content :: map(),
+    Content :: coap_content:coap_content(),
     Error :: coap_message:error_code(),
-    Reason :: binary().
+    Reason :: reason().
 -optional_callbacks([coap_get/5]). 
 
 % POST handler
 -callback coap_post(EpID, Prefix, Suffix, Request) -> 
     {ok, Code, Content} | {error, Error} | {error, Error, Reason} when
     EpID :: ecoap_udp_socket:ecoap_endpoint_id(),
-    Prefix :: [binary()],
-    Suffix :: [binary()],
+    Prefix :: prefix(),
+    Suffix :: suffix(),
     Request :: coap_message:coap_message(),
     Code :: coap_message:success_code(),
-    Content :: map(),
+    Content :: coap_content:coap_content(),
     Error :: coap_message:error_code(),
-    Reason :: binary().
+    Reason :: reason().
 -optional_callbacks([coap_post/4]). 
 
 % PUT handler
 -callback coap_put(EpID, Prefix, Suffix, Request) -> ok | {error, Error} | {error, Error, Reason} when
     EpID :: ecoap_udp_socket:ecoap_endpoint_id(),
-    Prefix :: [binary()],
-    Suffix :: [binary()],
+    Prefix :: prefix(),
+    Suffix :: suffix(),
     Request :: coap_message:coap_message(),
     Error :: coap_message:error_code(),
-    Reason :: binary().
+    Reason :: reason().
 -optional_callbacks([coap_put/4]).  
 
 % DELETE handler
 -callback coap_delete(EpID, Prefix, Suffix, Request) -> ok | {error, Error} | {error, Error, Reason} when
     EpID :: ecoap_udp_socket:ecoap_endpoint_id(),
-    Prefix :: [binary()],
-    Suffix :: [binary()],
+    Prefix :: prefix(),
+    Suffix :: suffix(),
     Request :: coap_message:coap_message(),
     Error :: coap_message:error_code(),
-    Reason :: binary().
+    Reason :: reason().
 -optional_callbacks([coap_delete/4]).   
 
 % observe request handler
 -callback coap_observe(EpID, Prefix, Suffix, Request) -> {ok, ObState} | {error, Error} | {error, Error, Reason} when
     EpID :: ecoap_udp_socket:ecoap_endpoint_id(),
-    Prefix :: [binary()],
-    Suffix :: [binary()],
+    Prefix :: prefix(),
+    Suffix :: suffix(),
     Request :: coap_message:coap_message(),
-    ObState :: any(),
+    ObState :: observe_state(),
     Error :: coap_message:error_code(),
-    Reason :: binary().
+    Reason :: reason().
 -optional_callbacks([coap_observe/4]).  
 
 % cancellation request handler
 -callback coap_unobserve(ObState) -> ok when
-    ObState :: any().
+    ObState :: observe_state().
 -optional_callbacks([coap_unobserve/1]).    
 
 % handler for messages sent to the coap_handler process
@@ -118,20 +125,20 @@
     {notify, Ref, {error, Error}, NewObState} |
     {noreply, NewObState} | 
     {stop, NewObState} when
-    Info :: any(),
+    Info :: {coap_notify, term()} | term(),
     ObsReq :: coap_message:coap_message(),
-    ObState :: any(),
-    Ref :: any(),
+    ObState :: observe_state(),
+    Ref :: observe_ref(),
     Content :: coap_content:coap_content(),
     Error :: coap_message:error_code(),
-    NewObState :: any().
+    NewObState :: observe_state().
 -optional_callbacks([handle_info/3]).   
 
 % response to notifications
 -callback coap_ack(Ref, ObState) -> {ok, NewObState} when
-    Ref :: any(),
-    ObState :: any(),
-    NewObState :: any().
+    Ref :: observe_ref(),
+    ObState :: observe_state(),
+    NewObState :: observe_state().
 -optional_callbacks([coap_ack/2]).  
 
 %% API.
