@@ -83,6 +83,6 @@ attribute_query_test_() ->
     ]. 
 
 parse_query(Query) ->
-    binary:split(list_to_binary(Query), <<"&">>).
+    binary:split(list_to_binary(Query), <<$&>>).
 
 -endif.

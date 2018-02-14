@@ -414,7 +414,7 @@ handle_unobserve(_EpID, Request, Content, State) ->
     return_resource(Request, Content, State).
 
 cancel_observer(_Request, State=#state{uri=Uri, module=Module, obstate=ObState}) ->
-    coap_unobserve(Module, ObState),
+    catch coap_unobserve(Module, ObState),
     ok = pg2:leave({coap_observer, Uri}, self()),
     % will the last observer to leave this group please turn out the lights
     case pg2:get_members({coap_observer, Uri}) of

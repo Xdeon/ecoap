@@ -78,7 +78,7 @@ send_datagram(Socket, {PeerIP, PeerPortNo}, Datagram) ->
 %% gen_server.
 
 init([InPort, Opts]) ->
-	% process_flag(trap_exit, true),
+	process_flag(trap_exit, true),
 	{ok, Socket} = gen_udp:open(InPort, merge_opts(?DEFAULT_SOCK_OPTS, Opts)),
 	error_logger:info_msg("socket setting: ~p~n", [inet:getopts(Socket, [recbuf, sndbuf, buffer])]),
 	{ok, #state{sock=Socket}}.
