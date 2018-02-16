@@ -12,13 +12,13 @@
 	interval = undefined :: non_neg_integer(),
 	kicked = undefined :: boolean(),
 	timer = undefined :: reference(),
-	msg = undefined :: any()
+	msg = undefined :: term()
 }).
 
 -type timer_state() :: #timer_state{}.
 -export_type([timer_state/0]).
 
--spec start_timer(non_neg_integer(), any()) -> timer_state().
+-spec start_timer(non_neg_integer(), term()) -> timer_state().
 start_timer(Time, Msg) ->
 	Timer = erlang:send_after(Time, self(), Msg),
 	#timer_state{interval=Time, kicked=false, timer=Timer, msg=Msg}.

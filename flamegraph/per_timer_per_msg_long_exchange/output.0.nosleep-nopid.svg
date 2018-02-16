@@ -238,8 +238,8 @@
 <title>ecoap_registry:match_handler/1 (830,934 samples, 0.17%)</title><rect x="1178.2" y="129" width="2.0" height="15.0" fill="rgb(251,10,26)" rx="2" ry="2" />
 <text text-anchor="" x="1181.20" y="139.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
-<g class="func_g" onmouseover="s('ecoap_utils:get_option/3 (1,078,154 samples, 0.22%)')" onmouseout="c()" onclick="zoom(this)">
-<title>ecoap_utils:get_option/3 (1,078,154 samples, 0.22%)</title><rect x="975.5" y="97" width="2.5" height="15.0" fill="rgb(248,2,22)" rx="2" ry="2" />
+<g class="func_g" onmouseover="s('ecoap_uri:get_option/3 (1,078,154 samples, 0.22%)')" onmouseout="c()" onclick="zoom(this)">
+<title>ecoap_uri:get_option/3 (1,078,154 samples, 0.22%)</title><rect x="975.5" y="97" width="2.5" height="15.0" fill="rgb(248,2,22)" rx="2" ry="2" />
 <text text-anchor="" x="978.47" y="107.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
 <g class="func_g" onmouseover="s('coap_message:encode/1 (7,523,737 samples, 1.51%)')" onmouseout="c()" onclick="zoom(this)">
@@ -458,8 +458,8 @@
 <title>gen_server:call/3 (23,826,288 samples, 4.78%)</title><rect x="379.9" y="65" width="56.4" height="15.0" fill="rgb(253,173,21)" rx="2" ry="2" />
 <text text-anchor="" x="382.89" y="75.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >gen_s..</text>
 </g>
-<g class="func_g" onmouseover="s('ecoap_utils:get_option/3 (1,014,410 samples, 0.20%)')" onmouseout="c()" onclick="zoom(this)">
-<title>ecoap_utils:get_option/3 (1,014,410 samples, 0.20%)</title><rect x="187.5" y="113" width="2.4" height="15.0" fill="rgb(211,198,49)" rx="2" ry="2" />
+<g class="func_g" onmouseover="s('ecoap_uri:get_option/3 (1,014,410 samples, 0.20%)')" onmouseout="c()" onclick="zoom(this)">
+<title>ecoap_uri:get_option/3 (1,014,410 samples, 0.20%)</title><rect x="187.5" y="113" width="2.4" height="15.0" fill="rgb(211,198,49)" rx="2" ry="2" />
 <text text-anchor="" x="190.52" y="123.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
 <g class="func_g" onmouseover="s('ecoap_handler:handle_info/2 (1,062,495 samples, 0.21%)')" onmouseout="c()" onclick="zoom(this)">
@@ -478,8 +478,8 @@
 <title>ecoap_udp_socket:find_endpoint/1 (208,268 samples, 0.04%)</title><rect x="174.8" y="113" width="0.5" height="15.0" fill="rgb(232,216,24)" rx="2" ry="2" />
 <text text-anchor="" x="177.77" y="123.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
-<g class="func_g" onmouseover="s('ecoap_utils:get_option/2 (5,159,744 samples, 1.03%)')" onmouseout="c()" onclick="zoom(this)">
-<title>ecoap_utils:get_option/2 (5,159,744 samples, 1.03%)</title><rect x="175.3" y="113" width="12.2" height="15.0" fill="rgb(236,220,38)" rx="2" ry="2" />
+<g class="func_g" onmouseover="s('ecoap_uri:get_option/2 (5,159,744 samples, 1.03%)')" onmouseout="c()" onclick="zoom(this)">
+<title>ecoap_uri:get_option/2 (5,159,744 samples, 1.03%)</title><rect x="175.3" y="113" width="12.2" height="15.0" fill="rgb(236,220,38)" rx="2" ry="2" />
 <text text-anchor="" x="178.30" y="123.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
 <g class="func_g" onmouseover="s('ecoap_exchange:next_state/4 (7,486,721 samples, 1.50%)')" onmouseout="c()" onclick="zoom(this)">
@@ -542,8 +542,8 @@
 <title>prim_inet:setopts/2 (317,425 samples, 0.06%)</title><rect x="1091.3" y="113" width="0.7" height="15.0" fill="rgb(228,95,20)" rx="2" ry="2" />
 <text text-anchor="" x="1094.27" y="123.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
-<g class="func_g" onmouseover="s('ecoap_utils:get_option/3 (16,112,029 samples, 3.23%)')" onmouseout="c()" onclick="zoom(this)">
-<title>ecoap_utils:get_option/3 (16,112,029 samples, 3.23%)</title><rect x="322.7" y="81" width="38.1" height="15.0" fill="rgb(215,3,36)" rx="2" ry="2" />
+<g class="func_g" onmouseover="s('ecoap_uri:get_option/3 (16,112,029 samples, 3.23%)')" onmouseout="c()" onclick="zoom(this)">
+<title>ecoap_uri:get_option/3 (16,112,029 samples, 3.23%)</title><rect x="322.7" y="81" width="38.1" height="15.0" fill="rgb(215,3,36)" rx="2" ry="2" />
 <text text-anchor="" x="325.66" y="91.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >coa..</text>
 </g>
 <g class="func_g" onmouseover="s('benchmark:coap_get/5 (1,065,408 samples, 0.21%)')" onmouseout="c()" onclick="zoom(this)">
@@ -602,8 +602,8 @@
 <title>orddict:new/0 (737,516 samples, 0.15%)</title><rect x="1183.7" y="129" width="1.8" height="15.0" fill="rgb(239,99,30)" rx="2" ry="2" />
 <text text-anchor="" x="1186.75" y="139.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
-<g class="func_g" onmouseover="s('ecoap_utils:response/2 (1,031,951 samples, 0.21%)')" onmouseout="c()" onclick="zoom(this)">
-<title>ecoap_utils:response/2 (1,031,951 samples, 0.21%)</title><rect x="189.9" y="113" width="2.5" height="15.0" fill="rgb(217,208,53)" rx="2" ry="2" />
+<g class="func_g" onmouseover="s('ecoap_uri:response/2 (1,031,951 samples, 0.21%)')" onmouseout="c()" onclick="zoom(this)">
+<title>ecoap_uri:response/2 (1,031,951 samples, 0.21%)</title><rect x="189.9" y="113" width="2.5" height="15.0" fill="rgb(217,208,53)" rx="2" ry="2" />
 <text text-anchor="" x="192.92" y="123.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
 <g class="func_g" onmouseover="s('gen:name/1 (710,054 samples, 0.14%)')" onmouseout="c()" onclick="zoom(this)">
@@ -666,8 +666,8 @@
 <title>sets:add_element/2 (1,216,816 samples, 0.24%)</title><rect x="1130.4" y="97" width="2.9" height="15.0" fill="rgb(254,89,4)" rx="2" ry="2" />
 <text text-anchor="" x="1133.38" y="107.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
-<g class="func_g" onmouseover="s('ecoap_utils:set_content/3 (1,091,548 samples, 0.22%)')" onmouseout="c()" onclick="zoom(this)">
-<title>ecoap_utils:set_content/3 (1,091,548 samples, 0.22%)</title><rect x="992.6" y="97" width="2.6" height="15.0" fill="rgb(221,72,44)" rx="2" ry="2" />
+<g class="func_g" onmouseover="s('ecoap_uri:set_content/3 (1,091,548 samples, 0.22%)')" onmouseout="c()" onclick="zoom(this)">
+<title>ecoap_uri:set_content/3 (1,091,548 samples, 0.22%)</title><rect x="992.6" y="97" width="2.6" height="15.0" fill="rgb(221,72,44)" rx="2" ry="2" />
 <text text-anchor="" x="995.61" y="107.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
 <g class="func_g" onmouseover="s('supervisor:handle_info/2 (1,110,119 samples, 0.22%)')" onmouseout="c()" onclick="zoom(this)">
@@ -682,12 +682,12 @@
 <title>erlang:list_to_atom/1 (655,990 samples, 0.13%)</title><rect x="20.1" y="145" width="1.5" height="15.0" fill="rgb(239,193,35)" rx="2" ry="2" />
 <text text-anchor="" x="23.10" y="155.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
-<g class="func_g" onmouseover="s('ecoap_utils:set_content/3 (1,057,045 samples, 0.21%)')" onmouseout="c()" onclick="zoom(this)">
-<title>ecoap_utils:set_content/3 (1,057,045 samples, 0.21%)</title><rect x="192.4" y="113" width="2.5" height="15.0" fill="rgb(218,153,21)" rx="2" ry="2" />
+<g class="func_g" onmouseover="s('ecoap_uri:set_content/3 (1,057,045 samples, 0.21%)')" onmouseout="c()" onclick="zoom(this)">
+<title>ecoap_uri:set_content/3 (1,057,045 samples, 0.21%)</title><rect x="192.4" y="113" width="2.5" height="15.0" fill="rgb(218,153,21)" rx="2" ry="2" />
 <text text-anchor="" x="195.36" y="123.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
-<g class="func_g" onmouseover="s('ecoap_utils:has_option/2 (1,038,663 samples, 0.21%)')" onmouseout="c()" onclick="zoom(this)">
-<title>ecoap_utils:has_option/2 (1,038,663 samples, 0.21%)</title><rect x="978.0" y="97" width="2.5" height="15.0" fill="rgb(211,189,50)" rx="2" ry="2" />
+<g class="func_g" onmouseover="s('ecoap_uri:has_option/2 (1,038,663 samples, 0.21%)')" onmouseout="c()" onclick="zoom(this)">
+<title>ecoap_uri:has_option/2 (1,038,663 samples, 0.21%)</title><rect x="978.0" y="97" width="2.5" height="15.0" fill="rgb(211,189,50)" rx="2" ry="2" />
 <text text-anchor="" x="981.02" y="107.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
 <g class="func_g" onmouseover="s('erlang:setelement/3 (1,085,905 samples, 0.22%)')" onmouseout="c()" onclick="zoom(this)">
@@ -718,8 +718,8 @@
 <title>gen_server:loop/6 (221,418 samples, 0.04%)</title><rect x="1020.0" y="49" width="0.5" height="15.0" fill="rgb(240,184,4)" rx="2" ry="2" />
 <text text-anchor="" x="1022.99" y="59.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
-<g class="func_g" onmouseover="s('ecoap_utils:set_content_helper/2 (2,087,185 samples, 0.42%)')" onmouseout="c()" onclick="zoom(this)">
-<title>ecoap_utils:set_content_helper/2 (2,087,185 samples, 0.42%)</title><rect x="995.2" y="97" width="4.9" height="15.0" fill="rgb(248,123,43)" rx="2" ry="2" />
+<g class="func_g" onmouseover="s('ecoap_uri:set_content_helper/2 (2,087,185 samples, 0.42%)')" onmouseout="c()" onclick="zoom(this)">
+<title>ecoap_uri:set_content_helper/2 (2,087,185 samples, 0.42%)</title><rect x="995.2" y="97" width="4.9" height="15.0" fill="rgb(248,123,43)" rx="2" ry="2" />
 <text text-anchor="" x="998.19" y="107.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
 <g class="func_g" onmouseover="s('gen_server:start_link/3 (1,153,890 samples, 0.23%)')" onmouseout="c()" onclick="zoom(this)">
@@ -870,8 +870,8 @@
 <title>ecoap_exchange:await_aack/3 (7,931,500 samples, 1.59%)</title><rect x="866.3" y="113" width="18.8" height="15.0" fill="rgb(228,73,50)" rx="2" ry="2" />
 <text text-anchor="" x="869.29" y="123.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
-<g class="func_g" onmouseover="s('ecoap_utils:ack/1 (7,557,739 samples, 1.52%)')" onmouseout="c()" onclick="zoom(this)">
-<title>ecoap_utils:ack/1 (7,557,739 samples, 1.52%)</title><rect x="231.4" y="97" width="17.9" height="15.0" fill="rgb(252,40,32)" rx="2" ry="2" />
+<g class="func_g" onmouseover="s('ecoap_uri:ack/1 (7,557,739 samples, 1.52%)')" onmouseout="c()" onclick="zoom(this)">
+<title>ecoap_uri:ack/1 (7,557,739 samples, 1.52%)</title><rect x="231.4" y="97" width="17.9" height="15.0" fill="rgb(252,40,32)" rx="2" ry="2" />
 <text text-anchor="" x="234.41" y="107.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
 <g class="func_g" onmouseover="s('coap_iana:decode_code/1 (7,943,847 samples, 1.59%)')" onmouseout="c()" onclick="zoom(this)">

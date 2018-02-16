@@ -262,8 +262,8 @@
 <title>ecoap_exchange:received/3 (8,622 samples, 0.02%)</title><rect x="217.2" y="129" width="0.2" height="15.0" fill="rgb(237,56,38)" rx="2" ry="2" />
 <text text-anchor="" x="220.25" y="139.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
-<g class="func_g" onmouseover="s('ecoap_utils:get_option/3 (21,918 samples, 0.04%)')" onmouseout="c()" onclick="zoom(this)">
-<title>ecoap_utils:get_option/3 (21,918 samples, 0.04%)</title><rect x="12.6" y="97" width="0.4" height="15.0" fill="rgb(227,137,2)" rx="2" ry="2" />
+<g class="func_g" onmouseover="s('ecoap_uri:get_option/3 (21,918 samples, 0.04%)')" onmouseout="c()" onclick="zoom(this)">
+<title>ecoap_uri:get_option/3 (21,918 samples, 0.04%)</title><rect x="12.6" y="97" width="0.4" height="15.0" fill="rgb(227,137,2)" rx="2" ry="2" />
 <text text-anchor="" x="15.59" y="107.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
 <g class="func_g" onmouseover="s('coap_iana:encode_type/1 (9,727 samples, 0.02%)')" onmouseout="c()" onclick="zoom(this)">
@@ -306,8 +306,8 @@
 <title>ecoap_endpoint:handle_info/2 (9,284,701 samples, 16.27%)</title><rect x="10.4" y="129" width="192.0" height="15.0" fill="rgb(240,154,18)" rx="2" ry="2" />
 <text text-anchor="" x="13.39" y="139.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >ecoap_endpoint:handle_inf..</text>
 </g>
-<g class="func_g" onmouseover="s('ecoap_utils:ack/1 (8,485 samples, 0.01%)')" onmouseout="c()" onclick="zoom(this)">
-<title>ecoap_utils:ack/1 (8,485 samples, 0.01%)</title><rect x="10.8" y="113" width="0.2" height="15.0" fill="rgb(219,222,40)" rx="2" ry="2" />
+<g class="func_g" onmouseover="s('ecoap_uri:ack/1 (8,485 samples, 0.01%)')" onmouseout="c()" onclick="zoom(this)">
+<title>ecoap_uri:ack/1 (8,485 samples, 0.01%)</title><rect x="10.8" y="113" width="0.2" height="15.0" fill="rgb(219,222,40)" rx="2" ry="2" />
 <text text-anchor="" x="13.83" y="123.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
 <g class="func_g" onmouseover="s('maps:put/3 (10,309 samples, 0.02%)')" onmouseout="c()" onclick="zoom(this)">

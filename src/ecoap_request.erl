@@ -50,9 +50,11 @@ response(Code, Request) ->
 response(Code, Payload, Request) when is_binary(Payload) ->
     coap_message:set_code(Code, set_payload(Payload, response(Request))).
 
+-spec set_payload(binary(), coap_message:coap_message()) -> coap_message:coap_message().
 set_payload(Payload, Msg) ->
 	set_payload(Payload, undefined, Msg).
 
+-spec set_payload(binary(), undefined | block_opt(), coap_message:coap_message()) -> coap_message:coap_message().
 % segmentation not requested and not required
 set_payload(Payload, undefined, Msg) when byte_size(Payload) =< ?MAX_BLOCK_SIZE ->
 	coap_message:set_payload(Payload, Msg);
@@ -84,3 +86,29 @@ part(Binary, Pos, Len) when Len >= 0 ->
     binary:part(Binary, Pos, Len);
 part(_, _, _) ->
     <<>>.
+
+-ifdef(TEST).
+
+-include_lib("eunit/include/eunit.hrl").
+
+request_compose_test_() ->
+    [
+        ?_assertEqual(#coap_message{type='CON', code='GET', id=0},
+            ecoap_request:request('CON', 'GET')),
+        ?_assertEqual(#coap_message{type='CON', code='PUT', id=0, payload= <<"payload">>},
+            ecoap_request:request('CON', 'PUT', #{}, <<"payload">>)),
+        ?_assertEqual(#coap_message{type='CON', code='PUT', id=0, options=#{'Uri-Path' => [<<"test">>]}, payload= <<"payload">>},
+            ecoap_request:request('CON', 'PUT', #{'Uri-Path' => [<<"test">>]}, <<"payload">>))
+    ].
+
+response_compose_test_() ->
+    Request = #coap_message{type='CON', code='GET', id=123, token= <<"Token">>, options=#{'Uri-Path' => [<<"test">>]}},
+    Payload = <<"Payload">>,
+    [
+        ?_assertEqual(#coap_message{type='CON', code={error, 'NotFound'}, id=123, token= <<"Token">>},
+            ecoap_request:response({error, 'NotFound'}, Request)),
+        ?_assertEqual(#coap_message{type='CON', code={ok, 'Content'}, id=123, token= <<"Token">>, payload=Payload},
+            ecoap_request:response({ok, 'Content'}, Payload, Request))
+    ].
+
+-endif.

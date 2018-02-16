@@ -11,15 +11,14 @@
 -module(core_link).
 
 -export([decode/1, encode/1]).
--export([process_param_value/1]).
 
--type coap_uri() :: {'absolute', [binary()], [coap_uri_param()]}.
+-type coap_uri() :: {'absolute' | 'rootless', [binary()], [coap_uri_param()]}.
 -type coap_uri_param() :: {atom(), binary() | [binary()]}.
 
 -export_type([coap_uri/0]).
 -export_type([coap_uri_param/0]).
 
--spec decode(binary() | list()) -> coap_uri() | {error, any()}.
+-spec decode(binary() | list()) -> coap_uri() | {error, term()}.
 decode(Binary) when is_binary(Binary) ->
     decode(binary_to_list(Binary));
 decode(String) ->

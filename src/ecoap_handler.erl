@@ -29,7 +29,7 @@
     last_response = undefined :: last_response(),
     observer = undefined :: undefined | coap_message:coap_message(), 
     obseq = undefined :: non_neg_integer(), 
-    obstate = undefined :: any(), 
+    obstate = undefined :: term(), 
     timer = undefined :: undefined | reference()}).
 
 -type last_response() ::
@@ -39,11 +39,13 @@
     coap_message:coap_error().
 
 -type observe_state() :: term().
--type prefix() :: [binary()].
--type suffix() :: [binary()].
--type 'query'() :: [binary()].
+-type prefix() :: ecoap_uri:path().
+-type suffix() :: ecoap_uri:path().
+-type query() :: ecoap_uri:query().
 -type reason() :: binary().
 -type observe_ref() :: term().
+
+-export_type([prefix/0, suffix/0, query/0, reason/0]).
 
 % called when a client asks for .well-known/core resources
 -callback coap_discover(Prefix) -> [Uri] when
@@ -150,7 +152,7 @@ start_link(EndpointPid, ID) ->
 close(Pid) ->
     gen_server:cast(Pid, shutdown).
 
--spec notify([binary()], any()) -> ok.
+-spec notify([binary()], term()) -> ok.
 notify(Uri, Info) ->
     case pg2:get_members({coap_observer, Uri}) of
         {error, _} -> ok;

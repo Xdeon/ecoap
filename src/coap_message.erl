@@ -86,9 +86,13 @@
                     | 'Location-Query'
                     | 'Proxy-Uri'
                     | 'Proxy-Scheme'
-                    | 'Size1'.
+                    | 'Size1'
+                    | 'Observe'
+                    | 'Block1'
+                    | 'Block2'
+                    | 'Size2'.
 
--type optionset() :: #{coap_option() | non_neg_integer() => any()}.
+-type optionset() :: #{coap_option() | non_neg_integer() => term()}.
 
 -export_type([coap_message/0, 
               msg_id/0, 
@@ -154,7 +158,7 @@ get_option(Option, Options, Default) ->
 get_option_helper(Option, Options, Default) ->
     maps:get(Option, Options, Default).
 
--spec set_option(coap_option(), any(), coap_message()) -> coap_message().
+-spec set_option(coap_option(), term(), coap_message()) -> coap_message().
 set_option(Option, Value, Msg=#coap_message{options=Options}) ->
     Msg#coap_message{options=add_option(Option, Value, Options)}.
 
@@ -164,7 +168,7 @@ merge_options(Options, Msg) when map_size(Options) =:= 0 ->
 merge_options(Options2, Msg=#coap_message{options=Options1}) ->
    Msg#coap_message{options=add_options(Options1, Options2)}.
 
--spec add_option(coap_option(), any(), optionset()) -> optionset().
+-spec add_option(coap_option(), term(), optionset()) -> optionset().
 % omit option for its default value
 add_option(_, [], Options) -> Options;
 add_option(_, undefined, Options) -> Options;

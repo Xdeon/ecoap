@@ -217,7 +217,7 @@ init([{socket, Socket}]) ->
 	{ok, #state{socket={server_socket, Socket}}}.
 
 handle_call({ping, Uri}, From, State=#state{socket=Socket, requests=Requests}) ->
-	{_Scheme, _Host, {PeerIP, PortNo}, _Path, _Query} = ecoap_utils:decode_uri(Uri),
+	{_Scheme, _Host, {PeerIP, PortNo}, _Path, _Query} = ecoap_uri:decode_uri(Uri),
 	EpID = {PeerIP, PortNo},
 	{ok, EndpointPid} = get_endpoint(Socket, EpID),
 	{ok, Ref} = ecoap_endpoint:ping(EndpointPid),
@@ -436,7 +436,7 @@ handle_error(Ref, Request, Error,
 							request_mapping=RequestMapping2, observe_regs=ObsRegs2}}.
 
 make_request(Uri, Options) ->
-	{_Scheme, Host, {PeerIP, PortNo}, Path, Query} = ecoap_utils:decode_uri(Uri),
+	{_Scheme, Host, {PeerIP, PortNo}, Path, Query} = ecoap_uri:decode_uri(Uri),
 	EpID = {PeerIP, PortNo},
  	Options2 = coap_message:add_option('Uri-Path', Path, 
 					coap_message:add_option('Uri-Query', Query,
