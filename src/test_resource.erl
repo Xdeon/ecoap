@@ -5,8 +5,6 @@
 
 -behaviour(ecoap_handler).
 
--include("ecoap.hrl").
-
 start() ->
     _ = application:stop(ecoap),
     _ = application:stop(mnesia),
