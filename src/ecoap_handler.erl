@@ -584,15 +584,15 @@ get_etag(Options) ->
 uri_suffix(Prefix, Uri) ->
 	lists:nthtail(length(Prefix), Uri).
 
-invoke_callback(Module, Fun, Args) ->
+invoke_callback(Callback) ->
     try 
-        {ok, apply(Module, Fun, Args)}
+        {ok, Callback()}
     catch 
         throw:R ->
             {ok, R};
         Class:R ->
             {'EXIT', Class, R, erlang:get_stacktrace()}
-    end.
+    end.    
 
 coap_discover(Module, Prefix) -> 
     case erlang:function_exported(Module, coap_discover, 1) of
@@ -602,44 +602,44 @@ coap_discover(Module, Prefix) ->
 
 coap_get(Module, EpID, Prefix, Suffix, Query, Request) ->
     case erlang:function_exported(Module, coap_get, 5) of
-        true -> invoke_callback(Module, coap_get, [EpID, Prefix, Suffix, Query, Request]);
+        true -> invoke_callback(fun() -> Module:coap_get(EpID, Prefix, Suffix, Query, Request) end);
         false -> {ok, {error, 'MethodNotAllowed'}}
     end.
 
 coap_post(Module, EpID, Prefix, Suffix, Request) ->
     case erlang:function_exported(Module, coap_post, 4) of
-        true -> invoke_callback(Module, coap_post, [EpID, Prefix, Suffix, Request]);
+        true -> invoke_callback(fun() -> Module:coap_post(EpID, Prefix, Suffix, Request) end);
         false -> {ok, {error, 'MethodNotAllowed'}}
     end.
 
 coap_put(Module, EpID, Prefix, Suffix, Request) ->
     case erlang:function_exported(Module, coap_put, 4) of
-        true -> invoke_callback(Module, coap_put, [EpID, Prefix, Suffix, Request]);
+        true -> invoke_callback(fun() -> Module:coap_put(EpID, Prefix, Suffix, Request) end);
         false -> {ok, {error, 'MethodNotAllowed'}}
     end.
 
 coap_delete(Module, EpID, Prefix, Suffix, Request) ->
     case erlang:function_exported(Module, coap_delete, 4) of
-        true -> invoke_callback(Module, coap_delete, [EpID, Prefix, Suffix, Request]);
+        true -> invoke_callback(fun() -> Module:coap_delete(EpID, Prefix, Suffix, Request) end);
         false -> {ok, {error, 'MethodNotAllowed'}}
     end.
 
 coap_observe(Module, EpID, Prefix, Suffix, Request) ->
     case erlang:function_exported(Module, coap_observe, 4) of
-        true -> invoke_callback(Module, coap_observe, [EpID, Prefix, Suffix, Request]);
+        true -> invoke_callback(fun() -> Module:coap_observe(EpID, Prefix, Suffix, Request) end);
         false -> {ok, {error, 'MethodNotAllowed'}}
     end.
 
 coap_unobserve(Module, ObState) ->
     case erlang:function_exported(Module, coap_unobserve, 1) of
-        true -> invoke_callback(Module, coap_unobserve, [ObState]);
+        true -> invoke_callback(fun() -> Module:coap_unobserve(ObState) end);
         false -> {ok, ok}
     end.
 
 handle_info(Module, Info, ObsReq, ObState) ->
     case erlang:function_exported(Module, handle_info, 3) of
         true -> 
-            invoke_callback(Module, handle_info, [Info, ObsReq, ObState]);
+            invoke_callback(fun() -> Module:handle_info(Info, ObsReq, ObState) end);
         false ->
             case Info of
                 {coap_notify, Msg} ->
@@ -651,7 +651,7 @@ handle_info(Module, Info, ObsReq, ObState) ->
 
 coap_ack(Module, Ref, ObState) ->
     case erlang:function_exported(Module, coap_ack, 2) of
-        true -> invoke_callback(Module, coap_ack, [Ref, ObState]);
+        true -> invoke_callback(fun() -> Module:coap_ack(Ref, ObState) end);
         false -> {ok, {ok, ObState}}
     end.
 
