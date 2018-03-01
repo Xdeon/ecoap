@@ -63,18 +63,18 @@ observe_test_() ->
 
 observe_test(Client) ->
     [
-    ?_assertEqual({error, 'NotFound'},
+    ?_assertEqual({ok, {error, 'NotFound'}, #coap_content{}},
         ecoap_client:observe_and_wait_response(Client, "coap://127.0.0.1/text")),
-    ?_assertEqual({ok, 'Created', #coap_content{}},
+    ?_assertEqual({ok, {ok, 'Created'}, #coap_content{}},
     	begin 
     		#coap_content{payload=Payload, options=Options} = test_utils:text_resource([<<"1">>], 2000),
-        	ecoap_client:request(Client, 'PUT', "coap://127.0.0.1/text", Payload, Options)
+        	ecoap_client:put(Client, "coap://127.0.0.1/text", Payload, Options)
         end),
     ?_assertEqual(
     	{
-	    	{ok, ref, Client, 0, {ok, 'Content', test_utils:text_resource([<<"1">>], 2000)}}, 
-	    	{coap_notify, ref, Client, 1, {ok, 'Content', test_utils:text_resource([<<"2">>], 3000)}},
-	    	{ok, 'Content', test_utils:text_resource([<<"2">>], 3000)}
+	    	{ok, ref, Client, 0, {ok, {ok, 'Content'}, test_utils:text_resource([<<"1">>], 2000)}}, 
+	    	{coap_notify, ref, Client, 1, {ok, {ok, 'Content'}, test_utils:text_resource([<<"2">>], 3000)}},
+	    	{ok, {ok, 'Content'}, test_utils:text_resource([<<"2">>], 3000)}
     	}, 
     	begin 
     		#coap_content{payload=Payload, options=Options} = test_utils:text_resource([<<"2">>], 3000),
@@ -83,7 +83,7 @@ observe_test(Client) ->
     ].
 
 observe_and_modify(Client, Uri, Payload, Options) ->	
-	{ok, _} = timer:apply_after(500, ecoap_client, request, [Client, 'PUT', Uri, Payload, Options]),
+	{ok, _} = timer:apply_after(500, ecoap_client, put, [Client, Uri, Payload, Options]),
     {ok, Ref, Client, N1, {ok, Code, Content1}} = ecoap_client:observe_and_wait_response(Client, Uri),
 	receive 
         {coap_notify, Ref, Client, N2, {ok, Code, Content2}} ->

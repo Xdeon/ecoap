@@ -40,42 +40,42 @@ blockwise_transfer_test_() ->
 blockwise_transfer(Client) ->
     [
     % discovery
-    ?_assertMatch({ok, 'Content', 
+    ?_assertMatch({ok, {ok, 'Content'}, 
         #coap_content{payload= <<"</reflect>,</text>">>, options=#{'Content-Format':= <<"application/link-format">>}}}, 
-            ecoap_client:request(Client, 'GET', "coap://127.0.0.1/.well-known/core")),
+            ecoap_client:get(Client, "coap://127.0.0.1/.well-known/core")),
     % resource access
-    ?_assertEqual({ok, 'Content', test_utils:text_resource(128)}, ecoap_client:request(Client, 'GET', "coap://127.0.0.1/text/128")),
-    ?_assertEqual({ok, 'Content', test_utils:text_resource(1024)}, ecoap_client:request(Client, 'GET', "coap://127.0.0.1/text/1024")),
-    ?_assertEqual({ok, 'Content', test_utils:text_resource(1984)}, ecoap_client:request(Client, 'GET', "coap://127.0.0.1/text/1984")),
-    ?_assertEqual({ok, 'Created', #coap_content{}}, 
+    ?_assertEqual({ok, {ok, 'Content'}, test_utils:text_resource(128)}, ecoap_client:get(Client, "coap://127.0.0.1/text/128")),
+    ?_assertEqual({ok, {ok, 'Content'}, test_utils:text_resource(1024)}, ecoap_client:get(Client, "coap://127.0.0.1/text/1024")),
+    ?_assertEqual({ok, {ok, 'Content'}, test_utils:text_resource(1984)}, ecoap_client:get(Client, "coap://127.0.0.1/text/1984")),
+    ?_assertEqual({ok, {ok, 'Created'}, #coap_content{}}, 
         begin 
             #coap_content{payload=Payload, options=Options} = test_utils:text_resource(128),
-            ecoap_client:request(Client, 'PUT', "coap://127.0.0.1/reflect", Payload, Options) 
+            ecoap_client:put(Client, "coap://127.0.0.1/reflect", Payload, Options) 
         end),
-    ?_assertEqual({ok, 'Created', #coap_content{}}, 
+    ?_assertEqual({ok, {ok, 'Created'}, #coap_content{}}, 
         begin
             #coap_content{payload=Payload, options=Options} = test_utils:text_resource(1024),
-            ecoap_client:request(Client, 'PUT', "coap://127.0.0.1/reflect", Payload, Options)
+            ecoap_client:put(Client, "coap://127.0.0.1/reflect", Payload, Options)
         end),
-    ?_assertEqual({ok, 'Created', #coap_content{}}, 
+    ?_assertEqual({ok, {ok, 'Created'}, #coap_content{}}, 
         begin
             #coap_content{payload=Payload, options=Options} =  test_utils:text_resource(1984),
-            ecoap_client:request(Client, 'PUT', "coap://127.0.0.1/reflect", Payload, Options)
+            ecoap_client:put(Client, "coap://127.0.0.1/reflect", Payload, Options)
         end),
-    ?_assertEqual({ok, 'Content', test_utils:text_resource(128)}, 
+    ?_assertEqual({ok, {ok, 'Content'}, test_utils:text_resource(128)}, 
         begin 
             #coap_content{payload=Payload, options=Options} = test_utils:text_resource(128),
-            ecoap_client:request(Client, 'POST', "coap://127.0.0.1/reflect", Payload, Options)
+            ecoap_client:post(Client, "coap://127.0.0.1/reflect", Payload, Options)
         end),
-    ?_assertEqual({ok, 'Content', test_utils:text_resource(1024)}, 
+    ?_assertEqual({ok, {ok, 'Content'}, test_utils:text_resource(1024)}, 
         begin 
             #coap_content{payload=Payload, options=Options} = test_utils:text_resource(1024),
-            ecoap_client:request(Client, 'POST', "coap://127.0.0.1/reflect", Payload, Options)
+            ecoap_client:post(Client, "coap://127.0.0.1/reflect", Payload, Options)
         end),
-    ?_assertEqual({ok, 'Content', test_utils:text_resource(1984)}, 
+    ?_assertEqual({ok, {ok, 'Content'}, test_utils:text_resource(1984)}, 
         begin
             #coap_content{payload=Payload, options=Options} = test_utils:text_resource(1984),
-            ecoap_client:request(Client, 'POST', "coap://127.0.0.1/reflect", Payload, Options)
+            ecoap_client:post(Client, "coap://127.0.0.1/reflect", Payload, Options)
         end)
     ].
 

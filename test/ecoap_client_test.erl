@@ -5,6 +5,15 @@
 -include_lib("src/coap_content.hrl").
 
 basic_test_() ->
+    [{setup,
+        fun() ->
+            {ok, Pid} = ecoap_client:open(),
+            Pid
+        end,
+        fun(Pid) ->
+            ecoap_client:close(Pid)
+        end,
+        fun basic_sync/1},
     {setup,
         fun() ->
             {ok, Pid} = ecoap_client:open(),
@@ -13,22 +22,42 @@ basic_test_() ->
         fun(Pid) ->
             ecoap_client:close(Pid)
         end,
-        fun basic/1}.
+        fun basic_async/1}
+    ].
 
-basic(Pid) ->
+basic_sync(Pid) ->
 	[
         ?_assertEqual(ok, ecoap_client:ping(Pid, "coap://californium.eclipse.org:5683")),
-		?_assertEqual({ok, 'Content', #coap_content{payload= <<"world">>, options=#{'Content-Format' => <<"text/plain">>}}}, 
-			ecoap_client:request(Pid, 'GET', "coap://coap.me:5683/hello")),
-		?_assertEqual({error, 'InternalServerError', #coap_content{payload= <<"Oops: broken">>, options=#{'Content-Format' => <<"text/plain">>}}}, 
-			ecoap_client:request(Pid, 'GET', "coap://coap.me:5683/broken")),
-        ?_assertEqual({ok, 'Created', #coap_content{options=#{'Location-Path' => [<<"large-create">>]}}},
-            ecoap_client:request(Pid, 'POST', "coap://coap.me:5683/large-create", <<"Test">>)),
-        ?_assertEqual({ok, 'Changed', #coap_content{}}, 
-            ecoap_client:request(Pid, 'PUT', "coap://coap.me:5683/large-update", <<"Test">>)),
-        ?_assertEqual({ok, 'Deleted', #coap_content{payload= <<"DELETE OK">>, options=#{'Content-Format' => <<"text/plain">>}}}, 
-            ecoap_client:request(Pid, 'DELETE', "coap://coap.me:5683/sink"))
+		?_assertEqual({ok, {ok, 'Content'}, #coap_content{payload= <<"world">>, options=#{'Content-Format' => <<"text/plain">>}}}, 
+			ecoap_client:get(Pid, "coap://coap.me:5683/hello")),
+		?_assertEqual({ok, {error, 'InternalServerError'}, #coap_content{payload= <<"Oops: broken">>, options=#{'Content-Format' => <<"text/plain">>}}}, 
+			ecoap_client:get(Pid, "coap://coap.me:5683/broken")),
+        ?_assertEqual({ok, {ok, 'Created'}, #coap_content{options=#{'Location-Path' => [<<"large-create">>]}}},
+            ecoap_client:post(Pid, "coap://coap.me:5683/large-create", <<"Test">>)),
+        ?_assertEqual({ok, {ok, 'Changed'}, #coap_content{}}, 
+            ecoap_client:put(Pid, "coap://coap.me:5683/large-update", <<"Test">>)),
+        ?_assertEqual({ok, {ok, 'Deleted'}, #coap_content{payload= <<"DELETE OK">>, options=#{'Content-Format' => <<"text/plain">>}}}, 
+            ecoap_client:delete(Pid, "coap://coap.me:5683/sink"))
 	].
+
+basic_async(Pid) ->
+    [
+        ?_assertEqual({ok, {ok, 'Content'}, #coap_content{payload= <<"world">>, options=#{'Content-Format' => <<"text/plain">>}}},
+            await_response(Pid, ecoap_client:get_async(Pid, "coap://coap.me:5683/hello"))),
+        ?_assertEqual({ok, {error, 'InternalServerError'}, #coap_content{payload= <<"Oops: broken">>, options=#{'Content-Format' => <<"text/plain">>}}}, 
+            await_response(Pid, ecoap_client:get_async(Pid, "coap://coap.me:5683/broken"))),
+        ?_assertEqual({ok, {ok, 'Created'}, #coap_content{options=#{'Location-Path' => [<<"large-create">>]}}},
+            await_response(Pid, ecoap_client:post_async(Pid, "coap://coap.me:5683/large-create", <<"Test">>))),
+        ?_assertEqual({ok, {ok, 'Changed'}, #coap_content{}}, 
+            await_response(Pid, ecoap_client:put_async(Pid, "coap://coap.me:5683/large-update", <<"Test">>))),
+        ?_assertEqual({ok, {ok, 'Deleted'}, #coap_content{payload= <<"DELETE OK">>, options=#{'Content-Format' => <<"text/plain">>}}}, 
+            await_response(Pid, ecoap_client:delete_async(Pid, "coap://coap.me:5683/sink")))
+    ].
+
+await_response(Pid, {ok, Ref}) ->
+    receive
+        {coap_response, Ref, Pid, Response} -> Response
+    end.
 
 blockwise_test_() ->
     [
@@ -55,9 +84,9 @@ blockwise_test_() ->
     ].
 
 blockwise(Pid) ->
-    Response = ecoap_client:request(Pid, 'GET', "coap://californium.eclipse.org:5683/large"),
+    Response = ecoap_client:get(Pid, "coap://californium.eclipse.org:5683/large"),
     [
-        ?_assertMatch({ok, 'Content', _}, Response), 
+        ?_assertMatch({ok, {ok, 'Content'}, _}, Response), 
         ?_assertEqual(1280, begin {_, _, #coap_content{payload=Payload}} = Response, byte_size(Payload) end)
     ].
 

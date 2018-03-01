@@ -4,8 +4,8 @@
 %% API.
 -export([open/0, open/1, close/1]).
 -export([ping/2]).
--export([request/3, request/4, request/5, request/6]).
--export([request_async/3, request_async/4, request_async/5]).
+-export([get/2, get/3, get/4, put/3, put/4, put/5, post/3, post/4, post/5, delete/2, delete/3, delete/4]).
+-export([get_async/2, get_async/3, put_async/3, put_async/4, post_async/3, post_async/4, delete_async/2, delete_async/3]).
 -export([observe/2, observe/3, observe_and_wait_response/2, observe_and_wait_response/3]).
 -export([unobserve/2, unobserve/3, unobserve_and_wait_response/2, unobserve_and_wait_response/3]).
 -export([cancel_request/2]).
@@ -55,12 +55,11 @@
 -type observe_key() :: {ecoap_udp_socket:ecoap_endpoint_id(), [binary()], atom() | non_neg_integer()}.
 
 -type response() ::
-	{ok, coap_message:success_code(), coap_content:coap_content()} |
-	{error, coap_message:error_code(), coap_content:coap_content()} |
+	{ok, coap_message:success_code() | coap_message:error_code(), coap_content:coap_content()} |
 	{error, _}.
 
 -type observe_response() :: 
-	{ok, reference(), pid(), non_neg_integer(), {ok, coap_message:success_code(), coap_content:coap_content()}}.
+	{ok, reference(), pid(), non_neg_integer(), response()}.
 
 %% API.
 -spec open() -> {ok, pid()}.
@@ -82,29 +81,89 @@ ping(Pid, Uri) ->
 		Else -> Else
 	end.
 
--spec request(pid(), coap_message:coap_method(), string()) -> response().
-request(Pid, Method, Uri) ->
-	request(Pid, Method, Uri, <<>>, #{}, infinity).
+-spec get(pid(), string()) -> response().
+get(Pid, Uri) ->
+	request(Pid, 'GET', Uri, <<>>, #{}, infinity).
 
--spec request(pid(), coap_message:coap_method(), string(), binary()) -> response().
-request(Pid, Method, Uri, Content) -> 
-	request(Pid, Method, Uri, Content, #{}, infinity).
+-spec get(pid(), string(), coap_message:optionset()) -> response().
+get(Pid, Uri, Options) ->
+	request(Pid, 'GET', Uri, <<>>, Options, infinity).
 
--spec request(pid(), coap_message:coap_method(), string(), binary(), coap_message:optionset()) -> response().
-request(Pid, Method, Uri, Content, Options) ->
-	request(Pid, Method, Uri, Content, Options, infinity).
+-spec get(pid(), string(), coap_message:optionset(), non_neg_integer() | infinity) -> response().
+get(Pid, Uri, Options, Timeout) ->
+	request(Pid, 'GET', Uri, <<>>, Options, Timeout).
+
+-spec get_async(pid(), string()) -> {ok, reference()}.
+get_async(Pid, Uri) ->
+	request_async(Pid, 'GET', Uri, <<>>, #{}).
+
+-spec get_async(pid(), string(), coap_message:optionset()) -> {ok, reference()}.
+get_async(Pid, Uri, Options) ->
+	request_async(Pid, 'GET', Uri, <<>>, Options).
+
+-spec put(pid(), string(), binary()) -> response().
+put(Pid, Uri, Content) ->
+	request(Pid, 'PUT', Uri, Content, #{}, infinity).
+
+-spec put(pid(), string(), binary(), coap_message:optionset()) -> response().
+put(Pid, Uri, Content, Options) ->
+	request(Pid, 'PUT', Uri, Content, Options, infinity).
+
+-spec put(pid(), string(), binary(), coap_message:optionset(), non_neg_integer() | infinity) -> response().
+put(Pid, Uri, Content, Options, Timeout) ->
+	request(Pid, 'PUT', Uri, Content, Options, Timeout).
+
+-spec put_async(pid(), string(), binary()) -> {ok, reference()}.
+put_async(Pid, Uri, Content) ->
+	request_async(Pid, 'PUT', Uri, Content, #{}).
+
+-spec put_async(pid(), string(), binary(), coap_message:optionset()) -> {ok, reference()}.
+put_async(Pid, Uri, Content, Options) ->
+	request_async(Pid, 'PUT', Uri, Content, Options).
+
+-spec post(pid(), string(), binary()) -> response().
+post(Pid, Uri, Content) ->
+	request(Pid, 'POST', Uri, Content, #{}, infinity).
+
+-spec post(pid(), string(), binary(), coap_message:optionset()) -> response().
+post(Pid, Uri, Content, Options) ->
+	request(Pid, 'POST', Uri, Content, Options, infinity).
+
+-spec post(pid(), string(), binary(), coap_message:optionset(), non_neg_integer() | infinity) -> response().
+post(Pid, Uri, Content, Options, Timeout) ->
+	request(Pid, 'POST', Uri, Content, Options, Timeout).
+
+-spec post_async(pid(), string(), binary()) -> {ok, reference()}.
+post_async(Pid, Uri, Content) ->
+	request_async(Pid, 'POST', Uri, Content, #{}).
+
+-spec post_async(pid(), string(), binary(), coap_message:optionset()) -> {ok, reference()}.
+post_async(Pid, Uri, Content, Options) ->
+	request_async(Pid, 'POST', Uri, Content, Options).
+
+-spec delete(pid(), string()) -> response().
+delete(Pid, Uri) ->
+	request(Pid, 'DELETE', Uri, <<>>, #{}, infinity).
+
+-spec delete(pid(), string(), coap_message:optionset()) -> response().
+delete(Pid, Uri, Options) ->
+	request(Pid, 'DELETE', Uri, <<>>, Options, infinity).
+
+-spec delete(pid(), string(), coap_message:optionset(), non_neg_integer() | infinity) -> response().
+delete(Pid, Uri, Options, Timeout) ->
+	request(Pid, 'DELETE', Uri, <<>>, Options, Timeout).
+
+-spec delete_async(pid(), string()) -> {ok, reference()}.
+delete_async(Pid, Uri) ->
+	request_async(Pid, 'DELETE', Uri, <<>>, #{}).
+
+-spec delete_async(pid(), string(), coap_message:optionset()) -> {ok, reference()}.
+delete_async(Pid, Uri, Options) ->
+	request_async(Pid, 'DELETE', Uri, <<>>, Options).
 
 -spec request(pid(), coap_message:coap_method(), string(), binary(), coap_message:optionset(), non_neg_integer() | infinity) -> response().
 request(Pid, Method, Uri, Content, Options, Timeout) ->
 	gen_server:call(Pid, {request, sync, Method, Uri, Content, Options}, Timeout).
-
--spec request_async(pid(), coap_message:coap_method(), string()) -> {ok, reference()}.
-request_async(Pid, Method, Uri) ->
-	request_async(Pid, Method, Uri, <<>>, #{}).
-
--spec request_async(pid(), coap_message:coap_method(), string(), binary()) -> {ok, reference()}.
-request_async(Pid, Method, Uri, Content) ->
-	request_async(Pid, Method, Uri, Content, #{}).
 
 -spec request_async(pid(), coap_message:coap_method(), string(), binary(), coap_message:optionset()) -> {ok, reference()}.
 request_async(Pid, Method, Uri, Content, Options) ->
@@ -395,8 +454,7 @@ handle_download(EpID, EndpointPid, Ref, Request, Message,
             						request_mapping=RequestMapping3, observe_regs=ObsRegs2}};
         _Else ->
         	% not segmented or all blocks received
-			Response = return_response(coap_message:get_code(Message), 
-				coap_message:set_payload(<<Fragment/binary, Data/binary>>, Message)),
+			Response = return_response(coap_message:set_payload(<<Fragment/binary, Data/binary>>, Message)),
 			send_response(Request#request{observe_seq=ObsSeq}, Response),
 			% clean ongoing block2 transfer, if any
 			OngoingBlocks2 = maps:remove(BlockKey, OngoingBlocks),
@@ -425,7 +483,7 @@ handle_error(Ref, Request, Error,
 	#request{origin_ref=OriginRef, block_key=BlockKey, observe_key=ObsKey} = Request,
 	Response = case Error of 
 		{coap_error, Reason} -> {error, Reason};
-		{coap_response, Message} -> return_response(coap_message:get_code(Message), Message)
+		{coap_response, Message} -> return_response(Message)
 	end,
 	send_response(Request, Response),
 	RequestMapping2 = maps:remove(OriginRef, RequestMapping),
@@ -533,13 +591,7 @@ separate(Request=#request{reply_to={Pid, _}}) ->
 separate(Request=#request{}) ->
 	Request.
 
-return_response({ok, Code}, Message) ->
-    {ok, Code, coap_content:get_content(Message)};
-return_response({error, Code}, Message) ->
-	case coap_message:get_payload(Message) of
-		<<>> -> {error, Code};
-		_ -> {error, Code, coap_content:get_content(Message)}
-	end.
+return_response(Message) -> {ok, coap_message:get_code(Message), coap_content:get_content(Message)}.
 
 send_response(#request{reply_to=ReplyTo, origin_ref=Ref, observe_seq=undefined}, Response) when is_pid(ReplyTo) ->
 	ReplyTo ! {coap_response, Ref, self(), Response},
