@@ -17,7 +17,7 @@
 ERLANG_MK_FILENAME := $(realpath $(lastword $(MAKEFILE_LIST)))
 export ERLANG_MK_FILENAME
 
-ERLANG_MK_VERSION = 2017.08.28-1-gd9a9158
+ERLANG_MK_VERSION = 2017.08.28-8-g1e2ab25
 ERLANG_MK_WITHOUT = 
 
 # Make 3.81 and 3.82 are deprecated.
@@ -1518,6 +1518,14 @@ pkg_erwa_homepage = https://github.com/bwegh/erwa
 pkg_erwa_fetch = git
 pkg_erwa_repo = https://github.com/bwegh/erwa
 pkg_erwa_commit = master
+
+PACKAGES += escalus
+pkg_escalus_name = escalus
+pkg_escalus_description = An XMPP client library in Erlang for conveniently testing XMPP servers
+pkg_escalus_homepage = https://github.com/esl/escalus
+pkg_escalus_fetch = git
+pkg_escalus_repo = https://github.com/esl/escalus
+pkg_escalus_commit = master
 
 PACKAGES += espec
 pkg_espec_name = espec
@@ -3614,6 +3622,14 @@ pkg_stripe_homepage = https://github.com/mattsta/stripe-erlang
 pkg_stripe_fetch = git
 pkg_stripe_repo = https://github.com/mattsta/stripe-erlang
 pkg_stripe_commit = v1
+
+PACKAGES += subproc
+pkg_subproc_name = subproc
+pkg_subproc_description = unix subprocess manager with {active,once|false} modes
+pkg_subproc_homepage = http://dozzie.jarowit.net/trac/wiki/subproc
+pkg_subproc_fetch = git
+pkg_subproc_repo = https://github.com/dozzie/subproc
+pkg_subproc_commit = v0.1.0
 
 PACKAGES += supervisor3
 pkg_supervisor3_name = supervisor3
@@ -6448,7 +6464,7 @@ define eunit.erl
 	case "$(COVER)" of
 		"" -> ok;
 		_ ->
-			cover:export("eunit.coverdata")
+			cover:export("$(COVER_DATA_DIR)/eunit.coverdata")
 	end,
 	halt()
 endef
@@ -6457,10 +6473,10 @@ EUNIT_ERL_OPTS += -pa $(TEST_DIR) $(DEPS_DIR)/*/ebin $(APPS_DIR)/*/ebin $(CURDIR
 
 ifdef t
 ifeq (,$(findstring :,$(t)))
-eunit: test-build
+eunit: test-build cover-data-dir
 	$(gen_verbose) $(call erlang,$(call eunit.erl,['$(t)']),$(EUNIT_ERL_OPTS))
 else
-eunit: test-build
+eunit: test-build cover-data-dir
 	$(gen_verbose) $(call erlang,$(call eunit.erl,fun $(t)/0),$(EUNIT_ERL_OPTS))
 endif
 else
@@ -6470,7 +6486,7 @@ EUNIT_TEST_MODS = $(notdir $(basename $(call core_find,$(TEST_DIR)/,*.erl)))
 EUNIT_MODS = $(foreach mod,$(EUNIT_EBIN_MODS) $(filter-out \
 	$(patsubst %,%_tests,$(EUNIT_EBIN_MODS)),$(EUNIT_TEST_MODS)),'$(mod)')
 
-eunit: test-build $(if $(IS_APP),,apps-eunit)
+eunit: test-build $(if $(IS_APP),,apps-eunit) cover-data-dir
 	$(gen_verbose) $(call erlang,$(call eunit.erl,[$(call comma_list,$(EUNIT_MODS))]),$(EUNIT_ERL_OPTS))
 
 ifneq ($(ALL_APPS_DIRS),)
@@ -6761,23 +6777,20 @@ distclean-xref:
 # Copyright (c) 2015, Viktor Söderqvist <viktor@zuiderkwast.se>
 # This file is part of erlang.mk and subject to the terms of the ISC License.
 
-COVER_REPORT_DIR = cover
+COVER_REPORT_DIR ?= cover
+COVER_DATA_DIR ?= $(CURDIR)
 
 # Hook in coverage to ct
 
 ifdef COVER
 ifdef CT_RUN
 ifneq ($(wildcard $(TEST_DIR)),)
-# All modules in 'ebin'
-COVER_MODS = $(notdir $(basename $(call core_ls,ebin/*.beam)))
-
 test-build:: $(TEST_DIR)/ct.cover.spec
 
-$(TEST_DIR)/ct.cover.spec:
-	$(verbose) echo Cover mods: $(COVER_MODS)
+$(TEST_DIR)/ct.cover.spec: cover-data-dir
 	$(gen_verbose) printf "%s\n" \
-		'{incl_mods,[$(subst $(space),$(comma),$(COVER_MODS))]}.' \
-		'{export,"$(CURDIR)/ct.coverdata"}.' > $@
+		"{incl_app, '$(PROJECT)', details}." \
+		'{export,"$(abspath $(COVER_DATA_DIR))/ct.coverdata"}.' > $@
 
 CT_RUN += -cover $(TEST_DIR)/ct.cover.spec
 endif
@@ -6791,6 +6804,13 @@ ifneq ($(COVER_REPORT_DIR),)
 tests::
 	$(verbose) $(MAKE) --no-print-directory cover-report
 endif
+
+cover-data-dir: | $(COVER_DATA_DIR)
+
+$(COVER_DATA_DIR):
+	$(verbose) mkdir -p $(COVER_DATA_DIR)
+else
+cover-data-dir:
 endif
 
 clean:: coverdata-clean
@@ -6813,19 +6833,19 @@ help::
 
 # Plugin specific targets
 
-COVERDATA = $(filter-out all.coverdata,$(wildcard *.coverdata))
+COVERDATA = $(filter-out $(COVER_DATA_DIR)/all.coverdata,$(wildcard $(COVER_DATA_DIR)/*.coverdata))
 
 .PHONY: coverdata-clean
 coverdata-clean:
-	$(gen_verbose) rm -f *.coverdata $(TEST_DIR)/ct.cover.spec
+	$(gen_verbose) rm -f $(COVER_DATA_DIR)/*.coverdata $(TEST_DIR)/ct.cover.spec
 
 # Merge all coverdata files into one.
 define cover_export.erl
 	$(foreach f,$(COVERDATA),cover:import("$(f)") == ok orelse halt(1),)
-	cover:export("$@"), halt(0).
+	cover:export("$(COVER_DATA_DIR)/$@"), halt(0).
 endef
 
-all.coverdata: $(COVERDATA)
+all.coverdata: $(COVERDATA) cover-data-dir
 	$(gen_verbose) $(call erlang,$(cover_export.erl))
 
 # These are only defined if COVER_REPORT_DIR is non-empty. Set COVER_REPORT_DIR to
@@ -6836,6 +6856,7 @@ ifneq ($(COVER_REPORT_DIR),)
 
 cover-report-clean:
 	$(gen_verbose) rm -rf $(COVER_REPORT_DIR)
+	$(if $(shell ls -A $(COVER_DATA_DIR)/),,$(verbose) rmdir $(COVER_DATA_DIR))
 
 ifeq ($(COVERDATA),)
 cover-report:

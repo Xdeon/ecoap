@@ -17,7 +17,7 @@
 }).
 
 -define(HANDLER_TAB, ?MODULE).
--include_lib("ecoap_common/include/coap_def.hrl").
+-include("ecoap.hrl").
 
 %% API.
 
@@ -25,7 +25,7 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-% -spec register_handler([{[binary(), module(), _]}]) -> ok.
+-spec register_handler([{[binary()], module()}]) -> ok.
 register_handler(Regs) when is_list(Regs) -> 
     gen_server:call(?MODULE, {register, Regs}).
 
@@ -38,7 +38,7 @@ get_links() ->
     lists:usort(get_links(ets:tab2list(?HANDLER_TAB))).
     % lists:usort(get_links(?HANDLER_TAB)).
 
--spec match_handler([binary()]) -> {[binary()], module(), _} | undefined.
+-spec match_handler([binary()]) -> {[binary()], module()} | undefined.
 match_handler(Uri) -> match_handler(Uri, ?HANDLER_TAB).
 
 -spec clear_registry() -> true.
@@ -66,30 +66,27 @@ match(Tab, Key, Default) ->
 
 get_links(Reg) ->
     lists:foldl(
-        fun({Prefix, Module, Args}, Acc) -> get_links(Prefix, Module, Args) ++ Acc end,
+        fun({Prefix, Module}, Acc) -> get_links(Prefix, Module) ++ Acc end,
         [], Reg).
 
-get_links(Prefix, Module, Args) ->
-    case catch {ok, apply(Module, coap_discover, [Prefix, Args])} of
-        % for each pattern ask the handler to provide a list of resources
-        {'EXIT', _} -> [];
-        {ok, Response} -> Response
-    end.
+get_links(Prefix, Module) ->
+    % for each pattern ask the handler to provide a list of resources
+    ecoap_handler:coap_discover(Module, Prefix).
 
 %% gen_server.
 init([]) ->
-    % _ = ets:new(?HANDLER_TAB, [set, named_table, protected]),
-    ets:insert(?HANDLER_TAB, {[<<".well-known">>, <<"core">>], resource_directory, undefined}),
+    spawn(fun() -> ecoap_registry:register_handler([{[<<".well-known">>, <<"core">>], resource_directory}]) end),
     {ok, #state{}}.
 
 handle_call({register, Reg}, _From, State) ->
+    load_handlers(Reg),
     ets:insert(?HANDLER_TAB, Reg),
     {reply, ok, State};    
 handle_call({unregister, Prefix}, _From, State) ->
     ets:delete(?HANDLER_TAB, Prefix),
     {reply, ok, State};
 handle_call(_Request, _From, State) ->
-    {reply, ignored, State}.
+    {noreply, State}.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -102,6 +99,15 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+% in case the system is not run as release, we should manually load all module files
+load_handlers(Reg) ->
+    lists:foreach(fun({_, Module}) -> 
+        case code:ensure_loaded(Module) of
+            {module, Module} -> ok;
+            {error, embedded} -> ok;
+            {error, Error} -> error_logger:error_msg("handler module ~p load fail: ~p~n", [Module, Error])
+        end end, Reg).
 
 -ifdef(TEST).
 

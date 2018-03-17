@@ -7,11 +7,8 @@
 -include("ecoap.hrl").
 
 start(_Type, _Args) ->
-	InPort = case application:get_env(port) of
-				undefined -> ?DEFAULT_COAP_PORT;
-				{ok, Port} -> Port
-			 end,
-	{ok, Opts} = application:get_env(socket_opts),
+	InPort = application:get_env(ecoap, port, ?DEFAULT_COAP_PORT),
+	Opts = application:get_env(ecoap, socket_opts, []),
 	ecoap_sup:start_link(InPort, Opts).
 
 stop(_State) ->

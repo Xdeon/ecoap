@@ -206,8 +206,8 @@
 <title>maps:'-filter/2-lc$^0/1-0-'/2 (20,414 samples, 0.12%)</title><rect x="111.3" y="97" width="1.4" height="15.0" fill="rgb(233,118,46)" rx="2" ry="2" />
 <text text-anchor="" x="114.33" y="107.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
-<g class="func_g" onmouseover="s('ecoap_utils:ack/1 (4,055 samples, 0.02%)')" onmouseout="c()" onclick="zoom(this)">
-<title>ecoap_utils:ack/1 (4,055 samples, 0.02%)</title><rect x="10.3" y="113" width="0.2" height="15.0" fill="rgb(212,136,19)" rx="2" ry="2" />
+<g class="func_g" onmouseover="s('ecoap_uri:ack/1 (4,055 samples, 0.02%)')" onmouseout="c()" onclick="zoom(this)">
+<title>ecoap_uri:ack/1 (4,055 samples, 0.02%)</title><rect x="10.3" y="113" width="0.2" height="15.0" fill="rgb(212,136,19)" rx="2" ry="2" />
 <text text-anchor="" x="13.27" y="123.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
 <g class="func_g" onmouseover="s('prim_inet:sendto/4 (31,642 samples, 0.18%)')" onmouseout="c()" onclick="zoom(this)">
@@ -294,8 +294,8 @@
 <title>SLEEP (15,930,335 samples, 90.95%)</title><rect x="116.4" y="97" width="1073.2" height="15.0" fill="rgb(123,123,240)" rx="2" ry="2" />
 <text text-anchor="" x="119.44" y="107.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >SLEEP</text>
 </g>
-<g class="func_g" onmouseover="s('ecoap_utils:get_option/3 (1,553 samples, 0.01%)')" onmouseout="c()" onclick="zoom(this)">
-<title>ecoap_utils:get_option/3 (1,553 samples, 0.01%)</title><rect x="10.8" y="97" width="0.1" height="15.0" fill="rgb(217,7,28)" rx="2" ry="2" />
+<g class="func_g" onmouseover="s('ecoap_uri:get_option/3 (1,553 samples, 0.01%)')" onmouseout="c()" onclick="zoom(this)">
+<title>ecoap_uri:get_option/3 (1,553 samples, 0.01%)</title><rect x="10.8" y="97" width="0.1" height="15.0" fill="rgb(217,7,28)" rx="2" ry="2" />
 <text text-anchor="" x="13.76" y="107.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
 <g class="func_g" onmouseover="s('ecoap_exchange:not_expired/1 (20,771 samples, 0.12%)')" onmouseout="c()" onclick="zoom(this)">

@@ -10142,8 +10142,8 @@
 <title>ecoap_exchange:handle_request/3 (44,997 samples, 0.01%)</title><rect x="1165.9" y="81" width="0.1" height="15.0" fill="rgb(231,127,12)" rx="2" ry="2" />
 <text text-anchor="" x="1168.92" y="91.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
-<g class="func_g" onmouseover="s('ecoap_utils:get_option/3 (59,309 samples, 0.01%)')" onmouseout="c()" onclick="zoom(this)">
-<title>ecoap_utils:get_option/3 (59,309 samples, 0.01%)</title><rect x="1168.6" y="81" width="0.1" height="15.0" fill="rgb(252,171,18)" rx="2" ry="2" />
+<g class="func_g" onmouseover="s('ecoap_uri:get_option/3 (59,309 samples, 0.01%)')" onmouseout="c()" onclick="zoom(this)">
+<title>ecoap_uri:get_option/3 (59,309 samples, 0.01%)</title><rect x="1168.6" y="81" width="0.1" height="15.0" fill="rgb(252,171,18)" rx="2" ry="2" />
 <text text-anchor="" x="1171.59" y="91.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
 <g class="func_g" onmouseover="s('ecoap_exchange:in_con/3 (111,516 samples, 0.02%)')" onmouseout="c()" onclick="zoom(this)">
@@ -11190,8 +11190,8 @@
 <title>gen_server:try_dispatch/4 (378,069 samples, 0.08%)</title><rect x="462.2" y="129" width="0.9" height="15.0" fill="rgb(216,225,26)" rx="2" ry="2" />
 <text text-anchor="" x="465.17" y="139.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
-<g class="func_g" onmouseover="s('ecoap_utils:ack/1 (60,756 samples, 0.01%)')" onmouseout="c()" onclick="zoom(this)">
-<title>ecoap_utils:ack/1 (60,756 samples, 0.01%)</title><rect x="1130.2" y="97" width="0.1" height="15.0" fill="rgb(219,16,8)" rx="2" ry="2" />
+<g class="func_g" onmouseover="s('ecoap_uri:ack/1 (60,756 samples, 0.01%)')" onmouseout="c()" onclick="zoom(this)">
+<title>ecoap_uri:ack/1 (60,756 samples, 0.01%)</title><rect x="1130.2" y="97" width="0.1" height="15.0" fill="rgb(219,16,8)" rx="2" ry="2" />
 <text text-anchor="" x="1133.19" y="107.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
 <g class="func_g" onmouseover="s('ecoap_endpoint:make_new_response/3 (123,594 samples, 0.02%)')" onmouseout="c()" onclick="zoom(this)">
@@ -18938,8 +18938,8 @@
 <title>ecoap_endpoint:handle_info/2 (188,156 samples, 0.04%)</title><rect x="729.6" y="113" width="0.4" height="15.0" fill="rgb(207,207,8)" rx="2" ry="2" />
 <text text-anchor="" x="732.56" y="123.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
-<g class="func_g" onmouseover="s('ecoap_utils:get_option/3 (47,698 samples, 0.01%)')" onmouseout="c()" onclick="zoom(this)">
-<title>ecoap_utils:get_option/3 (47,698 samples, 0.01%)</title><rect x="934.3" y="81" width="0.1" height="15.0" fill="rgb(207,164,40)" rx="2" ry="2" />
+<g class="func_g" onmouseover="s('ecoap_uri:get_option/3 (47,698 samples, 0.01%)')" onmouseout="c()" onclick="zoom(this)">
+<title>ecoap_uri:get_option/3 (47,698 samples, 0.01%)</title><rect x="934.3" y="81" width="0.1" height="15.0" fill="rgb(207,164,40)" rx="2" ry="2" />
 <text text-anchor="" x="937.26" y="91.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
 <g class="func_g" onmouseover="s('(0.1982.0) (408,561 samples, 0.08%)')" onmouseout="c()" onclick="zoom(this)">
@@ -25954,8 +25954,8 @@
 <title>ecoap_exchange:in_con/3 (110,757 samples, 0.02%)</title><rect x="103.9" y="97" width="0.3" height="15.0" fill="rgb(225,152,22)" rx="2" ry="2" />
 <text text-anchor="" x="106.90" y="107.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
-<g class="func_g" onmouseover="s('ecoap_utils:get_option/3 (47,389 samples, 0.01%)')" onmouseout="c()" onclick="zoom(this)">
-<title>ecoap_utils:get_option/3 (47,389 samples, 0.01%)</title><rect x="508.8" y="81" width="0.1" height="15.0" fill="rgb(232,150,2)" rx="2" ry="2" />
+<g class="func_g" onmouseover="s('ecoap_uri:get_option/3 (47,389 samples, 0.01%)')" onmouseout="c()" onclick="zoom(this)">
+<title>ecoap_uri:get_option/3 (47,389 samples, 0.01%)</title><rect x="508.8" y="81" width="0.1" height="15.0" fill="rgb(232,150,2)" rx="2" ry="2" />
 <text text-anchor="" x="511.78" y="91.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
 <g class="func_g" onmouseover="s('ecoap_exchange:handle_request/3 (84,064 samples, 0.02%)')" onmouseout="c()" onclick="zoom(this)">
@@ -26022,8 +26022,8 @@
 <title>ecoap_exchange:handle_request/3 (49,081 samples, 0.01%)</title><rect x="584.5" y="81" width="0.1" height="15.0" fill="rgb(225,22,29)" rx="2" ry="2" />
 <text text-anchor="" x="587.46" y="91.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
-<g class="func_g" onmouseover="s('ecoap_utils:get_option/3 (103,912 samples, 0.02%)')" onmouseout="c()" onclick="zoom(this)">
-<title>ecoap_utils:get_option/3 (103,912 samples, 0.02%)</title><rect x="1130.4" y="81" width="0.2" height="15.0" fill="rgb(224,75,33)" rx="2" ry="2" />
+<g class="func_g" onmouseover="s('ecoap_uri:get_option/3 (103,912 samples, 0.02%)')" onmouseout="c()" onclick="zoom(this)">
+<title>ecoap_uri:get_option/3 (103,912 samples, 0.02%)</title><rect x="1130.4" y="81" width="0.2" height="15.0" fill="rgb(224,75,33)" rx="2" ry="2" />
 <text text-anchor="" x="1133.39" y="91.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
 <g class="func_g" onmouseover="s('gen_server:try_dispatch/4 (330,934 samples, 0.07%)')" onmouseout="c()" onclick="zoom(this)">
@@ -28686,8 +28686,8 @@
 <title>ecoap_endpoint:handle_info/2 (170,673 samples, 0.03%)</title><rect x="861.0" y="113" width="0.4" height="15.0" fill="rgb(238,71,26)" rx="2" ry="2" />
 <text text-anchor="" x="863.99" y="123.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
-<g class="func_g" onmouseover="s('ecoap_utils:get_option/3 (42,258 samples, 0.01%)')" onmouseout="c()" onclick="zoom(this)">
-<title>ecoap_utils:get_option/3 (42,258 samples, 0.01%)</title><rect x="169.4" y="81" width="0.1" height="15.0" fill="rgb(220,228,3)" rx="2" ry="2" />
+<g class="func_g" onmouseover="s('ecoap_uri:get_option/3 (42,258 samples, 0.01%)')" onmouseout="c()" onclick="zoom(this)">
+<title>ecoap_uri:get_option/3 (42,258 samples, 0.01%)</title><rect x="169.4" y="81" width="0.1" height="15.0" fill="rgb(220,228,3)" rx="2" ry="2" />
 <text text-anchor="" x="172.36" y="91.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
 <g class="func_g" onmouseover="s('ecoap_exchange:handle_request/3 (48,483 samples, 0.01%)')" onmouseout="c()" onclick="zoom(this)">
@@ -31098,8 +31098,8 @@
 <title>ecoap_endpoint:make_new_response/3 (102,452 samples, 0.02%)</title><rect x="125.6" y="113" width="0.2" height="15.0" fill="rgb(231,186,14)" rx="2" ry="2" />
 <text text-anchor="" x="128.56" y="123.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
-<g class="func_g" onmouseover="s('ecoap_utils:get_option/3 (57,086 samples, 0.01%)')" onmouseout="c()" onclick="zoom(this)">
-<title>ecoap_utils:get_option/3 (57,086 samples, 0.01%)</title><rect x="443.9" y="81" width="0.1" height="15.0" fill="rgb(236,41,34)" rx="2" ry="2" />
+<g class="func_g" onmouseover="s('ecoap_uri:get_option/3 (57,086 samples, 0.01%)')" onmouseout="c()" onclick="zoom(this)">
+<title>ecoap_uri:get_option/3 (57,086 samples, 0.01%)</title><rect x="443.9" y="81" width="0.1" height="15.0" fill="rgb(236,41,34)" rx="2" ry="2" />
 <text text-anchor="" x="446.85" y="91.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
 </g>
 <g class="func_g" onmouseover="s('proc_lib:init_p_do_apply/3 (468,585 samples, 0.09%)')" onmouseout="c()" onclick="zoom(this)">

@@ -2,13 +2,13 @@ PROJECT = ecoap
 PROJECT_DESCRIPTION = An Erlang CoAP client/server
 PROJECT_VERSION = 0.0.1
 PROJECT_REGISTERED = ecoap_udp_socket ecoap_registry
-PROJECT_ENV = [{port, 5683}, {socket_opts, [{recbuf, 1048576}, {sndbuf, 1048576}]}]
+# PROJECT_ENV = [{port, 5683}, {socket_opts, [{recbuf, 1048576}, {sndbuf, 1048576}]}]
 
-LOCAL_DEPS = crypto
-DEPS = ecoap_common
-dep_ecoap_common = git https://Xdeon@bitbucket.org/Xdeon/ecoap_common.git dev
+LOCAL_DEPS = crypto inets
+# DEPS = ecoap_common
+# dep_ecoap_common = git https://Xdeon@bitbucket.org/Xdeon/ecoap_common.git eliminate_cross_module_record
 
-COMPILE_FIRST = coap_resource
+COMPILE_FIRST = ecoap_handler
 
 include erlang.mk
 
@@ -20,4 +20,4 @@ ERLC_OPTS += +report +verbose +warn_deprecated_function +warn_deprecated_type +w
 
 # ERLC_OPTS += -DNODEDUP
 
-# SHELL_OPTS = +K true +spp true +sbt s
+SHELL_OPTS = +K true +spp true -kernel start_pg2 true

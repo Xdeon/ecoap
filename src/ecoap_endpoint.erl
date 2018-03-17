@@ -4,7 +4,7 @@
 %% API.
 -export([start_link/4, start_link/3,
         ping/1, send/2, send_message/3, send_request/3, send_response/3, cancel_request/2]).
--export([generate_token/0, generate_token/1]).
+-export([monitor_handler/2, register_handler/3]).
 -export([check_alive/1]).
 
 %% gen_server.
@@ -16,22 +16,21 @@
 -export([code_change/3]).
 
 -define(VERSION, 1).
--define(MAX_MESSAGE_ID, 65535). % 16-bit number
+
 -define(SCAN_INTERVAL, 10000). % scan every 10s
--define(TOKEN_LENGTH, 4). % shall be at least 32 random bits
 
 -record(state, {
     trans_args = undefined :: trans_args(),
 	tokens = #{} :: #{binary() => receiver()},
 	trans = #{} :: #{trid() => ecoap_exchange:exchange()},
     receivers = #{} :: #{receiver() => {binary(), trid()}},
-	nextmid = undefined :: msg_id(),
-	rescnt = undefined :: non_neg_integer(),
-    handler_refs = undefined :: undefined | #{reference() => tuple()},
+	nextmid = undefined :: coap_message:msg_id(),
+	rescnt = 0 :: non_neg_integer(),
+    handler_refs = #{} ::  #{pid() => tuple() | undefined},
     timer = undefined :: endpoint_timer:timer_state()
 }).
 
--type trid() :: {in | out, msg_id()}.
+-type trid() :: {in | out, coap_message:msg_id()}.
 -type receiver() :: {pid(), reference()}.
 -type trans_args() :: #{sock := inet:socket(),
                         sock_module := module(), 
@@ -47,7 +46,8 @@
 -export_type([receiver/0]).
 -export_type([trans_args/0]).
 
--include_lib("ecoap_common/include/coap_def.hrl").
+-include("ecoap.hrl").
+-include("coap_message.hrl").
 
 %% API.
 -spec start_link(pid(), module(), inet:socket(), ecoap_udp_socket:ecoap_endpoint_id()) -> {ok, pid()}.
@@ -60,31 +60,30 @@ start_link(SocketModule, Socket, EpID) ->
 
 -spec ping(pid()) -> {ok, reference()}.
 ping(EndpointPid) ->
-    send_message(EndpointPid, make_ref(), #coap_message{type='CON'}).
+    send_message(EndpointPid, make_ref(), #coap_message{type='CON', id=0}).
 
--spec send(pid(), coap_message()) -> {ok, reference()}.
+-spec send(pid(), coap_message:coap_message()) -> {ok, reference()}.
 send(EndpointPid, Message=#coap_message{type=Type, code=Code}) when is_tuple(Code); Type=='ACK'; Type=='RST' ->
     send_response(EndpointPid, make_ref(), Message);
 send(EndpointPid, Message=#coap_message{}) ->
     send_request(EndpointPid, make_ref(), Message).
 
--spec send_request(pid(), Ref, coap_message()) -> {ok, Ref}.
-% when no token is assigned then generate one
+-spec send_request(pid(), Ref, coap_message:coap_message()) -> {ok, Ref}.
 send_request(EndpointPid, Ref, Message=#coap_message{token= <<>>}) ->
-    Token = generate_token(), 
-    gen_server:cast(EndpointPid, {send_request, Message#coap_message{token=Token}, {self(), Ref}}),
+    % when no token is assigned then generate one
+    gen_server:cast(EndpointPid, {send_request, Message#coap_message{token=ecoap_message_token:generate_token()}, {self(), Ref}}),
     {ok, Ref};
-% use user defined token
 send_request(EndpointPid, Ref, Message) ->
+    % use user defined token
     gen_server:cast(EndpointPid, {send_request, Message, {self(), Ref}}),
     {ok, Ref}.
 
--spec send_message(pid(), Ref, coap_message()) -> {ok, Ref}.
+-spec send_message(pid(), Ref, coap_message:coap_message()) -> {ok, Ref}.
 send_message(EndpointPid, Ref, Message) ->
     gen_server:cast(EndpointPid, {send_message, Message, {self(), Ref}}),
     {ok, Ref}.
 
--spec send_response(pid(), Ref, coap_message()) -> {ok, Ref}.
+-spec send_response(pid(), Ref, coap_message:coap_message()) -> {ok, Ref}.
 send_response(EndpointPid, Ref, Message) ->
     gen_server:cast(EndpointPid, {send_response, Message, {self(), Ref}}),
     {ok, Ref}.
@@ -93,23 +92,15 @@ send_response(EndpointPid, Ref, Message) ->
 cancel_request(EndpointPid, Ref) ->
     gen_server:cast(EndpointPid, {cancel_request, {self(), Ref}}).
 
-% this function is only used by ecoap_client to ensure the liveness of ecoap_endpoint process
--spec check_alive(pid()) -> boolean().
+monitor_handler(EndpointPid, Pid) ->
+    EndpointPid ! {handler_started, Pid}, ok.
+
+register_handler(EndpointPid, ID, Pid) ->
+    EndpointPid ! {register_handler, ID, Pid}, ok.
+
+% used by client to ensure aliveness of an ecoap_endpoint process
 check_alive(EndpointPid) ->
-    try gen_server:call(EndpointPid, check_alive) of
-        ok -> true
-    catch 
-        exit:{noproc, _} -> false;
-        % we crash for other exit including timeout
-        _:R -> exit(R)
-    end.
-
--spec generate_token() -> binary().
-generate_token() -> generate_token(?TOKEN_LENGTH).
-
--spec generate_token(non_neg_integer()) -> binary().
-generate_token(TKL) ->
-    crypto:strong_rand_bytes(TKL).
+    gen_server:call(EndpointPid, check_alive).
 
 %% gen_server.
 
@@ -119,11 +110,12 @@ init([undefined, SocketModule, Socket, EpID]) ->
     process_flag(trap_exit, true),
     TransArgs = #{sock=>Socket, sock_module=>SocketModule, ep_id=>EpID, endpoint_pid=>self()},
     Timer = endpoint_timer:start_timer(?SCAN_INTERVAL, start_scan),
-    {ok, #state{nextmid=first_mid(), rescnt=0, timer=Timer, trans_args=TransArgs}};
+    {ok, #state{nextmid=ecoap_message_id:first_mid(), timer=Timer, trans_args=TransArgs}};
 
 % server 
 init([SupPid, SocketModule, Socket, EpID]) ->
     ok = proc_lib:init_ack({ok, self()}),
+    process_flag(trap_exit, true),
     {ok, HdlSupPid} = supervisor:start_child(SupPid, 
         #{id => ecoap_handler_sup,
           start => {ecoap_handler_sup, start_link, []},
@@ -133,7 +125,7 @@ init([SupPid, SocketModule, Socket, EpID]) ->
           modules => [ecoap_handler_sup]}),
     TransArgs = #{sock=>Socket, sock_module=>SocketModule, ep_id=>EpID, endpoint_pid=>self(), handler_sup=>HdlSupPid, handler_regs=>#{}},
     Timer = endpoint_timer:start_timer(?SCAN_INTERVAL, start_scan),
-    gen_server:enter_loop(?MODULE, [], #state{nextmid=first_mid(), rescnt=0, timer=Timer, trans_args=TransArgs, handler_refs=#{}}).
+    gen_server:enter_loop(?MODULE, [], #state{nextmid=ecoap_message_id:first_mid(), timer=Timer, trans_args=TransArgs}).
 
 handle_call(check_alive, _From, State=#state{timer=Timer}) ->
     {reply, ok, State#state{timer=endpoint_timer:kick_timer(Timer)}};
@@ -205,7 +197,7 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgI
                         ecoap_exchange:received(BinMessage, TransArgs, init_exchange(TrId, Receiver)));
                 error ->
                     % token was not recognized
-                    BinRST = coap_message:encode(ecoap_utils:rst(MsgId)),
+                    BinRST = coap_message:encode(ecoap_request:rst(MsgId)),
                     %io:fwrite("<- reset~n"),
                     ok = SocketModule:send_datagram(Socket, EpID, BinRST),
                     {noreply, State}
@@ -241,11 +233,8 @@ handle_info({datagram, <<Ver:2, _/bytes>>}, State) when Ver /= ?VERSION ->
     % %io:format("unknown CoAP version~n"),
     {noreply, State};
 
-handle_info(start_scan, State=#state{trans=Trans}) ->
-    CurrentTime = erlang:monotonic_time(),
-    Trans2 = maps:filter(fun(_TrId, TrState) -> ecoap_exchange:not_expired(CurrentTime, TrState) end, Trans),
-    % io:format("scanning~n"),
-    purge_state(State#state{trans=Trans2});
+handle_info(start_scan, State) ->
+    scan_state(State);
 
 handle_info({timeout, TrId, Event}, State=#state{trans=Trans, trans_args=TransArgs}) ->
     case maps:find(TrId, Trans) of
@@ -258,9 +247,13 @@ handle_info({request_complete, Receiver}, State=#state{tokens=Tokens, receivers=
     {Token, _} = maps:get(Receiver, Receivers, {undefined, undefined}),
     {noreply, State#state{tokens=maps:remove(Token, Tokens), receivers=maps:remove(Receiver, Receivers)}};
 
-% Only monitor possible observe handlers instead of every new spawned handler
-% so that we can save some extra message traffic
-handle_info({register_handler, ID, Pid}, State=#state{rescnt=Count, trans_args=TransArgs=#{handler_regs:=Regs}, handler_refs=Refs}) ->
+handle_info({handler_started, Pid}, State=#state{rescnt=Count, handler_refs=Refs}) ->
+    erlang:monitor(process, Pid),
+    {noreply, State#state{rescnt=Count+1, handler_refs=maps:put(Pid, undefined, Refs)}};
+
+% Only record pid of possible observe/blockwise handlers instead of every new spawned handler
+% so that we have better parallelism
+handle_info({register_handler, ID, Pid}, State=#state{trans_args=TransArgs=#{handler_regs:=Regs}, handler_refs=Refs}) ->
     case maps:find(ID, Regs) of
         {ok, Pid} -> 
             % handler already registered
@@ -271,18 +264,33 @@ handle_info({register_handler, ID, Pid}, State=#state{rescnt=Count, trans_args=T
             {noreply, State};
         error ->
             % io:format("register_ecoap_handler ~p for ~p~n", [Pid, ID]),
-            Ref = erlang:monitor(process, Pid),
-            {noreply, State#state{rescnt=Count+1, trans_args=TransArgs#{handler_regs:=maps:put(ID, Pid, Regs)}, handler_refs=maps:put(Ref, ID, Refs)}}
+            {noreply, State#state{trans_args=TransArgs#{handler_regs:=maps:put(ID, Pid, Regs)}, handler_refs=maps:update(Pid, ID, Refs)}}
     end;
 
-handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{rescnt=Count, trans_args=TransArgs=#{handler_regs:=Regs}, handler_refs=Refs}) ->
-    case maps:find(Ref, Refs) of
+handle_info({'DOWN', _Ref, process, Pid, _Reason}, State=#state{rescnt=Count, trans_args=TransArgs=#{handler_regs:=Regs}, handler_refs=Refs}) ->
+    case maps:find(Pid, Refs) of
+        {ok, undefined} ->
+            {noreply, State#state{rescnt=Count-1, handler_refs=maps:remove(Pid, Refs)}};
         {ok, ID} -> 
-            % io:format("ecoap_handler_completed~n"),
-            {noreply, State#state{rescnt=Count-1, trans_args=TransArgs#{handler_regs:=maps:remove(ID, Regs)}, handler_refs=maps:remove(Ref, Refs)}};
+            {noreply, State#state{rescnt=Count-1, trans_args=TransArgs#{handler_regs:=maps:remove(ID, Regs)}, handler_refs=maps:remove(Pid, Refs)}};
         error -> 
             {noreply, State}
     end;
+
+handle_info({'EXIT', Pid, _Reason}, State=#state{receivers=Receivers, tokens=Tokens, trans=Trans}) ->
+    % if this exit signal comes from an embedded client which shares the same socket process with the sever
+    % we should ensure all requests the client issued that have not been completed yet are cancelled
+    {Receivers2, Tokens2, Trans2} =  
+        maps:fold(fun(Receiver={ClientPid, _}, {Token, TrId}, {AccReceivers, AccTokens, AccTrans}) when ClientPid =:= Pid -> 
+                {maps:remove(Receiver, AccReceivers), 
+                 maps:remove(Token, AccTokens), 
+                 case maps:find(TrId, AccTrans) of 
+                    {ok, TrState} -> maps:update(TrId, ecoap_exchange:cancel_msg(TrState), AccTrans); 
+                    error -> AccTrans 
+                 end};
+                (_, _, Acc) -> Acc 
+            end, {Receivers, Tokens, Trans}, Receivers),
+    {noreply, State#state{tokens=Tokens2, trans=Trans2, receivers=Receivers2}};
     
 handle_info(_Info, State) ->
     error_logger:error_msg("unexpected info ~p received by ~p as ~p~n", [_Info, self(), ?MODULE]),
@@ -331,57 +339,46 @@ make_new_request(Message=#coap_message{token=Token}, Receiver, State=#state{toke
     make_new_message(Message, Receiver, State#state{tokens=Tokens2, receivers=Receivers2}).
 
 make_new_message(Message, Receiver, State=#state{nextmid=MsgId}) ->
-    make_message({out, MsgId}, Message#coap_message{id=MsgId}, Receiver, State#state{nextmid=next_mid(MsgId)}).
+    make_message({out, MsgId}, Message#coap_message{id=MsgId}, Receiver, State#state{nextmid=ecoap_message_id:next_mid(MsgId)}).
 
 make_message(TrId, Message, Receiver, State=#state{trans_args=TransArgs}) ->
     update_state(State, TrId,
         ecoap_exchange:send(Message, TransArgs, init_exchange(TrId, Receiver))).
 
+% TODO: decide whether to send a CON notification considering other notifications may be in transit
+%       and how to keep the retransimit counter for a newer notification when the former one timed out
 make_new_response(Message=#coap_message{id=MsgId}, Receiver, State=#state{trans=Trans, trans_args=TransArgs}) ->
     % io:format("The response: ~p~n", [Message]),
-    case maps:find({in, MsgId}, Trans) of
+    TrId = {in, MsgId},
+    case maps:find(TrId, Trans) of
         {ok, TrState} ->
+            % io:format("find TrState of ~p~n", [TrId]),
             % coap_transport:awaits_response is used to 
             % check if we are in the case that
             % we received a CON request, have its state stored, but did not send its ACK yet
             case ecoap_exchange:awaits_response(TrState) of
                 true ->
-                % we are about to send ACK by calling coap_exchange:send, we make the state change to pack_sent
-                    update_state(State, {in, MsgId},
+                    % io:format("~p is awaits_response~n", [TrId]),
+                    % request is found in store and is in awaits_response state
+                    % we are about to send ACK by calling coap_exchange:send, we make the state change to pack_sent
+                    update_state(State, TrId,
                         ecoap_exchange:send(Message, TransArgs, TrState));
                 false ->
-                    % send separate response or observe notification
-                    % TODO: decide whether to send a CON notification considering other notifications may be in transit
-                    %       and how to keep the retransimit counter for a newer notification when the former one timed out
+                    % io:format("~p is not awaits_response~n", [TrId]),
+                    % request is found in store but not in awaits_response state
+                    % which means we are in one of the three following cases
+                    % 1. we are going to send a NON response whose original NON request has not expired yet
+                    % 2. ... send a separate response whose original request has been empty acked and not expired yet
+                    % 3. ... send an observe notification whose original request has been responded and not expired yet
                     make_new_message(Message, Receiver, State)
             end;
         error ->
-            % send NON response
+            % io:format("did not find TrState of ~p~n", [TrId]),
+            % no TrState is found, which implies the original request has expired
+            % 1. we are going to send a NON response whose original NON request has expired
+            % 2. ... send a separate response whose original request has been empty acked and expired
+            % 3. ... send an observe notification whose original request has been responded and expired
             make_new_message(Message, Receiver, State)
-    end.
-
-first_mid() ->
-    _ = rand:seed(exs1024),
-    rand:uniform(?MAX_MESSAGE_ID).
-
-% a MsgId must not be reused within EXCHANGE_LIFETIME
-% no check is done for now that whether a MsgId can be safely reused
-% if that feature is expected, we can have a grouped MsgId tracker 
-% which separate MsgId space into several groups and let one group represent all MsgIds within that range
-% and only track the expire time of the last used MsgId of every group, e.g., an array of size of number of groups 
-% with each element for expire time of one group, so that effectively save memory cost
-% downside is
-% 1. unable to track MsgId precisely since the expire time of a group is determined by the last MsgId of that group
-% 2. have to do with situation of no available MsgId
-% idea comes from:
-% https://github.com/eclipse/californium/issues/323
-% https://github.com/eclipse/californium/pull/271
-% https://github.com/eclipse/californium/pull/328
-
-next_mid(MsgId) ->
-    if
-        MsgId < ?MAX_MESSAGE_ID -> MsgId + 1;
-        true -> 1 % or 0?
     end.
 
 % find or initialize a new exchange
@@ -390,6 +387,16 @@ create_exchange(TrId, Receiver, #state{trans=Trans}) ->
 
 init_exchange(TrId, Receiver) ->
     ecoap_exchange:init(TrId, Receiver).
+
+-ifdef(NODEDUP).
+scan_state(State) ->
+    purge_state(State).
+-else.
+scan_state(State=#state{trans=Trans}) ->
+    CurrentTime = erlang:monotonic_time(),
+    Trans2 = maps:filter(fun(_TrId, TrState) -> ecoap_exchange:not_expired(CurrentTime, TrState) end, Trans),
+    purge_state(State#state{trans=Trans2}).
+-endif.
 
 update_state(State=#state{trans=Trans, timer=Timer}, TrId, undefined) ->
     Trans2 = maps:remove(TrId, Trans),
