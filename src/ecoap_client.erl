@@ -270,7 +270,7 @@ get_blockregs(Pid) -> gen_server:call(Pid, get_blockregs).
 %% gen_server.
 
 init([{port, Port}]) ->
-	{ok, Socket} = ecoap_udp_socket:start_link(Port),
+	{ok, Socket} = ecoap_udp_socket:start_link([{port, Port}]),
 	{ok, #state{socket={client_socket, Socket}}};
 init([{socket, Socket}]) ->
 	{ok, #state{socket={server_socket, Socket}}}.

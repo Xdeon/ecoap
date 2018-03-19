@@ -24,6 +24,7 @@ empty_server_test_() ->
     {setup,
         fun() ->
             {ok, _} = application:ensure_all_started(ecoap),
+            {ok, _} = ecoap:start_udp([], #{routes => []}),
             {ok, Client} = ecoap_client:open(),
             Client
         end,
@@ -52,7 +53,7 @@ unknown_handler_test_() ->
     {setup,
         fun() ->
             {ok, _} = application:ensure_all_started(ecoap),
-            ecoap_registry:register_handler([{[<<"unknown">>], unknown_module}]),
+            {ok, _} = ecoap:start_udp([], #{routes => [{[<<"unknown">>], unknown_module}]}),
             {ok, Client} = ecoap_client:open(),
             Client
         end,

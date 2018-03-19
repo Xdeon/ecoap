@@ -26,8 +26,7 @@ blockwise_transfer_test_() ->
     {setup,
         fun() ->
             {ok, _} = application:ensure_all_started(ecoap),
-            ecoap_registry:register_handler([{[<<"text">>], ?MODULE},
-                                             {[<<"reflect">>], ?MODULE}]),
+            {ok, _} = ecoap:start_udp([], #{routes => [{[<<"text">>], ?MODULE}, {[<<"reflect">>], ?MODULE}]}),
             {ok, Client} = ecoap_client:open(),
             Client
         end,

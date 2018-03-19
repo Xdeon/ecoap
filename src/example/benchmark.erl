@@ -7,15 +7,15 @@
 
 start() ->
     _ = application:stop(ecoap),
-    application:set_env(ecoap, socket_opts, [{recbuf, 1048576}, {sndbuf, 1048576}]),
     {ok, _} = application:ensure_all_started(ecoap),
-    ok = ecoap_registry:register_handler([
+    Routes = [
             {[<<"benchmark">>], ?MODULE},
             {[<<"fibonacci">>], ?MODULE},
             {[<<"helloWorld">>], ?MODULE},
             {[<<"shutdown">>], ?MODULE}
-        ]).
-
+    ],
+    ecoap:start_udp([{recbuf, 1048576}, {sndbuf, 1048576}], #{routes => Routes}).
+    
 stop() ->
     application:stop(ecoap).
 

@@ -2,13 +2,13 @@
 -behaviour(gen_server).
 
 %% API.
--export([start_link/1, start_link/3, close/1]).
+-export([start_link/1, start_link/2, close/1]).
 -export([get_endpoint/2, get_all_endpoints/1, get_endpoint_count/1]).
 -export([send_datagram/3]).
 
 %% gen_server.
 -export([init/1]).
--export([init/3]).
+-export([init/2]).
 -export([handle_call/3]).
 -export([handle_cast/2]).
 -export([handle_info/2]).
@@ -42,9 +42,9 @@
 %% API.
 
 %% client
--spec start_link(inet:port_number()) -> {ok, pid()} | {error, term()}.
-start_link(Port) ->
-	gen_server:start_link(?MODULE, [Port, []], []).
+-spec start_link([gen_udp:option()]) -> {ok, pid()} | {error, term()}.
+start_link(SocketOpts) ->
+	gen_server:start_link(?MODULE, [SocketOpts], []).
 
 %% client
 -spec close(pid()) -> ok.
@@ -52,9 +52,9 @@ close(Pid) ->
 	gen_server:stop(Pid).
 
 %% server
--spec start_link(pid(), inet:port_number(), [gen_udp:option()]) -> {ok, pid()} | {error, term()}.
-start_link(SupPid, InPort, Opts) when is_pid(SupPid) ->
-	proc_lib:start_link(?MODULE, init, [SupPid, InPort, Opts]).
+-spec start_link(pid(), [gen_udp:option()]) -> {ok, pid()} | {error, term()}.
+start_link(SupPid, SocketOpts) when is_pid(SupPid) ->
+	proc_lib:start_link(?MODULE, init, [SupPid, SocketOpts]).
 
 %% start endpoint manually
 -spec get_endpoint(pid(), ecoap_endpoint_id()) -> {ok, pid()} | term().
@@ -77,15 +77,15 @@ send_datagram(Socket, {PeerIP, PeerPortNo}, Datagram) ->
 
 %% gen_server.
 
-init([InPort, Opts]) ->
+init([SocketOpts]) ->
 	% process_flag(trap_exit, true),
-	{ok, Socket} = gen_udp:open(InPort, merge_opts(?DEFAULT_SOCK_OPTS, Opts)),
+	{ok, Socket} = gen_udp:open(0, merge_opts(?DEFAULT_SOCK_OPTS, SocketOpts)),
 	error_logger:info_msg("socket setting: ~p~n", [inet:getopts(Socket, [recbuf, sndbuf, buffer])]),
 	{ok, #state{sock=Socket}}.
 
-init(SupPid, InPort, Opts) ->
-	{ok, State} = init([InPort, Opts]),
-	error_logger:info_msg("coap listen on *:~p~n", [InPort]),
+init(SupPid, SocketOpts) ->
+	{ok, State} = init([SocketOpts]),
+	error_logger:info_msg("coap listen on *:~p~n", [inet:port(State#state.sock)]),
 	register(?MODULE, self()),
 	ok = proc_lib:init_ack({ok, self()}),
  	{_, Pid, _, _} = lists:keyfind(endpoint_sup_sup, 1, supervisor:which_children(SupPid)),

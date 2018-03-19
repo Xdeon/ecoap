@@ -278,7 +278,7 @@ handle_info({'DOWN', _Ref, process, Pid, _Reason}, State=#state{rescnt=Count, tr
     end;
 
 handle_info({'EXIT', Pid, _Reason}, State=#state{receivers=Receivers, tokens=Tokens, trans=Trans}) ->
-    % if this exit signal comes from an embedded client which shares the same socket process with the sever
+    % if this exit signal comes from an embedded client which shares the same socket process with the server
     % we should ensure all requests the client issued that have not been completed yet are cancelled
     {Receivers2, Tokens2, Trans2} =  
         maps:fold(fun(Receiver={ClientPid, _}, {Token, TrId}, {AccReceivers, AccTokens, AccTrans}) when ClientPid =:= Pid -> 

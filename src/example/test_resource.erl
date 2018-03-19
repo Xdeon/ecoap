@@ -11,7 +11,7 @@ start() ->
     ok = application:start(mnesia),
     {atomic, ok} = mnesia:create_table(resources, []),
     {ok, _} = application:ensure_all_started(ecoap),
-    ok = ecoap_registry:register_handler([{[], ?MODULE}]).
+    ecoap:start_udp([], #{routes => [{[], ?MODULE}]}).
 
 stop() ->
     ok = application:stop(ecoap),

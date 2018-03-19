@@ -92,13 +92,13 @@ init([]) ->
 	{ok, #state{}}.
 
 handle_call({send_request, EpID, ping}, From, State) -> 
-	{ok, SockPid} = ecoap_udp_socket:start_link(0),
+	{ok, SockPid} = ecoap_udp_socket:start_link([{port, 0}]),
 	{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpID),
 	{ok, Ref} = ecoap_endpoint:ping(EndpointPid),
 	{noreply, State#state{sock_pid=SockPid, endpoint_pid=EndpointPid, ref=Ref, from=From}};
 
 handle_call({send_request, EpID, {Method, Options, Content}}, From, State) ->
-	{ok, SockPid} = ecoap_udp_socket:start_link(0),
+	{ok, SockPid} = ecoap_udp_socket:start_link([{port, 0}]),
 	{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpID),
 	{ok, Ref} = request_block(EndpointPid, Method, Options, Content),
 	Req = #req{method=Method, options=Options, content=Content},
