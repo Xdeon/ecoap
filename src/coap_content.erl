@@ -44,5 +44,5 @@ get_content(Request) ->
 
 -spec filter_options(coap_message:optionset()) -> coap_message:optionset().
 filter_options(Options) ->
-    UnusedOptions = ['Uri-Path', 'Uri-Query', 'Block1', 'Block2', 'If-Match', 'If-None-Match'],
+    UnusedOptions = ['Uri-Path', 'Uri-Query', 'Block1', 'Block2', 'If-Match', 'If-None-Match', 'Observe'],
     coap_message:remove_options(UnusedOptions, Options).
