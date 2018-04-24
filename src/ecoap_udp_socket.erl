@@ -15,17 +15,11 @@
 -export([terminate/2]).
 -export([code_change/3]).
 
-%% TODO: are configurable {active, N} necessary here?
-%% parameters below highly depend on experiments
-%% they give acceptable performance on AWS EC2 instance
--define(LOW_ACTIVE_PACKETS, 100).
--define(MEDIUM_ACTIVE_PACKETS, 200).
--define(HIGH_ACTIVE_PACKETS, 400).
--define(LOW_CONCURRENCY_THRESHOLD, 800).
--define(HIGH_CONCURRENCY_THRESHOLD, 2000).
+-define(ACTIVE_PACKETS, 100).
+-define(READ_PACKETS, 1000).
 
 -define(DEFAULT_SOCK_OPTS,
-	[binary, {active, ?LOW_ACTIVE_PACKETS}, {reuseaddr, true}]).
+	[binary, {active, ?ACTIVE_PACKETS}, {reuseaddr, true}, {read_packets, ?READ_PACKETS}]).
 
 -record(state, {
 	sock = undefined :: inet:socket(),
@@ -81,15 +75,15 @@ init([SocketOpts]) ->
 	% process_flag(trap_exit, true),
 	{ok, Socket} = gen_udp:open(0, merge_opts(?DEFAULT_SOCK_OPTS, SocketOpts)),
 	error_logger:info_msg("socket setting: ~p~n", [inet:getopts(Socket, [recbuf, sndbuf, buffer])]),
+	error_logger:info_msg("coap listen on *:~p~n", [inet:port(Socket)]),
 	{ok, #state{sock=Socket}}.
 
 init(SupPid, SocketOpts) ->
 	{ok, State} = init([SocketOpts]),
-	error_logger:info_msg("coap listen on *:~p~n", [inet:port(State#state.sock)]),
 	register(?MODULE, self()),
 	ok = proc_lib:init_ack({ok, self()}),
- 	{_, Pid, _, _} = lists:keyfind(endpoint_sup_sup, 1, supervisor:which_children(SupPid)),
-    gen_server:enter_loop(?MODULE, [], State#state{endpoint_pool=Pid}, {local, ?MODULE}).
+ 	PoolPid = ecoap_server_sup:endpoint_sup_sup(SupPid),
+    gen_server:enter_loop(?MODULE, [], State#state{endpoint_pool=PoolPid}, {local, ?MODULE}).
 
 % get an endpoint when being as a client
 handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoint_pool=undefined, endpoint_count=Count}) ->
@@ -154,28 +148,18 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, en
 			%io:fwrite("client recv unexpected packet~n"),
 			{noreply, State}
 	end;
-handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{endpoint_count=Count, endpoint_pool=undefined}) ->
- 	case find_endpoint(Ref) of
- 		{ok, {EpID, undefined}} -> 
- 			erase_endpoint(Ref),
- 			erase_endpoint(EpID),
- 			{noreply, State#state{endpoint_count=Count-1}};
- 		error -> 
- 			{noreply, State}
- 	end;
-handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{endpoint_count=Count, endpoint_pool=Pid}) ->
+handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{endpoint_count=Count, endpoint_pool=PoolPid}) ->
  	case find_endpoint(Ref) of
  		{ok, {EpID, EpSupPid}} -> 
  			erase_endpoint(Ref),
  			erase_endpoint(EpID),
- 			_ = supervisor:terminate_child(Pid, EpSupPid),
+ 			ok = delete_endpoint(PoolPid, EpSupPid),
  			{noreply, State#state{endpoint_count=Count-1}};
  		error -> 
  			{noreply, State}
  	end;
 handle_info({udp_passive, Socket}, State=#state{sock=Socket}) ->
-	ActivePackets = next_active_packets(State),
-	ok = inet:setopts(Socket, [{active, ActivePackets}]),
+	ok = inet:setopts(Socket, [{active, ?ACTIVE_PACKETS}]),
 	{noreply, State};
 	
 handle_info(_Info, State) ->
@@ -202,14 +186,6 @@ merge_opts(Defaults, Options) ->
                 end
     end, Defaults, Options).
 
-next_active_packets(State) ->
-	Concurrency = State#state.endpoint_count,
-	if 
-		Concurrency < ?LOW_CONCURRENCY_THRESHOLD -> ?LOW_ACTIVE_PACKETS;
-		Concurrency < ?HIGH_CONCURRENCY_THRESHOLD -> ?MEDIUM_ACTIVE_PACKETS;
-		true -> ?HIGH_ACTIVE_PACKETS
-	end.
-
 find_endpoint(Key) ->
 	case get(Key) of
 		undefined -> error;
@@ -222,26 +198,10 @@ store_endpoint(Key, Val) ->
 erase_endpoint(Key) ->
 	erase(Key).
 
+delete_endpoint(PoolPid, EpSupPid) when is_pid(EpSupPid) ->
+	endpoint_sup_sup:delete_endpoint(PoolPid, EpSupPid);
+delete_endpoint(_, _) -> 
+ 	ok.
+
 fetch_endpoint_pids() ->
 	[Val || {{_, _}, Val} <- get(), is_pid(Val)].
-
-% -ifdef(TEST).
-
-% -include_lib("eunit/include/eunit.hrl").
-
-% store_endpoint_test() ->
-% 	EpID = {{127,0,0,1}, 5683},
-% 	store_endpoint(EpID, self()),
-% 	State = store_endpoint_monitor(EpID, self(), #state{}),
-% 	[Ref] = maps:keys(State#state.endpoint_refs),
-% 	?assertEqual({ok, self()}, find_endpoint(EpID)),
-% 	?assertEqual({ok, EpID}, find_endpoint_monitor(Ref, State)),
-% 	?assertEqual([self()], fetch_endpoint_pids(State)),
-% 	erase_endpoint(EpID),
-% 	State1 = erase_endpoint_monitor(Ref, State),
-% 	?assertEqual(error, find_endpoint(EpID)),
-% 	?assertEqual(error, find_endpoint_monitor(Ref, State1)),
-% 	?assertEqual([], fetch_endpoint_pids(State1)).
-
-% -endif.
-

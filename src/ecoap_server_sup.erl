@@ -3,6 +3,7 @@
 
 -export([start_link/0]).
 -export([init/1]).
+-export([endpoint_sup_sup/1]).
 -export([start_socket/2, stop_socket/1]).
 
 start_link() ->
@@ -31,3 +32,7 @@ stop_socket(udp) ->
 	_ = supervisor:terminate_child(?MODULE, ecoap_udp_socket),
 	_ = supervisor:delete_child(?MODULE, ecoap_udp_socket),
 	ok.
+
+endpoint_sup_sup(SupPid) ->
+	{_, Pid, _, _} = lists:keyfind(endpoint_sup_sup, 1, supervisor:which_children(SupPid)),
+	Pid.

@@ -20,5 +20,3 @@ start_link(SocketModule, Socket, EpID) ->
 init([]) ->
     % crash of any worker will terminate the supervisor 
     {ok, {#{strategy => one_for_all, intensity => 0, period => 1}, []}}.
-
-
