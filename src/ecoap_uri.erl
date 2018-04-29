@@ -26,10 +26,14 @@ decode_uri(Uri) ->
         {ok, PeerIP} -> 
             {Scheme, undefined, {PeerIP, PortNo}, split_path(Path), split_query(Query)};
         {error,einval} -> 
-            {ok, PeerIP} = inet:getaddr(Host, inet),
-            % RFC 7252 Section 6.3
-            % The scheme and host are case insensitive and normally provided in lowercase
-            {Scheme, list_to_binary(string:to_lower(Host)), {PeerIP, PortNo}, split_path(Path), split_query(Query)}
+            case inet:getaddr(Host, inet) of
+                {ok, PeerIP} ->
+                % RFC 7252 Section 6.3
+                % The scheme and host are case insensitive and normally provided in lowercase
+                {Scheme, list_to_binary(string:to_lower(Host)), {PeerIP, PortNo}, split_path(Path), split_query(Query)};
+                {error, Error} ->
+                    exit(Error)
+            end
     end.
 
 split_path([]) -> [];

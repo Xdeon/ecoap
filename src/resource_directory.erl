@@ -9,9 +9,8 @@ coap_discover(_Prefix) ->
 
 coap_get(_EpID, _Prefix, [], Query, _Request) ->
     Links = core_link:encode(filter(ecoap_registry:get_links(), Query)),
-    Payload = list_to_binary(Links),
     Options = #{'ETag' => [binary:part(crypto:hash(sha, Links), {0,4})], 'Content-Format' => <<"application/link-format">>},
-    {ok, coap_content:new(Payload, Options)};
+    {ok, coap_content:new(Links, Options)};
 coap_get(_EpID, _Prefix, _Else, _Query, _Request) ->
     {error, 'NotFound'}.
 
@@ -72,14 +71,14 @@ attribute_query_test_() ->
     Link = [{absolute, [<<"sensor">>], [{title, <<"Sensor Index">>}]},
            {absolute, [<<"sensors">>, <<"temp">>], [{rt, <<"temperature-c">>}, {'if', <<"sensor">>}, {foo, <<>>}, {bar, [<<"one">>, <<"two">>]}]},
            {absolute, [<<"sensors">>, <<"light">>], [{rt, [<<"light-lux">>, <<"core.sen-light">>]}, {'if', <<"sensor">>}, {foo, <<>>}]}],
-    Sensors = "</sensors/temp>;rt=\"temperature-c\";if=\"sensor\";foo;bar=\"one two\"",
+    Sensors = <<"</sensors/temp>;rt=\"temperature-c\";if=\"sensor\";foo;bar=\"one two\"">>,
     [?_assertEqual(Sensors, core_link:encode(filter(Link, parse_query("bar=one&if=sensor")))),
     ?_assertEqual(Sensors, core_link:encode(filter(Link, parse_query("bar=one&foo")))),
     ?_assertEqual(Sensors, core_link:encode(filter(Link, parse_query("if=sensor&bar=one")))),
     ?_assertEqual(Sensors, core_link:encode(filter(Link, parse_query("foo&bar=one")))),
     ?_assertEqual(Sensors, core_link:encode(filter(Link, parse_query("bar=one&bar=two")))),
     ?_assertEqual(Sensors, core_link:encode(filter(Link, parse_query("bar=one*")))),
-    ?_assertEqual("", core_link:encode(filter(Link, parse_query("bar=one&bar=three"))))
+    ?_assertEqual(<<>>, core_link:encode(filter(Link, parse_query("bar=one&bar=three"))))
     ]. 
 
 parse_query(Query) ->

@@ -14,7 +14,7 @@ include erlang.mk
 
 app:: rebar.config
 
-EUNIT_OPTS = verbose
+# EUNIT_OPTS = verbose
 
 ERLC_OPTS += +report +verbose +warn_deprecated_function +warn_deprecated_type +warn_untyped_record +warn_unused_import
 
