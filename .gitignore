@@ -9,13 +9,14 @@ rebar.lock
 _build/
 
 # erlang.mk
-/.erlang.mk
-/deps
+.erlang.mk
+_rel
+*.d
+deps
 ebin/*.beam
 ebin/test
+relx
 test/*.beam
-/_rel
-*.d
 
 # Project specific
 src/core_link_parser.erl

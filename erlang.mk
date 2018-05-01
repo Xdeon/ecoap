@@ -17,7 +17,7 @@
 ERLANG_MK_FILENAME := $(realpath $(lastword $(MAKEFILE_LIST)))
 export ERLANG_MK_FILENAME
 
-ERLANG_MK_VERSION = 2018.03.05-6-gb20df2d
+ERLANG_MK_VERSION = 
 ERLANG_MK_WITHOUT = 
 
 # Make 3.81 and 3.82 are deprecated.
@@ -2938,6 +2938,14 @@ pkg_openpoker_fetch = git
 pkg_openpoker_repo = https://github.com/hpyhacking/openpoker
 pkg_openpoker_commit = master
 
+PACKAGES += otpbp
+pkg_otpbp_name = otpbp
+pkg_otpbp_description = Parse transformer for use new OTP functions in old Erlang/OTP releases (R15, R16, 17, 18, 19)
+pkg_otpbp_homepage = https://github.com/Ledest/otpbp
+pkg_otpbp_fetch = git
+pkg_otpbp_repo = https://github.com/Ledest/otpbp
+pkg_otpbp_commit = master
+
 PACKAGES += pal
 pkg_pal_name = pal
 pkg_pal_description = Pragmatic Authentication Library
@@ -4547,7 +4555,8 @@ define dep_autopatch_rebar.erl
 	Write("\npre-deps::\n"),
 	Write("\npre-app::\n"),
 	PatchHook = fun(Cmd) ->
-		case Cmd of
+		Cmd2 = re:replace(Cmd, "^([g]?make)(.*)( -C.*)", "\\\\1\\\\3\\\\2", [{return, list}]),
+		case Cmd2 of
 			"make -C" ++ Cmd1 -> "$$\(MAKE) -C" ++ Escape(Cmd1);
 			"gmake -C" ++ Cmd1 -> "$$\(MAKE) -C" ++ Escape(Cmd1);
 			"make " ++ Cmd1 -> "$$\(MAKE) -f Makefile.orig.mk " ++ Escape(Cmd1);
@@ -5663,6 +5672,51 @@ handle_sync_event(_Event, _From, StateName, StateData) ->
 	{reply, ignored, StateName, StateData}.
 
 handle_info(_Info, StateName, StateData) ->
+	{next_state, StateName, StateData}.
+
+terminate(_Reason, _StateName, _StateData) ->
+	ok.
+
+code_change(_OldVsn, StateName, StateData, _Extra) ->
+	{ok, StateName, StateData}.
+endef
+
+define tpl_gen_statem
+-module($(n)).
+-behaviour(gen_statem).
+
+%% API.
+-export([start_link/0]).
+
+%% gen_statem.
+-export([callback_mode/0]).
+-export([init/1]).
+-export([state_name/3]).
+-export([handle_event/4]).
+-export([terminate/3]).
+-export([code_change/4]).
+
+-record(state, {
+}).
+
+%% API.
+
+-spec start_link() -> {ok, pid()}.
+start_link() ->
+	gen_statem:start_link(?MODULE, [], []).
+
+%% gen_statem.
+
+callback_mode() ->
+	state_functions.
+
+init([]) ->
+	{ok, state_name, #state{}}.
+
+state_name(_EventType, _EventData, StateData) ->
+	{next_state, state_name, StateData}.
+
+handle_event(_EventType, _EventData, StateName, StateData) ->
 	{next_state, StateName, StateData}.
 
 terminate(_Reason, _StateName, _StateData) ->
