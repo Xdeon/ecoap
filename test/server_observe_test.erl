@@ -50,7 +50,7 @@ observe_test_() ->
             ok = application:start(mnesia),
             {atomic, ok} = mnesia:create_table(resources, []),
             {ok, _} = application:ensure_all_started(ecoap),
-            {ok, _} = ecoap:start_udp([], #{routes => [{[<<"text">>], ?MODULE}]}),
+            {ok, _} = ecoap:start_udp(?MODULE, [], #{routes => [{[<<"text">>], ?MODULE}]}),
             {ok, Client} = ecoap_client:open(),
             Client
         end,
