@@ -56,9 +56,6 @@ split_segments(Path, Char, Acc) ->
     case string:split(Path, Char, trailing) of
         [Path] -> 
             [make_segment(Path) | Acc];
-        % ignore ending Char
-        [Path1, []] ->
-            split_segments(Path1, Char, Acc);
         [Path1, Path2] ->
             split_segments(Path1, Char, [make_segment(Path2) | Acc])
     end.
@@ -74,12 +71,19 @@ make_segment(Seg) ->
     Query :: query(),
     Uri :: uri().
 encode_uri({Scheme, Host, {PeerIP, PortNo}, Path, Query}) ->
-    PathString = lists:foldl(fun(Segment, Acc) -> Acc ++ "/" ++ escape_uri(Segment) end, "", Path),
+    PathString = ["/", assemble_segments(Path, fun escape_uri/1, "/")],
     QueryString = case Query of
-        [] -> "";
-        _ -> lists:foldl(fun(Segment, Acc) -> 
-                [Name, Value] = binary:split(Segment, <<$=>>),
-                Acc ++ escape_uri(Name) ++ "=" ++ escape_uri(Value) end, "?", Query)
+        [] -> [];
+        _ -> 
+            ["?", assemble_segments(Query, 
+                fun(Segment) ->
+                    case binary:split(Segment, <<$=>>) of
+                        [Segment] ->
+                            escape_uri(Segment);
+                        [Name, Value] ->
+                            [escape_uri(Name), "=", escape_uri(Value)]
+                    end 
+                end, "&")]
     end,
     HostString = case Host of
         undefined ->
@@ -89,7 +93,11 @@ encode_uri({Scheme, Host, {PeerIP, PortNo}, Path, Query}) ->
             end;
         Else -> binary_to_list(Else)
     end,
-    lists:concat([Scheme, "://", HostString, ":", PortNo, PathString, QueryString]).
+    lists:concat([Scheme, "://", HostString, ":", PortNo, lists:flatten(PathString), lists:flatten(QueryString)]).
+
+assemble_segments(Segments, TransFun, Char) ->
+    % apply TransFun on each Segment and then join the list with Char
+    lists:join(Char, lists:map(TransFun, Segments)).
 
 % taken from http://stackoverflow.com/questions/114196/url-encode-in-erlang/12648499#12648499
 escape_uri(S) ->
