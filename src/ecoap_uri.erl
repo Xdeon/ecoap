@@ -22,7 +22,7 @@
 decode_uri(Uri) ->
     {ok, {Scheme, _UserInfo, Host, PortNo, Path, Query}} =
         http_uri:parse(Uri, [{scheme_defaults, [{coap, ?DEFAULT_COAP_PORT}, {coaps, ?DEFAULT_COAPS_PORT}]}]),
-   case inet:parse_address(Host) of
+    case inet:parse_address(Host) of
         {ok, PeerIP} -> 
             {Scheme, undefined, {PeerIP, PortNo}, split_path(Path), split_query(Query)};
         {error,einval} -> 
@@ -56,10 +56,13 @@ split_segments(Path, Char, Acc) ->
     case string:split(Path, Char, trailing) of
         [Path] -> 
             [make_segment(Path) | Acc];
+        % ignore ending Char
+        [Path1, []] ->
+            split_segments(Path1, Char, Acc);
         [Path1, Path2] ->
             split_segments(Path1, Char, [make_segment(Path2) | Acc])
     end.
-
+ 
 make_segment(Seg) ->
     list_to_binary(http_uri:decode(Seg)).
 
