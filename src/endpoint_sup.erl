@@ -11,7 +11,7 @@ start_link(SocketModule, Socket, EpID) ->
     {ok, EpPid} = supervisor:start_child(SupPid,
         #{id => ecoap_endpoint,
           start => {ecoap_endpoint, start_link, [SupPid, SocketModule, Socket, EpID]},
-          restart => permanent, 
+          restart => temporary, 
           shutdown => 5000, 
           type => worker, 
           modules => [ecoap_endpoint]}),
@@ -20,5 +20,3 @@ start_link(SocketModule, Socket, EpID) ->
 init([]) ->
     % crash of any worker will terminate the supervisor 
     {ok, {#{strategy => one_for_all, intensity => 0, period => 1}, []}}.
-
-

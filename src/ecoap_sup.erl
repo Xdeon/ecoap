@@ -1,13 +1,13 @@
 -module(ecoap_sup).
 -behaviour(supervisor).
 
--export([start_link/2]).
+-export([start_link/0]).
 -export([init/1]).
 
-start_link(InPort, Opts) ->
-	supervisor:start_link({local, ?MODULE}, ?MODULE, [InPort, Opts]).
+start_link() ->
+	supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
-init([InPort, Opts]) ->
+init([]) ->
 	Procs = [
 				#{id => ecoap_reg_sup,
 			      start => {ecoap_reg_sup, start_link, []},
@@ -16,7 +16,7 @@ init([InPort, Opts]) ->
 				  type => supervisor,
 				  modules => [ecoap_reg_sup]},
 			  	#{id => ecoap_server_sup,
-			  	  start => {ecoap_server_sup, start_link, [InPort, Opts]},
+			  	  start => {ecoap_server_sup, start_link, []},
 			  	  restart => permanent,
 			  	  shutdown => infinity,
 			  	  type => supervisor,
