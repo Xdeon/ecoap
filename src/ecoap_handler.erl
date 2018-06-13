@@ -195,12 +195,10 @@ handle_info({timeout, TRef, cache_expired}, State=#state{timer=TRef}) ->
     {noreply, State#state{last_response=undefined}};
 handle_info({coap_ack, _EpID, _EndpointPid, Ref}, State=#state{module=Module, obstate=ObState}) ->
     try case coap_ack(Module, Ref, ObState) of
-        {ok, {ok, ObState2}} -> 
-            {noreply, State#state{obstate=ObState2}};
-        {'EXIT', Class, Reason, Stacktrace} -> 
-            error_terminate(Class, Reason, Stacktrace)
-    end catch C:{case_clause, {ok, BadReply}} -> 
-            error_terminate(C, {bad_return_value, BadReply})
+        {ok, ObState2} -> 
+            {noreply, State#state{obstate=ObState2}}
+    end catch C:R -> 
+        error_terminate(C, R)
     end;
 handle_info({coap_error, _EpID, _EndpointPid, _Ref, _Error}, State=#state{observer=Observer}) ->
     try_cancel_observe_and_terminate(Observer, State);
@@ -209,20 +207,17 @@ handle_info(_Info, State=#state{observer=undefined}) ->
     {noreply, State};
 handle_info(Info, State=#state{module=Module, observer=Observer, obstate=ObState}) ->
     try case handle_info(Module, Info, Observer, ObState) of
-        {ok, {notify, Msg, ObState2}} -> 
+        {notify, Msg, ObState2} -> 
             handle_notify([], Msg, ObState2, Observer, State);
-        {ok, {notify, Ref, Msg, ObState2, State}} ->
+        {notify, Ref, Msg, ObState2, State} ->
             handle_notify(Ref, Msg, ObState2, Observer, State);
-        {ok, {noreply, ObState2}} ->
+        {noreply, ObState2} ->
             {noreply, State#state{obstate=ObState2}};
-        {ok, {stop, ObState2}} ->
-            handle_notify([], {error, 'ServiceUnavailable'}, ObState2, Observer, State);
-        {'EXIT', Class, Reason, Stacktrace} ->
-            _ = handle_notify([], {error, 'InternalServerError'}, ObState, Observer, State),
-            error_terminate(Class, Reason, Stacktrace)
-    end catch C:{case_clause, {ok, BadReply}} ->
-            _ = handle_notify([], {error, 'InternalServerError'}, ObState, Observer, State),
-            error_terminate(C, {bad_return_value, BadReply})
+        {stop, ObState2} ->
+            handle_notify([], {error, 'ServiceUnavailable'}, ObState2, Observer, State)
+    end catch C:R ->
+        _ = handle_notify([], {error, 'InternalServerError'}, ObState, Observer, State),
+        error_terminate(C, R)
     end.
 
 handle_notify(Ref, {error, Code}, ObState2, Observer, State) ->
@@ -320,20 +315,17 @@ process_request(EpID, Request, State) ->
 
 check_resource(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, query=Query, module=Module}) ->
     try case coap_get(Module, EpID, Prefix, Suffix, Query, Request) of
-        {ok, {ok, Content}} ->
+        {ok, Content} ->
             check_preconditions(EpID, Request, Content, State);
-        {ok, {error, 'NotFound'} = R} ->
-            check_preconditions(EpID, Request, R, State);
-        {ok, {error, Code}} ->
+        {error, 'NotFound'} = Result ->
+            check_preconditions(EpID, Request, Result, State);
+        {error, Code} ->
             return_response(Request, {error, Code}, State);
-        {ok, {error, Code, Reason}} ->
-            return_response([], Request, {error, Code}, Reason, State);
-        {'EXIT', Class, Reason, Stacktrace} ->
-            _ = return_response(Request, {error, 'InternalServerError'}, State),
-            error_terminate(Class, Reason, Stacktrace)
-    end catch C:{case_clause, {ok, BadReply}} ->
-            _ = return_response(Request, {error, 'InternalServerError'}, State),
-            error_terminate(C, {bad_return_value, BadReply})
+        {error, Code, Reason} ->
+            return_response([], Request, {error, Code}, Reason, State)
+    end catch C:R ->
+        _ = return_response(Request, {error, 'InternalServerError'}, State),
+        error_terminate(C, R)
     end.
 
 check_preconditions(EpID, Request, Content, State) ->
@@ -385,24 +377,21 @@ handle_observe(EpID, Request, Content,
         State=#state{endpoint_pid=EndpointPid, id=ID, prefix=Prefix, suffix=Suffix, uri=Uri, module=Module, observer=undefined}) ->
     % the first observe request from this user to this resource
     try case coap_observe(Module, EpID, Prefix, Suffix, Request) of
-        {ok, {ok, ObState}} ->
+        {ok, ObState} ->
             ecoap_endpoint:register_handler(EndpointPid, ID, self()),
             pg2:create({coap_observer, Uri}),
             ok = pg2:join({coap_observer, Uri}, self()),
             return_resource(Request, Content, State#state{observer=Request, obstate=ObState});
-        {ok, {error, 'MethodNotAllowed'}} ->
+        {error, 'MethodNotAllowed'} ->
             % observe is not supported, fallback to standard get
             return_resource(Request, Content, State#state{observer=undefined});
-        {ok, {error, Error}} ->
+        {error, Error} ->
             return_response(Request, {error, Error}, State);
-        {ok, {error, Error, Reason}} ->
-            return_response([], Request, {error, Error}, Reason, State);
-        {'EXIT', Class, Reason, Stacktrace} ->
-            _ = return_response(Request, {error, 'InternalServerError'}, State),
-            error_terminate(Class, Reason, Stacktrace)
-    end catch C:{case_clause, {ok, BadReply}}->
-            _ = return_response(Request, {error, 'InternalServerError'}, State),
-            error_terminate(C, {bad_return_value, BadReply})
+        {error, Error, Reason} ->
+            return_response([], Request, {error, Error}, Reason, State)
+    end catch C:R->
+        _ = return_response(Request, {error, 'InternalServerError'}, State),
+        error_terminate(C, R)
     end;
 handle_observe(_EpID, Request, Content, State) ->
     % subsequent observe request from the same user
@@ -425,12 +414,9 @@ cancel_observer(_Request, State=#state{uri=Uri, module=Module, obstate=ObState})
 try_cancel_observe_and_terminate(Request, State) ->
     {ok, Result, State2} = cancel_observer(Request, State),
     try case Result of
-        {ok, ok} -> 
-            {stop, normal, State2};
-        {'EXIT', Class, Reason, Stacktrace} -> 
-            error_terminate(Class, Reason, Stacktrace)
-    end catch C:{case_clause, {ok, BadReply}} ->
-            error_terminate(C, {bad_return_value, BadReply})
+        ok -> {stop, normal, State2}
+    end catch C:R ->
+        error_terminate(C, R)
     end.
 
 try_cancel_observe_and_send_response(Request, Response, State) ->
@@ -439,51 +425,42 @@ try_cancel_observe_and_send_response(Request, Response, State) ->
 try_cancel_observe_and_send_response(Ref, Request, Response, State) ->
     {ok, Result, State2} = cancel_observer(Request, State),
     try case Result of
-        {ok, ok} ->
+        ok ->
             case Response of
                 {error, Code} ->
                     return_response(Ref, Request, {error, Code}, <<>>, State2);
                 #coap_content{} ->
                     return_resource(Ref, Request, {ok, 'Content'}, Response, State2)
-            end;
-        {'EXIT', Class, Reason, Stacktrace} ->
-            _ = return_response(Ref, Request, {error, 'InternalServerError'}, <<>>, State2),
-            error_terminate(Class, Reason, Stacktrace)
-    end catch C:{case_clause, {ok, BadReply}} ->
-            _ = return_response(Ref, Request, {error, 'InternalServerError'}, <<>>, State2),
-            error_terminate(C, {bad_return_value, BadReply})
+            end
+    end catch C:R ->
+        _ = return_response(Ref, Request, {error, 'InternalServerError'}, <<>>, State2),
+        error_terminate(C, R)
     end.
 
 handle_post(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
     try case coap_post(Module, EpID, Prefix, Suffix, Request) of
-        {ok, {ok, Code, Content}} ->
+        {ok, Code, Content} ->
             return_resource([], Request, {ok, Code}, Content, State);
-        {ok, {error, Error}} ->
+        {error, Error} ->
             return_response(Request, {error, Error}, State);
-        {ok, {error, Error, Reason}} ->
-            return_response([], Request, {error, Error}, Reason, State);
-        {'EXIT', Class, Reason, Stacktrace} ->
-            _ = return_response(Request, {error, 'InternalServerError'}, State),
-            error_terminate(Class, Reason, Stacktrace)
-    end catch C:{case_clause, {ok, BadReply}}->
-            _ = return_response(Request, {error, 'InternalServerError'}, State),
-            error_terminate(C, {bad_return_value, BadReply})
+        {error, Error, Reason} ->
+            return_response([], Request, {error, Error}, Reason, State)
+    end catch C:R ->
+        _ = return_response(Request, {error, 'InternalServerError'}, State),
+        error_terminate(C, R)
     end.
 
 handle_put(EpID, Request, Content, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
     try case coap_put(Module, EpID, Prefix, Suffix, Request) of
-        {ok, ok} ->
+        ok ->
             return_response(Request, created_or_changed(Content), State);
-        {ok, {error, Error}} ->
+        {error, Error} ->
             return_response(Request, {error, Error}, State);
-        {ok, {error, Error, Reason}} ->
-            return_response([], Request, {error, Error}, Reason, State);
-        {'EXIT', Class, Reason, Stacktrace} ->
-            _ = return_response(Request, {error, 'InternalServerError'}, State),
-            error_terminate(Class, Reason, Stacktrace)
-    end catch C:{case_clause, {ok, BadReply}}->
-            _ = return_response(Request, {error, 'InternalServerError'}, State),
-            error_terminate(C, {bad_return_value, BadReply})
+        {error, Error, Reason} ->
+            return_response([], Request, {error, Error}, Reason, State)
+    end catch C:R ->
+        _ = return_response(Request, {error, 'InternalServerError'}, State),
+        error_terminate(C, R)
     end.
 
 created_or_changed({error, 'NotFound'}) ->
@@ -493,18 +470,15 @@ created_or_changed(_Content) ->
 
 handle_delete(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
     try case coap_delete(Module, EpID, Prefix, Suffix, Request) of
-        {ok, ok} ->
+        ok ->
             return_response(Request, {ok, 'Deleted'}, State);
-        {ok, {error, Error}} ->
+        {error, Error} ->
             return_response(Request, {error, Error}, State);
-        {ok, {error, Error, Reason}} ->
-            return_response([], Request, {error, Error}, Reason, State);
-        {'EXIT', Class, Reason, Stacktrace} ->
-            _ = return_response(Request, {error, 'InternalServerError'}, State),
-            error_terminate(Class, Reason, Stacktrace)
-    end catch C:{case_clause, {ok, BadReply}}->
-            _ = return_response(Request, {error, 'InternalServerError'}, State),
-            error_terminate(C, {bad_return_value, BadReply})
+        {error, Error, Reason} ->
+            return_response([], Request, {error, Error}, Reason, State)
+    end catch C:R ->
+        _ = return_response(Request, {error, 'InternalServerError'}, State),
+        error_terminate(C, R)
     end.
 
 return_resource(Request, Content, State) ->
@@ -583,17 +557,7 @@ get_etag(Options) ->
 
 uri_suffix(Prefix, Uri) ->
     lists:nthtail(length(Prefix), Uri).
-
-invoke_callback(Callback) ->
-    try 
-        {ok, Callback()}
-    catch 
-        throw:R ->
-            {ok, R};
-        Class:R ->
-            {'EXIT', Class, R, erlang:get_stacktrace()}
-    end.    
-
+ 
 coap_discover(Module, Prefix) -> 
     case erlang:function_exported(Module, coap_discover, 1) of
         true -> Module:coap_discover(Prefix);
@@ -602,61 +566,60 @@ coap_discover(Module, Prefix) ->
 
 coap_get(Module, EpID, Prefix, Suffix, Query, Request) ->
     case erlang:function_exported(Module, coap_get, 5) of
-        true -> invoke_callback(fun() -> Module:coap_get(EpID, Prefix, Suffix, Query, Request) end);
-        false -> {ok, {error, 'MethodNotAllowed'}}
+        true -> Module:coap_get(EpID, Prefix, Suffix, Query, Request);
+        false -> {error, 'MethodNotAllowed'}
     end.
 
 coap_post(Module, EpID, Prefix, Suffix, Request) ->
     case erlang:function_exported(Module, coap_post, 4) of
-        true -> invoke_callback(fun() -> Module:coap_post(EpID, Prefix, Suffix, Request) end);
-        false -> {ok, {error, 'MethodNotAllowed'}}
+        true -> Module:coap_post(EpID, Prefix, Suffix, Request);
+        false -> {error, 'MethodNotAllowed'}
     end.
 
 coap_put(Module, EpID, Prefix, Suffix, Request) ->
     case erlang:function_exported(Module, coap_put, 4) of
-        true -> invoke_callback(fun() -> Module:coap_put(EpID, Prefix, Suffix, Request) end);
-        false -> {ok, {error, 'MethodNotAllowed'}}
+        true -> Module:coap_put(EpID, Prefix, Suffix, Request);
+        false -> {error, 'MethodNotAllowed'}
     end.
 
 coap_delete(Module, EpID, Prefix, Suffix, Request) ->
     case erlang:function_exported(Module, coap_delete, 4) of
-        true -> invoke_callback(fun() -> Module:coap_delete(EpID, Prefix, Suffix, Request) end);
-        false -> {ok, {error, 'MethodNotAllowed'}}
+        true -> Module:coap_delete(EpID, Prefix, Suffix, Request);
+        false -> {error, 'MethodNotAllowed'}
     end.
 
 coap_observe(Module, EpID, Prefix, Suffix, Request) ->
     case erlang:function_exported(Module, coap_observe, 4) of
-        true -> invoke_callback(fun() -> Module:coap_observe(EpID, Prefix, Suffix, Request) end);
-        false -> {ok, {error, 'MethodNotAllowed'}}
+        true -> Module:coap_observe(EpID, Prefix, Suffix, Request);
+        false -> {error, 'MethodNotAllowed'}
     end.
 
 coap_unobserve(Module, ObState) ->
     case erlang:function_exported(Module, coap_unobserve, 1) of
-        true -> invoke_callback(fun() -> Module:coap_unobserve(ObState) end);
-        false -> {ok, ok}
+        true -> Module:coap_unobserve(ObState);
+        false -> ok
     end.
 
 handle_info(Module, Info, ObsReq, ObState) ->
     case erlang:function_exported(Module, handle_info, 3) of
-        true -> 
-            invoke_callback(fun() -> Module:handle_info(Info, ObsReq, ObState) end);
+        true -> Module:handle_info(Info, ObsReq, ObState);
         false ->
             case Info of
-                {coap_notify, Msg} ->
-                    {ok, {notify, Msg, ObState}};
-                _ ->
-                    {ok, {noreply, ObState}}
+                {coap_notify, Msg} -> {notify, Msg, ObState};
+                _ -> {noreply, ObState}
             end
     end.
 
 coap_ack(Module, Ref, ObState) ->
     case erlang:function_exported(Module, coap_ack, 2) of
-        true -> invoke_callback(fun() -> Module:coap_ack(Ref, ObState) end);
-        false -> {ok, {ok, ObState}}
+        true -> Module:coap_ack(Ref, ObState);
+        false -> {ok, ObState}
     end.
 
+error_terminate(Class, {case_clause, BadReply}) ->
+    erlang:raise(Class, {bad_return_value, BadReply}, erlang:get_stacktrace());
 error_terminate(Class, Reason) ->
     erlang:raise(Class, Reason, erlang:get_stacktrace()).
 
-error_terminate(Class, Reason, Stacktrace) ->
-    erlang:raise(Class, Reason, Stacktrace).
+% error_terminate(Class, Reason, Stacktrace) ->
+%     erlang:raise(Class, Reason, Stacktrace).
