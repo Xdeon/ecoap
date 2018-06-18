@@ -194,10 +194,10 @@ handle_info({timeout, TRef, cache_expired}, State=#state{timer=TRef}) ->
     % multi-block cache expired, but the observer is still active
     {noreply, State#state{last_response=undefined}};
 handle_info({coap_ack, _EpID, _EndpointPid, Ref}, State=#state{module=Module, obstate=ObState}) ->
-    try case coap_ack(Module, Ref, ObState) of
+    try coap_ack(Module, Ref, ObState) of
         {ok, ObState2} -> 
             {noreply, State#state{obstate=ObState2}}
-    end catch C:R -> 
+    catch C:R -> 
         error_terminate(C, R)
     end;
 handle_info({coap_error, _EpID, _EndpointPid, _Ref, _Error}, State=#state{observer=Observer}) ->
@@ -409,13 +409,13 @@ cancel_observer(_Request, State=#state{uri=Uri, module=Module, obstate=ObState})
         [] -> pg2:delete({coap_observer, Uri});
         _Else -> ok
     end,
-    {ok, coap_unobserve(Module, ObState), State#state{observer=undefined, obstate=undefined}}.
+    {fun() -> coap_unobserve(Module, ObState) end, State#state{observer=undefined, obstate=undefined}}.
 
 try_cancel_observe_and_terminate(Request, State) ->
-    {ok, Result, State2} = cancel_observer(Request, State),
-    try case Result of
+    {UnobserveCallback, State2} = cancel_observer(Request, State),
+    try UnobserveCallback() of
         ok -> {stop, normal, State2}
-    end catch C:R ->
+    catch C:R -> 
         error_terminate(C, R)
     end.
 
@@ -423,8 +423,8 @@ try_cancel_observe_and_send_response(Request, Response, State) ->
     try_cancel_observe_and_send_response([], Request, Response, State).
 
 try_cancel_observe_and_send_response(Ref, Request, Response, State) ->
-    {ok, Result, State2} = cancel_observer(Request, State),
-    try case Result of
+    {UnobserveCallback, State2} = cancel_observer(Request, State),
+    try UnobserveCallback() of
         ok ->
             case Response of
                 {error, Code} ->
@@ -432,7 +432,7 @@ try_cancel_observe_and_send_response(Ref, Request, Response, State) ->
                 #coap_content{} ->
                     return_resource(Ref, Request, {ok, 'Content'}, Response, State2)
             end
-    end catch C:R ->
+    catch C:R ->
         _ = return_response(Ref, Request, {error, 'InternalServerError'}, <<>>, State2),
         error_terminate(C, R)
     end.
