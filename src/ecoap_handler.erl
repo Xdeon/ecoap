@@ -197,8 +197,8 @@ handle_info({coap_ack, _EpID, _EndpointPid, Ref}, State=#state{module=Module, ob
     try coap_ack(Module, Ref, ObState) of
         {ok, ObState2} -> 
             {noreply, State#state{obstate=ObState2}}
-    catch C:R -> 
-        error_terminate(C, R)
+    catch C:R:S -> 
+        error_terminate(C, R, S)
     end;
 handle_info({coap_error, _EpID, _EndpointPid, _Ref, _Error}, State=#state{observer=Observer}) ->
     try_cancel_observe_and_terminate(Observer, State);
@@ -215,9 +215,9 @@ handle_info(Info, State=#state{module=Module, observer=Observer, obstate=ObState
             {noreply, State#state{obstate=ObState2}};
         {stop, ObState2} ->
             handle_notify([], {error, 'ServiceUnavailable'}, ObState2, Observer, State)
-    end catch C:R ->
+    end catch C:R:S ->
         _ = handle_notify([], {error, 'InternalServerError'}, ObState, Observer, State),
-        error_terminate(C, R)
+        error_terminate(C, R, S)
     end.
 
 handle_notify(Ref, {error, Code}, ObState2, Observer, State) ->
@@ -323,9 +323,9 @@ check_resource(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, query=Q
             return_response(Request, {error, Code}, State);
         {error, Code, Reason} ->
             return_response([], Request, {error, Code}, Reason, State)
-    end catch C:R ->
+    end catch C:R:S ->
         _ = return_response(Request, {error, 'InternalServerError'}, State),
-        error_terminate(C, R)
+        error_terminate(C, R, S)
     end.
 
 check_preconditions(EpID, Request, Content, State) ->
@@ -389,9 +389,9 @@ handle_observe(EpID, Request, Content,
             return_response(Request, {error, Error}, State);
         {error, Error, Reason} ->
             return_response([], Request, {error, Error}, Reason, State)
-    end catch C:R->
+    end catch C:R:S->
         _ = return_response(Request, {error, 'InternalServerError'}, State),
-        error_terminate(C, R)
+        error_terminate(C, R, S)
     end;
 handle_observe(_EpID, Request, Content, State) ->
     % subsequent observe request from the same user
@@ -415,8 +415,8 @@ try_cancel_observe_and_terminate(Request, State) ->
     {UnobserveCallback, State2} = cancel_observer(Request, State),
     try UnobserveCallback() of
         ok -> {stop, normal, State2}
-    catch C:R -> 
-        error_terminate(C, R)
+    catch C:R:S -> 
+        error_terminate(C, R, S)
     end.
 
 try_cancel_observe_and_send_response(Request, Response, State) ->
@@ -432,9 +432,9 @@ try_cancel_observe_and_send_response(Ref, Request, Response, State) ->
                 #coap_content{} ->
                     return_resource(Ref, Request, {ok, 'Content'}, Response, State2)
             end
-    catch C:R ->
+    catch C:R:S ->
         _ = return_response(Ref, Request, {error, 'InternalServerError'}, <<>>, State2),
-        error_terminate(C, R)
+        error_terminate(C, R, S)
     end.
 
 handle_post(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
@@ -445,9 +445,9 @@ handle_post(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=Mod
             return_response(Request, {error, Error}, State);
         {error, Error, Reason} ->
             return_response([], Request, {error, Error}, Reason, State)
-    end catch C:R ->
+    end catch C:R:S ->
         _ = return_response(Request, {error, 'InternalServerError'}, State),
-        error_terminate(C, R)
+        error_terminate(C, R, S)
     end.
 
 handle_put(EpID, Request, Content, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
@@ -458,9 +458,9 @@ handle_put(EpID, Request, Content, State=#state{prefix=Prefix, suffix=Suffix, mo
             return_response(Request, {error, Error}, State);
         {error, Error, Reason} ->
             return_response([], Request, {error, Error}, Reason, State)
-    end catch C:R ->
+    end catch C:R:S ->
         _ = return_response(Request, {error, 'InternalServerError'}, State),
-        error_terminate(C, R)
+        error_terminate(C, R, S)
     end.
 
 created_or_changed({error, 'NotFound'}) ->
@@ -476,9 +476,9 @@ handle_delete(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=M
             return_response(Request, {error, Error}, State);
         {error, Error, Reason} ->
             return_response([], Request, {error, Error}, Reason, State)
-    end catch C:R ->
+    end catch C:R:S ->
         _ = return_response(Request, {error, 'InternalServerError'}, State),
-        error_terminate(C, R)
+        error_terminate(C, R, S)
     end.
 
 return_resource(Request, Content, State) ->
@@ -616,10 +616,7 @@ coap_ack(Module, Ref, ObState) ->
         false -> {ok, ObState}
     end.
 
-error_terminate(Class, {case_clause, BadReply}) ->
-    erlang:raise(Class, {bad_return_value, BadReply}, erlang:get_stacktrace());
-error_terminate(Class, Reason) ->
-    erlang:raise(Class, Reason, erlang:get_stacktrace()).
-
-% error_terminate(Class, Reason, Stacktrace) ->
-%     erlang:raise(Class, Reason, Stacktrace).
+error_terminate(Class, {case_clause, BadReply}, Stacktrace) ->
+    erlang:raise(Class, {bad_return_value, BadReply}, Stacktrace);
+error_terminate(Class, Reason, Stacktrace) ->
+    erlang:raise(Class, Reason, Stacktrace).
