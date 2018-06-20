@@ -47,15 +47,15 @@ clear_registry() -> ets:delete_all_objects(?HANDLER_TAB).
 % select an entry with a longest prefix
 % this allows user to have one handler for "foo" and another for "foo/bar"
 
-match_handler([], Reg) ->
-    match(Reg, [], undefined);
-match_handler(Uri, Reg) ->
-    match(Reg, Uri, match_handler(lists:droplast(Uri), Reg)).
-
-match(Tab, Key, Default) ->
+match_handler([]=Key, Tab) ->
     case ets:lookup(Tab, Key) of
         [Val] -> Val;
-        [] -> Default
+        [] -> undefined
+    end;
+match_handler(Key, Tab) ->
+    case ets:lookup(Tab, Key) of
+        [Val] -> Val;
+        [] -> match_handler(lists:droplast(Key), Tab)
     end.
 
 % ask each handler to provide a link list
