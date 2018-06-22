@@ -31,13 +31,11 @@ coap_get(_EpID, [<<"fibonacci">>], _Name, [], _Request) ->
     {ok, coap_content:new(Payload, #{'Content-Format' => <<"text/plain">>})};
 
 coap_get(_EpID, [<<"fibonacci">>], _Name, [Query|_], _Request) ->
-    Num = case re:run(Query, "^n=[0-9]+$") of
-        {match, _} ->
-            lists:nth(2, binary:split(Query, <<$=>>));
-        nomatch -> 
-            <<"20">>
+    Num = case uri_string:dissect_query(Query) of
+        [{<<"n">>, N}] -> binary_to_integer(N);
+        _ -> 20
     end,
-    Payload = <<"fibonacci(", Num/binary, ") = ", (integer_to_binary(fib(binary_to_integer(Num))))/binary>>,
+    Payload = <<"fibonacci(", (integer_to_binary(Num))/binary, ") = ", (integer_to_binary(fib((Num))))/binary>>,
     {ok, coap_content:new(Payload, #{'Content-Format' => <<"text/plain">>})};
 
 coap_get(_EpID, [<<"helloWorld">>], _Name, _Query, _Request) ->
