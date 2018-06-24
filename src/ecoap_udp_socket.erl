@@ -1,6 +1,15 @@
 -module(ecoap_udp_socket).
 -behaviour(gen_server).
 
+%% TODO: add supoort for multicast
+%% can be done by:
+%% 1. add one more param to get_endpoint API to specify if the message to send to a multicast address
+%% 2. start endpoint process with EpID set to something like 'multicast' instead of {IP, Port}
+%% 3. when receiving a response that can not match an endpoint using {IP, Port}, forward it to the multicast endpoint
+%% NOTE: should only apply to client mode
+%% NOTE: must also modify ecoap_client and ecoap_endpoint to make them not remove the request record!
+%%       since they remove the record after the first response, we can not recv following responses 
+
 %% API.
 -export([start_link/1, start_link/3, close/1]).
 -export([get_endpoint/2, get_all_endpoints/1, get_endpoint_count/1]).
