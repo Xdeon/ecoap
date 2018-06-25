@@ -19,7 +19,7 @@
 
 -record(state, {
     endpoint_pid = undefined :: pid(),
-    id = undefined :: {atom(), [binary()], [binary()]},
+    id = undefined :: {atom(), [binary()], [binary()], undefined | binary()},
     uri = undefined :: [binary()],
     prefix = undefined :: [binary()], 
     suffix = undefined :: [binary()],
@@ -161,7 +161,7 @@ notify(Uri, Info) ->
 
 %% gen_server.
 
-init([EndpointPid, ID={_, Uri, Query}]) ->
+init([EndpointPid, ID={_, Uri, Query, _}]) ->
     % the receiver will be determined based on the URI
     case ecoap_registry:match_handler(Uri) of
         {Prefix, Module} ->
