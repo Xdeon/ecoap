@@ -33,10 +33,9 @@
 
 -record(state, {
 	socket = undefined :: {client_socket, pid()} | {server_socket, pid() | atom()},
-	endpoints = [] :: [pid()],
 	requests = #{} :: #{reference() => {pid(), request()}},
 	ongoing_blocks = #{} :: #{block_key() => reference()},
-	observe_regs = #{} :: #{observe_key() => {reference(), binary()}},
+	observe_regs = #{} :: #{observe_key() => reference()},
 	request_mapping = #{} :: #{reference() => reference()}
 }).
 
@@ -303,39 +302,58 @@ handle_call({request, Sync, Method, Uri, Content, Options}, From, State=#state{s
 			{reply, {ok, Ref}, State#state{requests=maps:put(Ref, {EndpointPid, Request}, Requests)}}
 	end;
 
+% handle_call({observe, Uri, Options}, {Pid, _}, State=#state{socket=Socket, requests=Requests, observe_regs=ObsRegs}) ->
+% 	{ok, EpID, Path, Options2} = make_request(Uri, Options),
+% 	ObsKey = {EpID, Path, coap_message:get_option('Accept', Options2)},
+% 	{Token, Requests2, ObsRegs2} = case maps:find(ObsKey, ObsRegs) of
+% 		error -> 
+% 			{ecoap_message_token:generate_token(), Requests, ObsRegs};
+% 		{ok, {OldRef, OldToken}} ->
+% 			{OldToken, maps:remove(OldRef, Requests), maps:remove(ObsKey, ObsRegs)}
+% 	end,
+% 	{ok, EndpointPid} = get_endpoint(Socket, EpID),
+% 	{ok, Ref} = ecoap_endpoint:send(EndpointPid,  
+% 					coap_message:set_token(Token,
+% 						ecoap_request:request('CON', 'GET', coap_message:add_option('Observe', 0, Options2)))),
+% 	Request = #request{method='GET', options=Options2, origin_ref=Ref, reply_to=Pid, observe_key=ObsKey},	
+% 	Requests3 = maps:put(Ref, {EndpointPid, Request}, Requests2),
+% 	ObsRegs3 = maps:put(ObsKey, {Ref, Token}, ObsRegs2),
+% 	{reply, {ok, Ref}, State#state{requests=Requests3, observe_regs=ObsRegs3}};
+
 handle_call({observe, Uri, Options}, {Pid, _}, State=#state{socket=Socket, requests=Requests, observe_regs=ObsRegs}) ->
 	{ok, EpID, Path, Options2} = make_request(Uri, Options),
 	ObsKey = {EpID, Path, coap_message:get_option('Accept', Options2)},
-	{Token, Requests2, ObsRegs2} = case maps:find(ObsKey, ObsRegs) of
-		error -> 
-			{ecoap_message_token:generate_token(), Requests, ObsRegs};
-		{ok, {OldRef, OldToken}} ->
-			{OldToken, maps:remove(OldRef, Requests), maps:remove(ObsKey, ObsRegs)}
-	end,
 	{ok, EndpointPid} = get_endpoint(Socket, EpID),
-	{ok, Ref} = ecoap_endpoint:send(EndpointPid,  
-					coap_message:set_token(Token,
-						ecoap_request:request('CON', 'GET', coap_message:add_option('Observe', 0, Options2)))),
-	Request = #request{method='GET', options=Options2, origin_ref=Ref, reply_to=Pid, observe_key=ObsKey},	
-	Requests3 = maps:put(Ref, {EndpointPid, Request}, Requests2),
-	ObsRegs3 = maps:put(ObsKey, {Ref, Token}, ObsRegs2),
-	{reply, {ok, Ref}, State#state{requests=Requests3, observe_regs=ObsRegs3}};
+	Ref = case maps:find(ObsKey, ObsRegs) of 
+		{ok, OldRef} ->
+			{ok, OldRef} = ecoap_endpoint:send_request(EndpointPid, OldRef, 
+				ecoap_request:request('CON', 'GET', coap_message:add_option('Observe', 0, Options2))),
+			OldRef;
+		error ->	
+			{ok, NewRef} = ecoap_endpoint:send(EndpointPid, 
+				ecoap_request:request('CON', 'GET', coap_message:add_option('Observe', 0, Options2))),
+			NewRef
+	end,
+	Request = #request{method='GET', options=Options2, origin_ref=Ref, reply_to=Pid, observe_key=ObsKey},
+	Requests2 = maps:put(Ref, {EndpointPid, Request}, Requests),
+	ObsRegs2 = maps:put(ObsKey, Ref, ObsRegs),
+	{reply, {ok, Ref}, State#state{requests=Requests2, observe_regs=ObsRegs2}};
 
-handle_call({unobserve, Ref, ETag}, {Pid, _}, State=#state{requests=Requests, observe_regs=ObsRegs}) ->
+handle_call({unobserve, Ref, ETag}, {Pid, _}, 
+	State=#state{requests=Requests, request_mapping=RequestMapping, observe_regs=ObsRegs}) ->
 	case maps:find(Ref, Requests) of
 		error ->
 			{reply, {error, no_observe}, State};
 		{ok, {_, #request{observe_key=undefined}}} ->
 			{reply, {error, no_observe}, State};
 		{ok, {EndpointPid, #request{options=Options, observe_key=ObsKey} = Request}} ->
-			{Ref, Token} = maps:get(ObsKey, ObsRegs),
+			Ref = maps:get(ObsKey, ObsRegs),
 			Options2 = coap_message:add_option('ETag', ETag, Options),
-			{ok, Ref2} = ecoap_endpoint:send(EndpointPid,
-							coap_message:set_token(Token,
-								ecoap_request:request('CON', 'GET', coap_message:add_option('Observe', 1, Options2)))),
-			Request2 = Request#request{options=Options2, origin_ref=Ref2, reply_to=Pid, observe_key=undefined}, 
-			State2 = check_and_cancel_request(Ref, State#state{requests=maps:put(Ref2, {EndpointPid, Request2}, Requests)}),
-			{reply, {ok, Ref2}, State2}
+			{ok, Ref} = ecoap_endpoint:send_request(EndpointPid, Ref,
+							ecoap_request:request('CON', 'GET', coap_message:add_option('Observe', 1, Options2))),
+			Request2 = Request#request{options=Options2, origin_ref=Ref, reply_to=Pid}, 
+			State2 = check_and_cancel_request(maps:get(Ref, RequestMapping, undefined), State),
+			{reply, {ok, Ref},  State2#state{requests=maps:put(Ref, {EndpointPid, Request2}, Requests)}}
 	end;
 
 handle_call({cancel_request, Ref}, _From, State) ->

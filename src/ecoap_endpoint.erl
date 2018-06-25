@@ -69,10 +69,15 @@ send(EndpointPid, Message=#coap_message{}) ->
     send_request(EndpointPid, make_ref(), Message).
 
 -spec send_request(pid(), Ref, coap_message:coap_message()) -> {ok, Ref}.
-send_request(EndpointPid, Ref, Message=#coap_message{token= <<>>}) ->
-    % when no token is assigned then generate one
-    gen_server:cast(EndpointPid, {send_request, Message#coap_message{token=ecoap_message_token:generate_token()}, {self(), Ref}}),
-    {ok, Ref};
+% send_request(EndpointPid, Ref, Message=#coap_message{token= <<>>}) ->
+%     % when no token is assigned then generate one
+%     gen_server:cast(EndpointPid, {send_request, Message#coap_message{token=ecoap_message_token:generate_token()}, {self(), Ref}}),
+%     {ok, Ref};
+% send_request(EndpointPid, Ref, Message) ->
+%     % use user defined token
+%     gen_server:cast(EndpointPid, {send_request, Message, {self(), Ref}}),
+%     {ok, Ref}.
+
 send_request(EndpointPid, Ref, Message) ->
     % use user defined token
     gen_server:cast(EndpointPid, {send_request, Message, {self(), Ref}}),
@@ -332,11 +337,20 @@ code_change(_OldVsn, State, _Extra) ->
 % change a msg from NON to CON periodically & limit data rate according to some congestion control strategy (e.g. cocoa)
 % problem: What should we do when queue overflows? Should we inform the req/resp sender?
 
-make_new_request(Message=#coap_message{token=Token}, Receiver, State=#state{tokens=Tokens, nextmid=MsgId, receivers=Receivers}) ->
-    % in case this is a request using previous token, we need to remove the outdated receiver reference first
-    Receivers2 = maps:put(Receiver, {Token, {out, MsgId}}, maps:remove(maps:get(Token, Tokens, undefined), Receivers)),
+% make_new_request(Message=#coap_message{token=Token}, Receiver, State=#state{tokens=Tokens, nextmid=MsgId, receivers=Receivers}) ->
+%     % in case this is a request using previous token, we need to remove the outdated receiver reference first
+%     Receivers2 = maps:put(Receiver, {Token, {out, MsgId}}, maps:remove(maps:get(Token, Tokens, undefined), Receivers)),
+%     Tokens2 = maps:put(Token, Receiver, Tokens),
+%     make_new_message(Message, Receiver, State#state{tokens=Tokens2, receivers=Receivers2}).
+
+make_new_request(Message, Receiver, State=#state{tokens=Tokens, nextmid=MsgId, receivers=Receivers}) ->
+    Token = case maps:find(Receiver, Receivers) of
+        {ok, {OldToken, _}} -> OldToken;
+        error -> ecoap_message_token:generate_token()
+    end,
     Tokens2 = maps:put(Token, Receiver, Tokens),
-    make_new_message(Message, Receiver, State#state{tokens=Tokens2, receivers=Receivers2}).
+    Receivers2 = maps:put(Receiver, {Token, {out, MsgId}}, Receivers),
+    make_new_message(Message#coap_message{token=Token}, Receiver, State#state{tokens=Tokens2, receivers=Receivers2}).
 
 make_new_message(Message, Receiver, State=#state{nextmid=MsgId}) ->
     make_message({out, MsgId}, Message#coap_message{id=MsgId}, Receiver, State#state{nextmid=ecoap_message_id:next_mid(MsgId)}).
