@@ -180,8 +180,8 @@ handle_call(_Request, _From, State) ->
 
 handle_cast(shutdown, State=#state{observer=undefined}) ->
     {stop, normal, State};
-handle_cast(shutdown, State=#state{observer=Observer}) ->
-    try_cancel_observe_and_terminate(Observer, State);
+handle_cast(shutdown, State) ->
+    try_cancel_observe_and_terminate(State);
 handle_cast(_Msg, State) ->
     error_logger:error_msg("unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
     {noreply, State}.
@@ -200,8 +200,8 @@ handle_info({coap_ack, _EpID, _EndpointPid, Ref}, State=#state{module=Module, ob
     catch C:R:S -> 
         error_terminate(C, R, S)
     end;
-handle_info({coap_error, _EpID, _EndpointPid, _Ref, _Error}, State=#state{observer=Observer}) ->
-    try_cancel_observe_and_terminate(Observer, State);
+handle_info({coap_error, _EpID, _EndpointPid, _Ref, _Error}, State) ->
+    try_cancel_observe_and_terminate(State);
 handle_info(_Info, State=#state{observer=undefined}) ->
     % ignore unexpected notification
     {noreply, State};
@@ -402,29 +402,20 @@ handle_unobserve(_EpID, Request=#coap_message{token=Token}, Content, State=#stat
 handle_unobserve(_EpID, Request, Content, State) ->
     return_resource(Request, Content, State).
 
-cancel_observer(_Request, State=#state{uri=Uri, module=Module, obstate=ObState}) ->
-    ok = pg2:leave({coap_observer, Uri}, self()),
-    % will the last observer to leave this group please turn out the lights
-    case pg2:get_members({coap_observer, Uri}) of
-        [] -> pg2:delete({coap_observer, Uri});
-        _Else -> ok
-    end,
-    {fun() -> coap_unobserve(Module, ObState) end, State#state{observer=undefined, obstate=undefined}}.
-
-try_cancel_observe_and_terminate(Request, State) ->
-    {UnobserveCallback, State2} = cancel_observer(Request, State),
-    try UnobserveCallback() of
+try_cancel_observe_and_terminate(State=#state{module=Module, obstate=ObState}) ->
+    State2 = cancel_observer(State),
+    try coap_unobserve(Module, ObState) of
         ok -> {stop, normal, State2}
-    catch C:R:S -> 
+     catch C:R:S -> 
         error_terminate(C, R, S)
     end.
 
 try_cancel_observe_and_send_response(Request, Response, State) ->
     try_cancel_observe_and_send_response([], Request, Response, State).
 
-try_cancel_observe_and_send_response(Ref, Request, Response, State) ->
-    {UnobserveCallback, State2} = cancel_observer(Request, State),
-    try UnobserveCallback() of
+try_cancel_observe_and_send_response(Ref, Request, Response, State=#state{module=Module, obstate=ObState}) ->
+    State2 = cancel_observer(State),
+    try coap_unobserve(Module, ObState) of
         ok ->
             case Response of
                 {error, Code} ->
@@ -436,6 +427,15 @@ try_cancel_observe_and_send_response(Ref, Request, Response, State) ->
         _ = return_response(Ref, Request, {error, 'InternalServerError'}, <<>>, State2),
         error_terminate(C, R, S)
     end.
+
+cancel_observer(State=#state{uri=Uri}) ->
+    ok = pg2:leave({coap_observer, Uri}, self()),
+    % will the last observer to leave this group please turn out the lights
+    case pg2:get_members({coap_observer, Uri}) of
+        [] -> pg2:delete({coap_observer, Uri});
+        _Else -> ok
+    end,
+    State#state{observer=undefined, obstate=undefined}.
 
 handle_post(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
     try case coap_post(Module, EpID, Prefix, Suffix, Request) of
