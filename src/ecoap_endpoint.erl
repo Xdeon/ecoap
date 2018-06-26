@@ -268,8 +268,8 @@ handle_info({register_handler, ID, Pid}, State=#state{trans_args=TransArgs=#{han
             ok = ecoap_handler:close(Pid),
             {noreply, State};
         error ->
-            % io:format("register_ecoap_handler ~p for ~p~n", [Pid, ID]),
-            {noreply, State#state{trans_args=TransArgs#{handler_regs:=maps:put(ID, Pid, Regs)}, handler_refs=maps:update(Pid, ID, Refs)}}
+            Regs2 = update_handler_regs(ID, Pid, Regs),
+            {noreply, State#state{trans_args=TransArgs#{handler_regs:=Regs2}, handler_refs=maps:update(Pid, ID, Refs)}}
     end;
 
 handle_info({'DOWN', _Ref, process, Pid, _Reason}, State=#state{rescnt=Count, trans_args=TransArgs=#{handler_regs:=Regs}, handler_refs=Refs}) ->
@@ -277,7 +277,8 @@ handle_info({'DOWN', _Ref, process, Pid, _Reason}, State=#state{rescnt=Count, tr
         {ok, undefined} ->
             {noreply, State#state{rescnt=Count-1, handler_refs=maps:remove(Pid, Refs)}};
         {ok, ID} -> 
-            {noreply, State#state{rescnt=Count-1, trans_args=TransArgs#{handler_regs:=maps:remove(ID, Regs)}, handler_refs=maps:remove(Pid, Refs)}};
+            Regs2 = purge_handler_regs(ID, Regs),
+            {noreply, State#state{rescnt=Count-1, trans_args=TransArgs#{handler_regs:=Regs2}, handler_refs=maps:remove(Pid, Refs)}};
         error -> 
             {noreply, State}
     end;
@@ -411,6 +412,16 @@ scan_state(State=#state{trans=Trans}) ->
     Trans2 = maps:filter(fun(_TrId, TrState) -> ecoap_exchange:not_expired(CurrentTime, TrState) end, Trans),
     purge_state(State#state{trans=Trans2}).
 -endif.
+
+update_handler_regs({_, undefined}=ID, Pid, Regs) ->
+    Regs#{ID=>Pid};
+update_handler_regs({RID, _}=ID, Pid, Regs) ->
+    Regs#{ID=>Pid, {RID, undefined}=>Pid}.
+
+purge_handler_regs({_, undefined}=ID, Regs) ->
+    maps:remove(ID, Regs);
+purge_handler_regs({RID, _}=ID, Regs) ->
+    maps:remove(ID, maps:remove({RID, undefined}, Regs)).
 
 update_state(State=#state{trans=Trans, timer=Timer}, TrId, undefined) ->
     Trans2 = maps:remove(TrId, Trans),

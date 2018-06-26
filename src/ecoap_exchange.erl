@@ -266,8 +266,8 @@ handle_request(Message=#coap_message{code=Method, token=Token},
     Uri = coap_message:get_option('Uri-Path', Message, []),
     Query = coap_message:get_option('Uri-Query', Message, []),
     HandlerID = case coap_message:get_option('Observe', Message) of
-        undefined -> {Method, Uri, Query, undefined};
-        _ -> {Method, Uri, Query, Token}
+        undefined -> {{Method, Uri, Query}, undefined};
+        _ -> {{Method, Uri, Query}, Token}
     end,
     case get_handler(HdlSupPid, EndpointPid, HandlerID, HandlerRegs) of
         {ok, Pid} ->
@@ -302,10 +302,10 @@ handle_ack(_Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiv
 
 get_handler(SupPid, EndpointPid, HandlerID, HandlerRegs) ->
     case maps:find(HandlerID, HandlerRegs) of
-        error ->          
-            ecoap_handler_sup:start_handler(SupPid, EndpointPid, HandlerID);
         {ok, Pid} ->
-            {ok, Pid}
+            {ok, Pid};
+        error ->          
+            ecoap_handler_sup:start_handler(SupPid, EndpointPid, HandlerID)
     end.
 
 request_complete(EndpointPid, Message, Receiver) ->
