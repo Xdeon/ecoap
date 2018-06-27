@@ -3,9 +3,9 @@
 
 -define(TOKEN_LENGTH, 4). % shall be at least 32 random bits
 
--spec generate_token() -> binary().
+-spec generate_token() -> coap_message:token().
 generate_token() -> generate_token(?TOKEN_LENGTH).
 
--spec generate_token(non_neg_integer()) -> binary().
+-spec generate_token(non_neg_integer()) -> coap_message:token().
 generate_token(TKL) ->
     crypto:strong_rand_bytes(TKL).

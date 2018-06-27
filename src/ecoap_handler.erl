@@ -1,7 +1,7 @@
 -module(ecoap_handler).
 -behaviour(gen_server).
 
--export([start_link/2, close/1, notify/2]).
+-export([start_link/2, close/1, notify/2, handler_id/1]).
 
 -export([coap_discover/2]).
 
@@ -19,18 +19,26 @@
 
 -record(state, {
     endpoint_pid = undefined :: pid(),
-    id = undefined :: {{atom(), [binary()], [binary()]}, undefined | binary()},
-    uri = undefined :: [binary()],
-    prefix = undefined :: [binary()], 
-    suffix = undefined :: [binary()],
-    query = undefined :: [binary()],
+    id = undefined :: handler_id(),
     module = undefined :: module(), 
     insegs = undefined :: {orddict:orddict(), undefined | binary() | non_neg_integer()}, 
     last_response = undefined :: last_response(),
     observer = undefined :: undefined | coap_message:coap_message(), 
     obseq = undefined :: non_neg_integer(), 
     obstate = undefined :: term(), 
-    timer = undefined :: undefined | reference()}).
+    timer = undefined :: undefined | reference(),
+    uri = undefined :: uri(),
+    prefix = undefined :: uri(), 
+    suffix = undefined :: uri(),
+    query = undefined :: query()}).
+
+-type method() :: atom().
+-type uri() :: ecoap_uri:path().
+-type query() :: ecoap_uri:query().
+-type reason() :: binary().
+-type observe_ref() :: term().
+-type observe_state() :: term().
+-type handler_id() :: {{method(), uri(), query()}, coap_message:token() | undefined}.
 
 -type last_response() ::
     undefined |
@@ -38,18 +46,11 @@
     coap_message:coap_success() | 
     coap_message:coap_error().
 
--type observe_state() :: term().
--type prefix() :: ecoap_uri:path().
--type suffix() :: ecoap_uri:path().
--type query() :: ecoap_uri:query().
--type reason() :: binary().
--type observe_ref() :: term().
-
--export_type([prefix/0, suffix/0, query/0, reason/0]).
+-export_type([uri/0, query/0, reason/0, handler_id/0]).
 
 % called when a client asks for .well-known/core resources
 -callback coap_discover(Prefix) -> [Uri] when
-    Prefix :: prefix(),
+    Prefix :: uri(),
     Uri :: core_link:coap_uri().
 -optional_callbacks([coap_discover/1]). 
 
@@ -57,8 +58,8 @@
 -callback coap_get(EpID, Prefix, Suffix, Query, Request) -> 
     {ok, Content} | {error, Error} | {error, Error, Reason} when
     EpID :: ecoap_udp_socket:ecoap_endpoint_id(),
-    Prefix :: prefix(),
-    Suffix :: suffix(),
+    Prefix :: uri(),
+    Suffix :: uri(),
     Query :: 'query'(),
     Request :: coap_message:coap_message(),
     Content :: coap_content:coap_content(),
@@ -70,8 +71,8 @@
 -callback coap_post(EpID, Prefix, Suffix, Request) -> 
     {ok, Code, Content} | {error, Error} | {error, Error, Reason} when
     EpID :: ecoap_udp_socket:ecoap_endpoint_id(),
-    Prefix :: prefix(),
-    Suffix :: suffix(),
+    Prefix :: uri(),
+    Suffix :: uri(),
     Request :: coap_message:coap_message(),
     Code :: coap_message:success_code(),
     Content :: coap_content:coap_content(),
@@ -82,8 +83,8 @@
 % PUT handler
 -callback coap_put(EpID, Prefix, Suffix, Request) -> ok | {error, Error} | {error, Error, Reason} when
     EpID :: ecoap_udp_socket:ecoap_endpoint_id(),
-    Prefix :: prefix(),
-    Suffix :: suffix(),
+    Prefix :: uri(),
+    Suffix :: uri(),
     Request :: coap_message:coap_message(),
     Error :: coap_message:error_code(),
     Reason :: reason().
@@ -92,8 +93,8 @@
 % DELETE handler
 -callback coap_delete(EpID, Prefix, Suffix, Request) -> ok | {error, Error} | {error, Error, Reason} when
     EpID :: ecoap_udp_socket:ecoap_endpoint_id(),
-    Prefix :: prefix(),
-    Suffix :: suffix(),
+    Prefix :: uri(),
+    Suffix :: uri(),
     Request :: coap_message:coap_message(),
     Error :: coap_message:error_code(),
     Reason :: reason().
@@ -102,8 +103,8 @@
 % observe request handler
 -callback coap_observe(EpID, Prefix, Suffix, Request) -> {ok, ObState} | {error, Error} | {error, Error, Reason} when
     EpID :: ecoap_udp_socket:ecoap_endpoint_id(),
-    Prefix :: prefix(),
-    Suffix :: suffix(),
+    Prefix :: uri(),
+    Suffix :: uri(),
     Request :: coap_message:coap_message(),
     ObState :: observe_state(),
     Error :: coap_message:error_code(),
@@ -145,18 +146,28 @@
 
 %% API.
 
--spec start_link(pid(), {atom(), [binary()], [binary()]}) -> {ok, pid()}.
+-spec start_link(pid(), {atom(), [binary()], [binary()]}) -> {ok, pid()} | {error, term()}.
 start_link(EndpointPid, ID) ->
     gen_server:start_link(?MODULE, [EndpointPid, ID], []).
 
+-spec close(pid()) -> ok.
 close(Pid) ->
     gen_server:cast(Pid, shutdown).
 
--spec notify([binary()], term()) -> ok.
+-spec notify(uri(), term()) -> ok.
 notify(Uri, Info) ->
     case pg2:get_members({coap_observer, Uri}) of
         {error, _} -> ok;
         List -> lists:foreach(fun(Pid) -> Pid ! {coap_notify, Info} end, List)
+    end.
+
+-spec handler_id(coap_message:coap_message()) -> handler_id().
+handler_id(Message=#coap_message{code=Method, token=Token}) ->
+    Uri = coap_message:get_option('Uri-Path', Message, []),
+    Query = coap_message:get_option('Uri-Query', Message, []),
+    case coap_message:get_option('Observe', Message) of
+        undefined -> {{Method, Uri, Query}, undefined};
+        _ -> {{Method, Uri, Query}, Token}
     end.
 
 %% gen_server.
@@ -188,11 +199,6 @@ handle_cast(_Msg, State) ->
 
 handle_info({coap_request, EpID, _EndpointPid, _Receiver=undefined, Request}, State) ->
     handle(EpID, Request, State);
-handle_info({timeout, TRef, cache_expired}, State=#state{observer=undefined, timer=TRef}) ->
-    {stop, normal, State};
-handle_info({timeout, TRef, cache_expired}, State=#state{timer=TRef}) ->
-    % multi-block cache expired, but the observer is still active
-    {noreply, State#state{last_response=undefined}};
 handle_info({coap_ack, _EpID, _EndpointPid, Ref}, State=#state{module=Module, obstate=ObState}) ->
     try coap_ack(Module, Ref, ObState) of
         {ok, ObState2} -> 
@@ -202,6 +208,11 @@ handle_info({coap_ack, _EpID, _EndpointPid, Ref}, State=#state{module=Module, ob
     end;
 handle_info({coap_error, _EpID, _EndpointPid, _Ref, _Error}, State) ->
     try_cancel_observe_and_terminate(State);
+handle_info({timeout, TRef, cache_expired}, State=#state{observer=undefined, timer=TRef}) ->
+    {stop, normal, State};
+handle_info({timeout, TRef, cache_expired}, State=#state{timer=TRef}) ->
+    % multi-block cache expired, but the observer is still active
+    {noreply, State#state{last_response=undefined}};
 handle_info(_Info, State=#state{observer=undefined}) ->
     % ignore unexpected notification
     {noreply, State};

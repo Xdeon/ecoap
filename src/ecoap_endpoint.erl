@@ -21,9 +21,9 @@
 
 -record(state, {
     trans_args = undefined :: trans_args(),
-	tokens = #{} :: #{binary() => receiver()},
+	tokens = #{} :: #{coap_message:token() => receiver()},
 	trans = #{} :: #{trid() => ecoap_exchange:exchange()},
-    receivers = #{} :: #{receiver() => {binary(), trid()}},
+    receivers = #{} :: #{receiver() => {coap_message:token(), trid()}},
 	nextmid = undefined :: coap_message:msg_id(),
 	rescnt = 0 :: non_neg_integer(),
     handler_refs = #{} ::  #{pid() => tuple() | undefined},
@@ -37,7 +37,7 @@
                         ep_id := ecoap_udp_socket:ecoap_endpoint_id(), 
                         endpoint_pid := pid(), 
                         handler_sup => pid(),
-                        handler_regs => #{tuple() => pid()}}.
+                        handler_regs => #{ecoap_handler:handler_id() => pid()}}.
 
 -opaque state() :: #state{}.
 

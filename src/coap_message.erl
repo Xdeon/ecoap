@@ -42,7 +42,9 @@
 
 -type msg_id() :: 0..65535.
 
--type coap_type() :: 'CON' | 'NON' | 'ACK' | 'RST' .
+-type token() :: binary().
+
+-type coap_type() :: 'CON' | 'NON' | 'ACK' | 'RST'.
 
 -type coap_method() :: 'GET' | 'POST' | 'PUT' | 'DELETE'.
 
@@ -96,6 +98,7 @@
 
 -export_type([coap_message/0, 
               msg_id/0, 
+              token/0,
               coap_type/0, 
               coap_method/0, 
               success_code/0, 

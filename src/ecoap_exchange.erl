@@ -260,16 +260,10 @@ cancelled({_, _}, _TransArgs, State) ->
     State.
 
 % utility functions
-handle_request(Message=#coap_message{code=Method, token=Token}, 
+handle_request(Message, 
     #{ep_id:=EpID, handler_sup:=HdlSupPid, endpoint_pid:=EndpointPid, handler_regs:=HandlerRegs}, #exchange{receiver=undefined}) ->
     %io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
-    Uri = coap_message:get_option('Uri-Path', Message, []),
-    Query = coap_message:get_option('Uri-Query', Message, []),
-    HandlerID = case coap_message:get_option('Observe', Message) of
-        undefined -> {{Method, Uri, Query}, undefined};
-        _ -> {{Method, Uri, Query}, Token}
-    end,
-    case get_handler(HdlSupPid, EndpointPid, HandlerID, HandlerRegs) of
+    case get_handler(HdlSupPid, EndpointPid, ecoap_handler:handler_id(Message), HandlerRegs) of
         {ok, Pid} ->
             Pid ! {coap_request, EpID, EndpointPid, undefined, Message},
             ok;
