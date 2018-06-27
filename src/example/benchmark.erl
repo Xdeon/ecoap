@@ -23,31 +23,29 @@ stop() ->
 coap_discover(Prefix) ->
     [{absolute, Prefix, []}].
 
-coap_get(_EpID, [<<"benchmark">>], _Name, _Query, _Request) ->
+coap_get(_EpID, [<<"benchmark">>], [], _Query, _Request) ->
     {ok, coap_content:new(<<"hello world">>)};
 
-coap_get(_EpID, [<<"fibonacci">>], _Name, [], _Request) ->
-    Payload = <<"fibonacci(20) = ", (integer_to_binary(fib(20)))/binary>>,
-    {ok, coap_content:new(Payload, #{'Content-Format' => <<"text/plain">>})};
-
-coap_get(_EpID, [<<"fibonacci">>], _Name, [Query|_], _Request) ->
-    Num = case uri_string:dissect_query(Query) of
-        [{<<"n">>, N}] -> binary_to_integer(N);
-        _ -> 20
-    end,
+coap_get(_EpID, [<<"fibonacci">>], [], Query, _Request) ->
+    Num = lists:foldl(fun(Q, Acc) -> 
+            case uri_string:dissect_query(Q) of
+                [{<<"n">>, N}] -> binary_to_integer(N);
+                _ -> Acc 
+            end 
+        end, 20, Query),
     Payload = <<"fibonacci(", (integer_to_binary(Num))/binary, ") = ", (integer_to_binary(fib((Num))))/binary>>,
     {ok, coap_content:new(Payload, #{'Content-Format' => <<"text/plain">>})};
 
-coap_get(_EpID, [<<"helloWorld">>], _Name, _Query, _Request) ->
+coap_get(_EpID, [<<"helloWorld">>], [], _Query, _Request) ->
     {ok, coap_content:new(<<"Hello World">>, #{'Content-Format' => <<"text/plain">>})};
 
-coap_get(_EpID, [<<"shutdown">>], _Name, _Query, _Request) ->
+coap_get(_EpID, [<<"shutdown">>], [], _Query, _Request) ->
     {ok, coap_content:new(<<"Send a POST request to this resource to shutdown the server">>)};
 
 coap_get(_EpID, _Prefix, _Name, _Query, _Request) ->
     {error, 'NotFound'}.
 
-coap_post(_EpID, [<<"shutdown">>], _Name, _Request) ->
+coap_post(_EpID, [<<"shutdown">>], [], _Request) ->
     _ = spawn(fun() -> io:format("Shutting down everything in 1 second~n"), timer:sleep(1000), benchmark:stop() end),
     {ok, 'Changed', coap_content:new(<<"Shutting down">>)};
 
