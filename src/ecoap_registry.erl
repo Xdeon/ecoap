@@ -65,9 +65,9 @@ match_handler(Key, Tab) ->
 %         [], Reg).
 
 get_links(Reg) ->
-    lists:foldl(
-        fun({Prefix, Module}, Acc) -> get_links(Prefix, Module) ++ Acc end,
-        [], Reg).
+    lists:flatten(lists:foldl(
+        fun({Prefix, Module}, Acc) -> [get_links(Prefix, Module)|Acc] end,
+        [], Reg)).
 
 get_links(Prefix, Module) ->
     % for each pattern ask the handler to provide a list of resources

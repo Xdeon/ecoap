@@ -16,21 +16,34 @@ coap_get(_EpID, _Prefix, _Else, _Query, _Request) ->
 
 % uri-query processing
 
-filter(Links, []) ->
-    Links;
-filter(Links, [Search | Query]) ->
-    filter(
-        case binary:split(Search, <<$=>>) of
-            [Name0, Value0] ->
+% filter(Links, []) ->
+%     Links;
+% filter(Links, [Search | Query]) ->
+%     filter(
+%         case binary:split(Search, <<$=>>) of
+%             [Name0, Value0] ->
+%                 Name = list_to_atom(binary_to_list(Name0)),
+%                 Value = wildcard_value(Value0),
+%                 lists:filter(
+%                     fun (Link) -> match_link(Link, Name, Value) end,
+%                     Links);
+%             _Else ->
+%                 Links
+%         end,
+%         Query).
+
+filter(Links, Querys) ->
+    lists:foldl(fun(Query, Acc) ->
+        case uri_string:dissect_query(Query) of
+            {error, _, _} -> Acc;
+            [{Name0, Value0}] ->             
                 Name = list_to_atom(binary_to_list(Name0)),
                 Value = wildcard_value(Value0),
                 lists:filter(
                     fun (Link) -> match_link(Link, Name, Value) end,
-                    Links);
-            _Else ->
-                Links
-        end,
-        Query).
+                    Acc)
+        end 
+    end, Links, Querys).
 
 wildcard_value(<<>>) ->
     {global, <<>>};
