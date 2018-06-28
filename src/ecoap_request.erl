@@ -3,9 +3,8 @@
 -export([request/2, request/3, request/4]).
 -export([response/2, response/3]).
 -export([ack/1, rst/1]).
--export([set_payload/2, set_payload/3]).
+-export([set_payload/2, set_payload/3, set_payload/4]).
 
--include("ecoap.hrl").
 -include("coap_message.hrl").
 
 -type block_opt() :: {non_neg_integer(), boolean(), non_neg_integer()}.
@@ -55,14 +54,18 @@ set_payload(Payload, Msg) ->
 	set_payload(Payload, undefined, Msg).
 
 -spec set_payload(binary(), undefined | block_opt(), coap_message:coap_message()) -> coap_message:coap_message().
+set_payload(Payload, Block, Msg) ->
+    set_payload(Payload, Block, Msg, ecoap_default:default_max_block_size()).
+
+-spec set_payload(binary(), undefined | block_opt(), coap_message:coap_message(), non_neg_integer()) -> coap_message:coap_message().
 % segmentation not requested and not required
-set_payload(Payload, undefined, Msg) when byte_size(Payload) =< ?MAX_BLOCK_SIZE ->
+set_payload(Payload, undefined, Msg, MaxBlockSize) when byte_size(Payload) =< MaxBlockSize ->
 	coap_message:set_payload(Payload, Msg);
 % segmentation not requested, but required (late negotiation)
-set_payload(Payload, undefined, Msg) ->
-	set_payload(Payload, {0, true, ?MAX_BLOCK_SIZE}, Msg);
+set_payload(Payload, undefined, Msg, MaxBlockSize) ->
+	set_payload(Payload, {0, true, MaxBlockSize}, Msg, MaxBlockSize);
 % segmentation requested (early negotiation)
-set_payload(Payload, Block, Msg) ->
+set_payload(Payload, Block, Msg, _) ->
 	set_payload_block(Payload, Block, Msg).
 
 -spec set_payload_block(binary(), block_opt(), coap_message:coap_message()) -> coap_message:coap_message().

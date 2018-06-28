@@ -17,5 +17,5 @@ init([]) ->
             ],
     {ok, {#{strategy => simple_one_for_one, intensity => 0, period => 1}, Procs}}.
 
-start_handler(SupPid, EndpointPid, HandlerID) ->
-    supervisor:start_child(SupPid, [EndpointPid, HandlerID]). 
+start_handler(SupPid, HandlerID, Config) ->
+    supervisor:start_child(SupPid, [HandlerID, Config]). 

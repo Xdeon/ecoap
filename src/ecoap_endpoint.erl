@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 %% API.
--export([start_link/4, start_link/3,
+-export([start_link/5, start_link/4,
         ping/1, send/2, send_message/3, send_request/3, send_response/3, cancel_request/2]).
 -export([monitor_handler/2, register_handler/3]).
 
@@ -37,7 +37,8 @@
                         ep_id := ecoap_udp_socket:ecoap_endpoint_id(), 
                         endpoint_pid := pid(), 
                         handler_sup => pid(),
-                        handler_regs => #{ecoap_handler:handler_id() => pid()}}.
+                        handler_regs => #{ecoap_handler:handler_id() => pid()},
+                        _ => _}.
 
 -opaque state() :: #state{}.
 
@@ -46,18 +47,17 @@
 -export_type([receiver/0]).
 -export_type([trans_args/0]).
 
--include("ecoap.hrl").
 -include("coap_message.hrl").
 
 %% API.
 
--spec start_link(module(), inet:socket(), ecoap_udp_socket:ecoap_endpoint_id()) -> {ok, pid()}.
-start_link(SocketModule, Socket, EpID) ->
-    start_link(undefined, SocketModule, Socket, EpID).
+-spec start_link(module(), inet:socket(), ecoap_udp_socket:ecoap_endpoint_id(), ecoap_default:config()) -> {ok, pid()} | {error, term()}.
+start_link(SocketModule, Socket, EpID, Config) ->
+    start_link(undefined, SocketModule, Socket, EpID, Config).
     
--spec start_link(pid() | undefined, module(), inet:socket(), ecoap_udp_socket:ecoap_endpoint_id()) -> {ok, pid()}.
-start_link(SupPid, SocketModule, Socket, EpID) ->
-    gen_server:start_link(?MODULE, [SupPid, SocketModule, Socket, EpID], []).
+-spec start_link(pid() | undefined, module(), inet:socket(), ecoap_udp_socket:ecoap_endpoint_id(), ecoap_default:config()) -> {ok, pid()} | {error, term()}.
+start_link(SupPid, SocketModule, Socket, EpID, Config) ->
+    gen_server:start_link(?MODULE, [SupPid, SocketModule, Socket, EpID, Config], []).
 
 -spec ping(pid()) -> {ok, reference()}.
 ping(EndpointPid) ->
@@ -105,12 +105,12 @@ register_handler(EndpointPid, ID, Pid) ->
 
 %% gen_server.
 
-init([SupPid, SocketModule, Socket, EpID]) ->
+init([SupPid, SocketModule, Socket, EpID, Config]) ->
     % we would like to terminate as well when upper layer socket process terminates
     process_flag(trap_exit, true),
     TransArgs = #{sock=>Socket, sock_module=>SocketModule, ep_id=>EpID, endpoint_pid=>self(), handler_regs=>#{}},
     Timer = endpoint_timer:start_timer(?SCAN_INTERVAL, start_scan),
-    {ok, #state{nextmid=ecoap_message_id:first_mid(), timer=Timer, trans_args=TransArgs}, {continue, {init, SupPid}}}.
+    {ok, #state{nextmid=ecoap_message_id:first_mid(), timer=Timer, trans_args=maps:merge(Config, TransArgs)}, {continue, {init, SupPid}}}.
 
 % client
 handle_continue({init, undefined}, State) ->

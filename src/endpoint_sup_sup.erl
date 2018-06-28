@@ -16,7 +16,7 @@ init([]) ->
 	{ok, {#{strategy => simple_one_for_one, intensity => 0, period => 1}, Procs}}.
 
 start_endpoint(SupPid, Args) ->
-    supervisor:start_child(SupPid, Args).
+    supervisor:start_child(SupPid, [Args]).
 
 delete_endpoint(SupPid, EpSupPid) ->
     supervisor:terminate_child(SupPid, EpSupPid).

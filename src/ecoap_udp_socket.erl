@@ -11,13 +11,12 @@
 %%       since they remove the record after the first response, we can not recv following responses 
 
 %% API.
--export([start_link/1, start_link/3, close/1]).
+-export([start_link/0, start_link/1, start_link/2, start_link/4, close/1]).
 -export([get_endpoint/2, get_all_endpoints/1, get_endpoint_count/1]).
 -export([send_datagram/3]).
 
 %% gen_server.
 -export([init/1]).
-% -export([init/3]).
 -export([handle_continue/2]).
 -export([handle_call/3]).
 -export([handle_cast/2]).
@@ -34,7 +33,8 @@
 -record(state, {
 	sock = undefined :: inet:socket(),
 	endpoint_pool = undefined :: undefined | pid(),
-	endpoint_count = 0 :: non_neg_integer()
+	endpoint_count = 0 :: non_neg_integer(),
+	config = undefined :: ecoap_default:config()
 }).
 
 -opaque state() :: #state{}.
@@ -46,9 +46,17 @@
 %% API.
 
 %% client
+-spec start_link() -> {ok, pid()} | {error, term()}.
+start_link() ->
+	start_link([]).
+
 -spec start_link([gen_udp:option()]) -> {ok, pid()} | {error, term()}.
 start_link(SocketOpts) ->
-	gen_server:start_link(?MODULE, [SocketOpts], []).
+	start_link(SocketOpts, ecoap_default:config()).
+
+-spec start_link([gen_udp:option()], ecoap_default:config()) -> {ok, pid()} | {error, term()}.
+start_link(SocketOpts, Config) ->
+	gen_server:start_link(?MODULE, [SocketOpts, Config], []).
 
 %% client
 -spec close(pid()) -> ok.
@@ -56,9 +64,9 @@ close(Pid) ->
 	gen_server:stop(Pid).
 
 %% server
--spec start_link(pid(), atom(), [gen_udp:option()]) -> {ok, pid()} | {error, term()}.
-start_link(SupPid, Name, SocketOpts) when is_pid(SupPid) ->
-	gen_server:start_link({local, Name}, ?MODULE, [SupPid, SocketOpts], []).
+-spec start_link(pid(), atom(), [gen_udp:option()], ecoap_default:config()) -> {ok, pid()} | {error, term()}.
+start_link(SupPid, Name, SocketOpts, Config) when is_pid(SupPid) ->
+	gen_server:start_link({local, Name}, ?MODULE, [SupPid, SocketOpts, Config], []).
 
 %% start endpoint manually
 -spec get_endpoint(pid(), ecoap_endpoint_id()) -> {ok, pid()} | term().
@@ -81,14 +89,14 @@ send_datagram(Socket, {PeerIP, PeerPortNo}, Datagram) ->
 
 %% gen_server.
 
-init([SocketOpts]) ->
+init([SocketOpts, Config]) ->
 	% process_flag(trap_exit, true),
 	{ok, Socket} = gen_udp:open(0, merge_opts(?DEFAULT_SOCK_OPTS, SocketOpts)),
 	error_logger:info_msg("socket setting: ~p~n", [inet:getopts(Socket, [recbuf, sndbuf, buffer])]),
 	error_logger:info_msg("coap listen on *:~p~n", [inet:port(Socket)]),
-	{ok, #state{sock=Socket}};
-init([SupPid, SocketOpts]) ->
-	{ok, State} = init([SocketOpts]),
+	{ok, #state{sock=Socket, config=ecoap_default:merge_config(Config)}};
+init([SupPid, SocketOpts, Config]) ->
+	{ok, State} = init([SocketOpts, Config]),
 	{ok, State, {continue, {init, SupPid}}}.
 
 handle_continue({init, SupPid}, State) ->
@@ -96,23 +104,25 @@ handle_continue({init, SupPid}, State) ->
 	{noreply, State#state{endpoint_pool=PoolPid}}.
 
 % get an endpoint when being as a client
-handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoint_pool=undefined, endpoint_count=Count}) ->
+handle_call({get_endpoint, EpID}, _From, 
+	State=#state{sock=Socket, endpoint_pool=undefined, endpoint_count=Count, config=Config}) ->
     case find_endpoint(EpID) of
     	{ok, EpPid} ->
     		{reply, {ok, EpPid}, State};
     	error ->
-    		{ok, EpPid} = ecoap_endpoint:start_link(?MODULE, Socket, EpID),
+    		{ok, EpPid} = ecoap_endpoint:start_link(?MODULE, Socket, EpID, Config),
     		store_endpoint(EpID, EpPid),
     		store_endpoint(erlang:monitor(process, EpPid), {EpID, undefined}),
     		{reply, {ok, EpPid}, State#state{endpoint_count=Count+1}}
     end;
 % get an endpoint when being as a server
-handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoint_pool=PoolPid, endpoint_count=Count}) ->
+handle_call({get_endpoint, EpID}, _From, 
+	State=#state{sock=Socket, endpoint_pool=PoolPid, endpoint_count=Count, config=Config}) ->
 	case find_endpoint(EpID) of
 		{ok, EpPid} ->
 			{reply, {ok, EpPid}, State};
 		error ->
-			case endpoint_sup_sup:start_endpoint(PoolPid, [?MODULE, Socket, EpID]) of
+			case endpoint_sup_sup:start_endpoint(PoolPid, [?MODULE, Socket, EpID, Config]) of
 		        {ok, EpSupPid, EpPid} ->
 					store_endpoint(EpID, EpPid),
 					store_endpoint(erlang:monitor(process, EpPid), {EpID, EpSupPid}),
@@ -135,14 +145,15 @@ handle_cast(_Msg, State) ->
 	error_logger:error_msg("unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
 	{noreply, State}.
 
-handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, State=#state{sock=Socket, endpoint_pool=PoolPid, endpoint_count=Count}) ->
+handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, 
+	State=#state{sock=Socket, endpoint_pool=PoolPid, endpoint_count=Count, config=Config}) ->
 	EpID = {PeerIP, PeerPortNo},
 	case find_endpoint(EpID) of
 		{ok, EpPid} ->
 			EpPid ! {datagram, Bin},
 			{noreply, State};
 		error when is_pid(PoolPid) ->
-			case endpoint_sup_sup:start_endpoint(PoolPid, [?MODULE, Socket, EpID]) of
+			case endpoint_sup_sup:start_endpoint(PoolPid, [?MODULE, Socket, EpID, Config]) of
 				{ok, EpSupPid, EpPid} -> 
 					%io:fwrite("start endpoint ~p~n", [EpID]),
 					EpPid ! {datagram, Bin},

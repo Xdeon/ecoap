@@ -13,12 +13,11 @@
 -export([terminate/2]).
 -export([code_change/3]).
 
--include("ecoap.hrl").
 -include("coap_message.hrl").
 -include("coap_content.hrl").
 
 -record(state, {
-    endpoint_pid = undefined :: pid(),
+    config = undefined :: ecoap_default:config(),
     id = undefined :: handler_id(),
     module = undefined :: module(), 
     insegs = undefined :: {orddict:orddict(), undefined | binary() | non_neg_integer()}, 
@@ -146,9 +145,9 @@
 
 %% API.
 
--spec start_link(pid(), {atom(), [binary()], [binary()]}) -> {ok, pid()} | {error, term()}.
-start_link(EndpointPid, ID) ->
-    gen_server:start_link(?MODULE, [EndpointPid, ID], []).
+-spec start_link(handler_id(), ecoap_default:config()) -> {ok, pid()} | {error, term()}.
+start_link(ID, Config) ->
+    gen_server:start_link(?MODULE, [ID, Config], []).
 
 -spec close(pid()) -> ok.
 close(Pid) ->
@@ -172,14 +171,14 @@ handler_id(Message=#coap_message{code=Method, token=Token}) ->
 
 %% gen_server.
 
-init([EndpointPid, ID={{_, Uri, Query}, _}]) ->
+init([ID={{_, Uri, Query}, _}, Config=#{endpoint_pid:=EndpointPid}]) ->
     % the receiver will be determined based on the URI
     case ecoap_registry:match_handler(Uri) of
         {Prefix, Module} ->
             % %io:fwrite("Prefix:~p Uri:~p~n", [Prefix, Uri]),
             ecoap_endpoint:monitor_handler(EndpointPid, self()),
-            {ok, #state{endpoint_pid=EndpointPid, id=ID, uri=Uri, prefix=Prefix, suffix=uri_suffix(Prefix, Uri), query=Query, module=Module,
-                insegs={orddict:new(), undefined}, obseq=0}};
+            {ok, #state{config=Config, id=ID, uri=Uri, prefix=Prefix, 
+                suffix=uri_suffix(Prefix, Uri), query=Query, module=Module, insegs={orddict:new(), undefined}, obseq=0}};
         undefined ->
             % use shutdown as reason to avoid crash report logging
             {stop, shutdown}
@@ -257,7 +256,7 @@ code_change(_OldVsn, State, _Extra) ->
 %% (Handle Observe/Unobserve)
 %% Return response
 
-handle(EpID, Request, State=#state{endpoint_pid=EndpointPid, id=ID}) ->
+handle(EpID, Request, State=#state{id=ID, config=#{exchange_lifetime:=TimeOut, endpoint_pid:=EndpointPid}}) ->
     Block1 = coap_message:get_option('Block1', Request),
     case catch assemble_payload(Request, Block1, State) of
         {error, Code} ->
@@ -268,7 +267,7 @@ handle(EpID, Request, State=#state{endpoint_pid=EndpointPid, id=ID}) ->
             {ok, _} = ecoap_endpoint:send_response(EndpointPid, [],
                 coap_message:set_option('Block1', Block1,
                     ecoap_request:response({ok, 'Continue'}, Request))),
-            set_timeout(?EXCHANGE_LIFETIME, State2);
+            set_timeout(TimeOut, State2);
         {ok, Payload, State2} ->
             process_request(EpID, Request#coap_message{payload=Payload}, State2)
     end.
@@ -298,9 +297,9 @@ assemble_payload(Request, Block1={Num, _, _}, State=#state{insegs={Segs, Current
             end
     end.
 
-process_blocks(#coap_message{payload=Segment}, {Num, true, Size}, State=#state{insegs={Segs, Format}}) ->
+process_blocks(#coap_message{payload=Segment}, {Num, true, Size}, State=#state{insegs={Segs, Format}, config=#{max_body_size:=MaxSize}}) ->
     case byte_size(Segment) of
-        Size when Num*Size < ?MAX_BODY_SIZE -> {'Continue', State#state{insegs={orddict:store(Num, Segment, Segs), Format}}};
+        Size when Num*Size < MaxSize -> {'Continue', State#state{insegs={orddict:store(Num, Segment, Segs), Format}}};
         Size -> {error, 'RequestEntityTooLarge'};
         _ -> {error, 'BadRequest'}
     end;
@@ -385,7 +384,7 @@ handle_method(_EpID, Request, _Content, State) ->
     return_response(Request, {error, 'MethodNotAllowed'}, State).
 
 handle_observe(EpID, Request, Content, 
-        State=#state{endpoint_pid=EndpointPid, id=ID, prefix=Prefix, suffix=Suffix, uri=Uri, module=Module, observer=undefined}) ->
+        State=#state{config=#{endpoint_pid:=EndpointPid}, id=ID, prefix=Prefix, suffix=Suffix, uri=Uri, module=Module, observer=undefined}) ->
     % the first observe request from this user to this resource
     try case coap_observe(Module, EpID, Prefix, Suffix, Request) of
         {ok, ObState} ->
@@ -495,7 +494,7 @@ handle_delete(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=M
 return_resource(Request, Content, State) ->
     return_resource([], Request, {ok, 'Content'}, Content, State).
 
-return_resource(Ref, Request, {ok, Code}, Content=#coap_content{payload=Payload, options=Options}, State) ->
+return_resource(Ref, Request, {ok, Code}, Content=#coap_content{payload=Payload, options=Options}, State=#state{config=#{max_block_size:=MaxBlockSize}}) ->
     ETag = get_etag(Options),
     Response = case lists:member(ETag, coap_message:get_option('ETag', Request, [])) of
             true ->
@@ -503,7 +502,7 @@ return_resource(Ref, Request, {ok, Code}, Content=#coap_content{payload=Payload,
                     ecoap_request:response({ok, 'Valid'}, Request));
             false ->
                 ecoap_request:set_payload(Payload, coap_message:get_option('Block2', Request), 
-                    coap_message:merge_options(Options, ecoap_request:response({ok, Code}, Request)))
+                    coap_message:merge_options(Options, ecoap_request:response({ok, Code}, Request)), MaxBlockSize)
     end,
     send_observable(Ref, Request, Response, State#state{last_response={ok, Code, Content}}). 
 
@@ -524,14 +523,14 @@ return_response(Request, Code, State) ->
 return_response(Ref, Request, Code, Reason, State) ->
     send_response(Ref, ecoap_request:response(Code, Reason, Request), State#state{last_response=Code}).
 
-send_response(Ref, Response, State=#state{endpoint_pid=EndpointPid, observer=Observer, id=ID}) ->
+send_response(Ref, Response, State=#state{config=#{endpoint_pid:=EndpointPid, exchange_lifetime:=TimeOut}, observer=Observer, id=ID}) ->
     % io:fwrite("<- ~p~n", [Response]),
     {ok, _} = ecoap_endpoint:send_response(EndpointPid, Ref, Response),
     case coap_message:get_option('Block2', Response) of
         {_, true, _} ->
             % client is expected to ask for more blocks
             ecoap_endpoint:register_handler(EndpointPid, ID, self()),
-            set_timeout(?EXCHANGE_LIFETIME, State);
+            set_timeout(TimeOut, State);
         _ ->
             case Observer of
                 undefined ->

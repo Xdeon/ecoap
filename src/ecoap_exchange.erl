@@ -3,6 +3,7 @@
 %% API
 -export([init/2, received/3, send/3, timeout/3, awaits_response/1, in_transit/1, cancel_msg/1, not_expired/2]).
 -export([idle/3, got_non/3, sent_non/3, got_rst/3, await_aack/3, pack_sent/3, await_pack/3, aack_sent/3, cancelled/3]).
+-export([native_time/1]).
 
 -record(exchange, {
     timestamp = undefined :: integer(),
@@ -16,11 +17,17 @@
     retry_count = undefined :: undefined | non_neg_integer()
     }).
 
+-define(ACK_TIMEOUT(Config), map_get(ack_timeout, Config)).
+-define(ACK_RANDOM_FACTOR(Config), map_get(ack_random_factor, Config)).
+-define(MAX_RETRANSMIT(Config), map_get(max_retransmit, Config)).
+-define(PROCESSING_DELAY(Config), map_get(processing_delay, Config)). 
+-define(EXCHANGE_LIFETIME(Config), map_get(exchange_lifetime, Config)).
+-define(NON_LIFETIME(Config), map_get(non_lifetime, Config)).
+
 -type exchange() :: undefined | #exchange{}.
 
 -export_type([exchange/0]).
 
--include("ecoap.hrl").
 -include("coap_message.hrl").
 
 -spec not_expired(integer(), exchange()) -> boolean().
@@ -68,16 +75,16 @@ in_transit(_State) ->
 % ->NON
 -spec idle({in, binary()} | {out, coap_message:coap_message()}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
 idle(Msg={in, <<1:2, 1:2, _:12, _Tail/bytes>>}, TransArgs, State) ->
-    in_non(Msg, TransArgs, State#exchange{expire_time=native_time(?NON_LIFETIME)});
+    in_non(Msg, TransArgs, State#exchange{expire_time=?NON_LIFETIME(TransArgs)});
 % ->CON
 idle(Msg={in, <<1:2, 0:2, _:12, _Tail/bytes>>}, TransArgs, State) ->
-    in_con(Msg, TransArgs, State#exchange{expire_time=native_time(?EXCHANGE_LIFETIME)});
+    in_con(Msg, TransArgs, State#exchange{expire_time=?EXCHANGE_LIFETIME(TransArgs)});
 % NON-> 
 idle(Msg={out, #coap_message{type='NON'}}, TransArgs, State) ->
-    out_non(Msg, TransArgs, State#exchange{expire_time=native_time(?NON_LIFETIME)});
+    out_non(Msg, TransArgs, State#exchange{expire_time=?NON_LIFETIME(TransArgs)});
 % CON->
 idle(Msg={out, #coap_message{type='CON'}}, TransArgs, State) ->
-    out_con(Msg, TransArgs, State#exchange{expire_time=native_time(?EXCHANGE_LIFETIME)}).
+    out_con(Msg, TransArgs, State#exchange{expire_time=?EXCHANGE_LIFETIME(TransArgs)}).
 
 % --- incoming NON
 -spec in_non({in, binary()}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
@@ -145,7 +152,7 @@ in_con({in, BinMessage}, TransArgs, State) ->
 go_await_aack(Message, TransArgs, State) ->
     % we may need to ack the message
     BinAck = coap_message:encode(ecoap_request:ack(Message)),
-    next_state(await_aack, TransArgs, State#exchange{msgbin=BinAck}, ?PROCESSING_DELAY).
+    next_state(await_aack, TransArgs, State#exchange{msgbin=BinAck}, ?PROCESSING_DELAY(TransArgs)).
 
 -spec await_aack({in, binary()} | {timeout, await_aack} | {out, coap_message:coap_message()}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
 await_aack({in, _BinMessage}, _TransArgs, State) ->
@@ -211,7 +218,7 @@ out_con({out, Message}, TransArgs, State) ->
     BinMessage = coap_message:encode(Message),
     ok = send_datagram(TransArgs, BinMessage),
     % _ = rand:seed(exs1024),
-    Timeout = ?ACK_TIMEOUT+rand:uniform(?ACK_RANDOM_FACTOR),
+    Timeout = ?ACK_TIMEOUT(TransArgs)+rand:uniform(?ACK_RANDOM_FACTOR(TransArgs)),
     next_state(await_pack, TransArgs, State#exchange{msgbin=BinMessage, retry_time=Timeout, retry_count=0}, Timeout).
 
 % peer ack
@@ -236,7 +243,7 @@ await_pack({in, BinAck}, TransArgs, State) ->
             next_state(await_pack, State)   
     end;
 
-await_pack({timeout, await_pack}, TransArgs, State=#exchange{msgbin=BinMessage, retry_time=Timeout, retry_count=Count}) when Count < ?MAX_RETRANSMIT ->
+await_pack({timeout, await_pack}, TransArgs, State=#exchange{msgbin=BinMessage, retry_time=Timeout, retry_count=Count}) when Count < ?MAX_RETRANSMIT(TransArgs) ->
     % BinMessage = coap_message:encode(Message),
     %io:fwrite("resend msg for ~p time~n", [Count]),
     ok = send_datagram(TransArgs, BinMessage),
@@ -261,9 +268,11 @@ cancelled({_, _}, _TransArgs, State) ->
 
 % utility functions
 handle_request(Message, 
-    #{ep_id:=EpID, handler_sup:=HdlSupPid, endpoint_pid:=EndpointPid, handler_regs:=HandlerRegs}, #exchange{receiver=undefined}) ->
+    TransArgs=#{ep_id:=EpID, handler_sup:=HdlSupPid, endpoint_pid:=EndpointPid, handler_regs:=HandlerRegs}, #exchange{receiver=undefined}) ->
     %io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
-    case get_handler(HdlSupPid, EndpointPid, ecoap_handler:handler_id(Message), HandlerRegs) of
+    HandlerConfig = ecoap_default:handler_config(TransArgs),
+    HandlerID = ecoap_handler:handler_id(Message),
+    case get_handler(HdlSupPid, HandlerConfig, HandlerID, HandlerRegs) of
         {ok, Pid} ->
             Pid ! {coap_request, EpID, EndpointPid, undefined, Message},
             ok;
@@ -294,12 +303,12 @@ handle_ack(_Message, #{ep_id:=EpID, endpoint_pid:=EndpointPid}, #exchange{receiv
 	Sender ! {coap_ack, EpID, EndpointPid, Ref},
 	ok.
 
-get_handler(SupPid, EndpointPid, HandlerID, HandlerRegs) ->
+get_handler(SupPid, Config, HandlerID, HandlerRegs) ->
     case maps:find(HandlerID, HandlerRegs) of
         {ok, Pid} ->
             {ok, Pid};
         error ->          
-            ecoap_handler_sup:start_handler(SupPid, EndpointPid, HandlerID)
+            ecoap_handler_sup:start_handler(SupPid, HandlerID, Config)
     end.
 
 request_complete(EndpointPid, Message, Receiver) ->

@@ -14,7 +14,7 @@ start() ->
             {[<<"helloWorld">>], ?MODULE},
             {[<<"shutdown">>], ?MODULE}
     ],
-    ecoap:start_udp(benchmark_server, [{recbuf, 1048576}, {sndbuf, 1048576}], #{routes => Routes}).
+    ecoap:start_udp(benchmark_server, [{recbuf, 1048576}, {sndbuf, 1048576}], #{routes => Routes, exchange_lifetime=>1500}).
     
 stop() ->
     application:stop(ecoap).

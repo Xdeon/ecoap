@@ -4,7 +4,7 @@
 -export([start_link/0]).
 -export([init/1]).
 -export([endpoint_sup_sup/1]).
--export([start_socket/3, stop_socket/2]).
+-export([start_socket/4, stop_socket/2]).
 
 start_link() ->
 	supervisor:start_link({local, ?MODULE}, ?MODULE, []).
@@ -18,10 +18,10 @@ init([]) ->
 			  modules => [endpoint_sup_sup]}],
 	{ok, {#{strategy => one_for_all, intensity => 3, period => 10}, Procs}}.
 
-start_socket(udp, Name, SocketOpts) ->	
+start_socket(udp, Name, SocketOpts, Config) ->	
 	supervisor:start_child(?MODULE, 
 				#{id => Name,
-			      start => {ecoap_udp_socket, start_link, [whereis(?MODULE), Name, SocketOpts]},
+			      start => {ecoap_udp_socket, start_link, [whereis(?MODULE), Name, SocketOpts, Config]},
 			      restart => permanent, 
 			      shutdown => 10000, 
 			      type => worker, 
