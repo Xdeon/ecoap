@@ -17,7 +17,8 @@
 
 %% gen_server.
 -export([init/1]).
--export([init/3]).
+% -export([init/3]).
+-export([handle_continue/2]).
 -export([handle_call/3]).
 -export([handle_cast/2]).
 -export([handle_info/2]).
@@ -57,7 +58,7 @@ close(Pid) ->
 %% server
 -spec start_link(pid(), atom(), [gen_udp:option()]) -> {ok, pid()} | {error, term()}.
 start_link(SupPid, Name, SocketOpts) when is_pid(SupPid) ->
-	proc_lib:start_link(?MODULE, init, [SupPid, Name, SocketOpts]).
+	gen_server:start_link({local, Name}, ?MODULE, [SupPid, SocketOpts], []).
 
 %% start endpoint manually
 -spec get_endpoint(pid(), ecoap_endpoint_id()) -> {ok, pid()} | term().
@@ -85,14 +86,14 @@ init([SocketOpts]) ->
 	{ok, Socket} = gen_udp:open(0, merge_opts(?DEFAULT_SOCK_OPTS, SocketOpts)),
 	error_logger:info_msg("socket setting: ~p~n", [inet:getopts(Socket, [recbuf, sndbuf, buffer])]),
 	error_logger:info_msg("coap listen on *:~p~n", [inet:port(Socket)]),
-	{ok, #state{sock=Socket}}.
-
-init(SupPid, Name, SocketOpts) ->
+	{ok, #state{sock=Socket}};
+init([SupPid, SocketOpts]) ->
 	{ok, State} = init([SocketOpts]),
-	register(Name, self()),
-	ok = proc_lib:init_ack({ok, self()}),
- 	PoolPid = ecoap_server_sup:endpoint_sup_sup(SupPid),
-    gen_server:enter_loop(?MODULE, [], State#state{endpoint_pool=PoolPid}, {local, Name}).
+	{ok, State, {continue, {init, SupPid}}}.
+
+handle_continue({init, SupPid}, State) ->
+	PoolPid = ecoap_server_sup:endpoint_sup_sup(SupPid),
+	{noreply, State#state{endpoint_pool=PoolPid}}.
 
 % get an endpoint when being as a client
 handle_call({get_endpoint, EpID}, _From, State=#state{sock=Socket, endpoint_pool=undefined, endpoint_count=Count}) ->
