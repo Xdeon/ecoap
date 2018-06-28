@@ -47,16 +47,16 @@ clear_registry() -> ets:delete_all_objects(?HANDLER_TAB).
 % select an entry with a longest prefix
 % this allows user to have one handler for "foo" and another for "foo/bar"
 
-match_handler([]=Key, Tab) ->
-    case ets:lookup(Tab, Key) of
-        [Val] -> Val;
-        [] -> undefined
-    end;
 match_handler(Key, Tab) ->
-    case ets:lookup(Tab, Key) of
-        [Val] -> Val;
-        [] -> match_handler(lists:droplast(Key), Tab)
-    end.
+    match(ets:lookup(Tab, Key), Key, Tab).
+
+match([Val], _, _) ->
+    Val;
+match([], [], _) ->
+    undefined;
+match([], Key, Tab) ->
+    NewKey = lists:droplast(Key),
+    match(ets:lookup(Tab, NewKey), NewKey, Tab).
 
 % ask each handler to provide a link list
 % get_links(Reg) ->
@@ -117,7 +117,8 @@ match_test_() ->
     Tab = ets:new(ecoap_registry, [set]),
     ets:insert(Tab, {[<<"foo">>], ?MODULE, undefined}),
     ets:insert(Tab, {[<<"foo">>, <<"bar">>], ?MODULE, undefined}),
-    [?_assertEqual({[<<"foo">>], ?MODULE, undefined}, match_handler([<<"foo">>], Tab)),
+    [?_assertEqual(undefined, match_handler([<<"bar">>], Tab)),
+    ?_assertEqual({[<<"foo">>], ?MODULE, undefined}, match_handler([<<"foo">>], Tab)),
     ?_assertEqual({[<<"foo">>, <<"bar">>], ?MODULE, undefined}, match_handler([<<"foo">>, <<"bar">>], Tab)),
     ?_assertEqual({[<<"foo">>, <<"bar">>], ?MODULE, undefined}, match_handler([<<"foo">>, <<"bar">>, <<"hoge">>], Tab))
     ].
@@ -125,8 +126,11 @@ match_test_() ->
 match_root_test_() ->
     Tab = ets:new(ecoap_registry, [set]),
     ets:insert(Tab, {[], ?MODULE, undefined}),
-    [?_assertEqual({[], ?MODULE, undefined}, match_handler([<<"foo">>, <<"bar">>], Tab)),
-    ?_assertEqual({[], ?MODULE, undefined}, match_handler([], Tab))
+    ets:insert(Tab, {[<<"hoge">>], ?MODULE, undefined}),
+    [?_assertEqual({[], ?MODULE, undefined}, match_handler([], Tab)),
+    ?_assertEqual({[], ?MODULE, undefined}, match_handler([<<"foo">>, <<"bar">>], Tab)),
+    ?_assertEqual({[<<"hoge">>], ?MODULE, undefined}, match_handler([<<"hoge">>], Tab)),
+    ?_assertEqual({[<<"hoge">>], ?MODULE, undefined}, match_handler([<<"hoge">>, <<"gugi">>], Tab))
     ].
 
 -endif.
