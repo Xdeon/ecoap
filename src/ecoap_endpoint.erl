@@ -5,7 +5,6 @@
 -export([start_link/4, start_link/3,
         ping/1, send/2, send_message/3, send_request/3, send_response/3, cancel_request/2]).
 -export([monitor_handler/2, register_handler/3]).
--export([check_alive/1]).
 
 %% gen_server.
 -export([init/1]).
@@ -104,10 +103,6 @@ monitor_handler(EndpointPid, Pid) ->
 register_handler(EndpointPid, ID, Pid) ->
     EndpointPid ! {register_handler, ID, Pid}, ok.
 
-% used by client to ensure aliveness of an ecoap_endpoint process
-check_alive(EndpointPid) ->
-    gen_server:call(EndpointPid, check_alive).
-
 %% gen_server.
 
 init([SupPid, SocketModule, Socket, EpID]) ->
@@ -131,8 +126,6 @@ handle_continue({init, SupPid}, State=#state{trans_args=TransArgs}) ->
           modules => [ecoap_handler_sup]}),
     {noreply, State#state{trans_args=TransArgs#{handler_sup=>HdlSupPid}}}.
 
-handle_call(check_alive, _From, State=#state{timer=Timer}) ->
-    {reply, ok, State#state{timer=endpoint_timer:kick_timer(Timer)}};
 handle_call(_Request, _From, State) ->
     error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
 	{noreply, State}.

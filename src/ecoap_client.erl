@@ -528,10 +528,8 @@ make_request(Uri, Options) ->
 
 get_endpoint(Socket={_, SocketPid}, EpID) ->
 	{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SocketPid, EpID),
-	try ecoap_endpoint:check_alive(EndpointPid) of
-		ok -> 
-			link(EndpointPid),
-			{ok, EndpointPid}
+	try link(EndpointPid) of
+		true -> {ok, EndpointPid}
 	catch error:noproc -> 
 		get_endpoint(Socket, EpID)
 	end.
