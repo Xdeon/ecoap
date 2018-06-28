@@ -11,6 +11,7 @@
 -export([init/1]).
 -export([handle_call/3]).
 -export([handle_cast/2]).
+-export([handle_continue/2]).
 -export([handle_info/2]).
 -export([terminate/2]).
 -export([code_change/3]).
@@ -50,13 +51,14 @@
 -include("coap_message.hrl").
 
 %% API.
--spec start_link(pid(), module(), inet:socket(), ecoap_udp_socket:ecoap_endpoint_id()) -> {ok, pid()}.
-start_link(SupPid, SocketModule, Socket, EpID) ->
-	proc_lib:start_link(?MODULE, init, [[SupPid, SocketModule, Socket, EpID]]).
 
 -spec start_link(module(), inet:socket(), ecoap_udp_socket:ecoap_endpoint_id()) -> {ok, pid()}.
 start_link(SocketModule, Socket, EpID) ->
-    gen_server:start_link(?MODULE, [undefined, SocketModule, Socket, EpID], []).
+    start_link(undefined, SocketModule, Socket, EpID).
+    
+-spec start_link(pid() | undefined, module(), inet:socket(), ecoap_udp_socket:ecoap_endpoint_id()) -> {ok, pid()}.
+start_link(SupPid, SocketModule, Socket, EpID) ->
+    gen_server:start_link(?MODULE, [SupPid, SocketModule, Socket, EpID], []).
 
 -spec ping(pid()) -> {ok, reference()}.
 ping(EndpointPid) ->
@@ -79,7 +81,6 @@ send(EndpointPid, Message=#coap_message{}) ->
 %     {ok, Ref}.
 
 send_request(EndpointPid, Ref, Message) ->
-    % use user defined token
     gen_server:cast(EndpointPid, {send_request, Message, {self(), Ref}}),
     {ok, Ref}.
 
@@ -109,18 +110,18 @@ check_alive(EndpointPid) ->
 
 %% gen_server.
 
-% client
-init([undefined, SocketModule, Socket, EpID]) ->
+init([SupPid, SocketModule, Socket, EpID]) ->
     % we would like to terminate as well when upper layer socket process terminates
     process_flag(trap_exit, true),
-    TransArgs = #{sock=>Socket, sock_module=>SocketModule, ep_id=>EpID, endpoint_pid=>self()},
+    TransArgs = #{sock=>Socket, sock_module=>SocketModule, ep_id=>EpID, endpoint_pid=>self(), handler_regs=>#{}},
     Timer = endpoint_timer:start_timer(?SCAN_INTERVAL, start_scan),
-    {ok, #state{nextmid=ecoap_message_id:first_mid(), timer=Timer, trans_args=TransArgs}};
+    {ok, #state{nextmid=ecoap_message_id:first_mid(), timer=Timer, trans_args=TransArgs}, {continue, {init, SupPid}}}.
 
+% client
+handle_continue({init, undefined}, State) ->
+    {noreply, State};
 % server 
-init([SupPid, SocketModule, Socket, EpID]) ->
-    ok = proc_lib:init_ack({ok, self()}),
-    process_flag(trap_exit, true),
+handle_continue({init, SupPid}, State=#state{trans_args=TransArgs}) ->
     {ok, HdlSupPid} = supervisor:start_child(SupPid, 
         #{id => ecoap_handler_sup,
           start => {ecoap_handler_sup, start_link, []},
@@ -128,9 +129,7 @@ init([SupPid, SocketModule, Socket, EpID]) ->
           shutdown => infinity, 
           type => supervisor, 
           modules => [ecoap_handler_sup]}),
-    TransArgs = #{sock=>Socket, sock_module=>SocketModule, ep_id=>EpID, endpoint_pid=>self(), handler_sup=>HdlSupPid, handler_regs=>#{}},
-    Timer = endpoint_timer:start_timer(?SCAN_INTERVAL, start_scan),
-    gen_server:enter_loop(?MODULE, [], #state{nextmid=ecoap_message_id:first_mid(), timer=Timer, trans_args=TransArgs}).
+    {noreply, State#state{trans_args=TransArgs#{handler_sup=>HdlSupPid}}}.
 
 handle_call(check_alive, _From, State=#state{timer=Timer}) ->
     {reply, ok, State#state{timer=endpoint_timer:kick_timer(Timer)}};
@@ -288,12 +287,14 @@ handle_info({'EXIT', Pid, _Reason}, State=#state{receivers=Receivers, tokens=Tok
     % we should ensure all requests the client issued that have not been completed yet are cancelled
     {Receivers2, Tokens2, Trans2} =  
         maps:fold(fun(Receiver={ClientPid, _}, {Token, TrId}, {AccReceivers, AccTokens, AccTrans}) when ClientPid =:= Pid -> 
-                {maps:remove(Receiver, AccReceivers), 
-                 maps:remove(Token, AccTokens), 
-                 case maps:find(TrId, AccTrans) of 
-                    {ok, TrState} -> maps:update(TrId, ecoap_exchange:cancel_msg(TrState), AccTrans); 
-                    error -> AccTrans 
-                 end};
+                {
+                    maps:remove(Receiver, AccReceivers), 
+                    maps:remove(Token, AccTokens), 
+                    case maps:find(TrId, AccTrans) of 
+                        {ok, TrState} -> maps:update(TrId, ecoap_exchange:cancel_msg(TrState), AccTrans); 
+                        error -> AccTrans 
+                    end
+                };
                 (_, _, Acc) -> Acc 
             end, {Receivers, Tokens, Trans}, Receivers),
     {noreply, State#state{tokens=Tokens2, trans=Trans2, receivers=Receivers2}};
