@@ -380,10 +380,18 @@ decode_option_list(<<Delta:4, Len:4, Tail/bytes>>, LastNum, OptionList) ->
 % put options of the same id into one list
 append_option({SameOptId, OptVal2}, [{SameOptId, OptVal1} | OptionList]) ->
     case is_repeatable_option(SameOptId) of
-        % each supernumerary option occurrence that appears subsequently in the message will replace existing one
         % we must keep the order
         true -> [{SameOptId, lists:append(OptVal1, [OptVal2])} | OptionList];
-        false -> [{SameOptId, OptVal2} | OptionList]
+        % each supernumerary option occurrence that appears subsequently in the message will overwrite existing one
+        % false -> [{SameOptId, OptVal2} | OptionList]
+        false ->
+            % each supernumerary option occurrence that appears subsequently in the message will be treated as unrecognized option
+            % elective option -> ignored
+            % critical option -> bad_option error
+            case is_critical_option(SameOptId) of
+                true -> throw({bad_option, {SameOptId, OptVal2}});
+                false -> [{SameOptId, OptVal1} | OptionList]
+            end
     end;
 append_option({OptId2, OptVal2}, OptionList) ->
     case is_repeatable_option(OptId2) of
@@ -459,13 +467,15 @@ encode_option_list1(Options) ->
 
 encode_options([{_OptId, undefined} | OptionList], Acc) ->
     encode_options(OptionList, Acc);
-encode_options([{OptId, OptVal} | OptionList], Acc) ->
+encode_options([{OptId, OptVal} | OptionList], Acc) when is_list(OptVal) ->
     case is_repeatable_option(OptId) of
         true ->
             encode_options(OptionList, split_and_encode_option({OptId, OptVal}, Acc));
         false ->
-            encode_options(OptionList, [encode_option({OptId, OptVal}) | Acc])
+            throw({bad_option, {OptId, OptVal}})
     end;
+encode_options([{OptId, OptVal} | OptionList], Acc) ->
+    encode_options(OptionList, [encode_option({OptId, OptVal}) | Acc]);
 encode_options([], Acc) ->
     Acc.
 
@@ -554,23 +564,22 @@ is_repeatable_option('Uri-Query') -> true;
 is_repeatable_option('Location-Query') -> true;
 is_repeatable_option(_Else) -> false.
 
-% is_critical_option('If-Match') -> true;
-% is_critical_option('Uri-Host') -> true;
-% is_critical_option('If-None-Match') -> true;
-% is_critical_option('Uri-Port') -> true;
-% is_critical_option('Uri-Path') -> true;
-% is_critical_option('Uri-Query') -> true;
-% is_critical_option('Accept') -> true;
-% is_critical_option('Proxy-Uri') -> true;
-% is_critical_option('Proxy-Scheme') -> true;
-% is_critical_option(OptNum) when is_integer(OptNum) -> 
-%     case OptNum band 1 of
-%         1 -> true;
-%         0 -> false
-%     end;
-% is_critical_option(_Else) -> false.
+is_critical_option('If-Match') -> true;
+is_critical_option('Uri-Host') -> true;
+is_critical_option('If-None-Match') -> true;
+is_critical_option('Uri-Port') -> true;
+is_critical_option('Uri-Path') -> true;
+is_critical_option('Uri-Query') -> true;
+is_critical_option('Accept') -> true;
+is_critical_option('Proxy-Uri') -> true;
+is_critical_option('Proxy-Scheme') -> true;
+is_critical_option(OptNum) when is_integer(OptNum) -> 
+    case OptNum band 1 of
+        1 -> true;
+        0 -> false
+    end;
+is_critical_option(_Else) -> false.
 
-% option_encode_unsigned({Opt, undefined}) -> [];
 % option_encode_unsigned({Opt, Num}) -> {Opt, binary:encode_unsigned(Num)}.
 
 -ifdef(TEST).
@@ -646,9 +655,16 @@ case9_test_() ->
     Raw = <<1:2, 0:2, 2:4, 0:8, 5:16, 333:16, 3:4, 13:4, 15:8, "www.example.com">>,
     ?_assertMatch({'EXIT', _}, catch coap_message:decode(Raw)).
 
+case10_test() ->
+    Raw = <<64,1,0,0,55,97,98,99,46,99,111,109,7,100,101,102,46,99,111,109>>,
+    [
+    test_encode_error(#coap_message{type='CON', code='GET', id=0, options=#{'Max-Age' => [60, 90, 120]}}, {bad_option, {'Max-Age', [60, 90, 120]}}),
+    test_decode_error(Raw, {bad_option, {'Uri-Host', <<"def.com">>}})
+    ].
+
 test_codec(Message) ->
-    Message2 = coap_message:encode(Message),
-    Message1 = coap_message:decode(Message2),
+    Bin = coap_message:encode(Message),
+    Message1 = coap_message:decode(Bin),
     ?_assertEqual(Message, Message1).
 
 test_codec(Raw, Msg) ->
@@ -658,5 +674,13 @@ test_codec(Raw, Msg) ->
         ?_assertEqual(Msg, Message),
         ?_assertEqual(Raw, MsgBin)
     ].
+
+test_encode_error(Message, Error) ->
+    Result = try coap_message:encode(Message) catch throw:Reason -> Reason end,
+    ?_assertEqual(Error, Result).
+
+test_decode_error(Raw, Error) ->
+    Result = try coap_message:decode(Raw) catch throw:Reason -> Reason end,
+    ?_assertEqual(Error, Result).
 
 -endif.
