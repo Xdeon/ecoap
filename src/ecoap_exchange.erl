@@ -3,7 +3,6 @@
 %% API
 -export([init/2, received/3, send/3, timeout/3, awaits_response/1, in_transit/1, cancel_msg/1, not_expired/2]).
 -export([idle/3, got_non/3, sent_non/3, got_rst/3, await_aack/3, pack_sent/3, await_pack/3, aack_sent/3, cancelled/3]).
--export([native_time/1]).
 
 -record(exchange, {
     timestamp = undefined :: integer(),
@@ -326,9 +325,6 @@ send_datagram(#{sock:=Socket, sock_module:=SocketModule, ep_id:=EpID}, BinMessag
 
 % erlang:start_timer(Time, Dest, Msg) -> TimerRef, receive {timeout, TimerRef, Msg}
 % erlang:send_after(Time, Dest, Msg) -> TimerRef, receive Msg
-
-native_time(Time) ->
-    erlang:convert_time_unit(Time, millisecond, native).
 
 timeout_after(Time, EndpointPid, TrId, Event) ->
     erlang:send_after(Time, EndpointPid, {timeout, TrId, Event}).

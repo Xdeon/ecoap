@@ -3,8 +3,6 @@
 
 -export([start_link/2, close/1, notify/2, handler_id/1]).
 
--export([coap_discover/2]).
-
 %% gen_server.
 -export([init/1]).
 -export([handle_call/3]).
@@ -567,12 +565,6 @@ get_etag(Options) ->
 
 uri_suffix(Prefix, Uri) ->
     lists:nthtail(length(Prefix), Uri).
- 
-coap_discover(Module, Prefix) -> 
-    case erlang:function_exported(Module, coap_discover, 1) of
-        true -> Module:coap_discover(Prefix);
-        false -> [{absolute, Prefix, []}]
-    end.
 
 coap_get(Module, EpID, Prefix, Suffix, Query, Request) ->
     case erlang:function_exported(Module, coap_get, 5) of

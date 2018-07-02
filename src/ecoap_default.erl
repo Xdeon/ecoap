@@ -17,9 +17,12 @@ config() ->
 	}.
 
 merge_config(CustomConfig) ->
-    maps:update_with(non_lifetime, fun ecoap_exchange:native_time/1, 
-    	maps:update_with(exchange_lifetime,  fun ecoap_exchange:native_time/1, 
+    maps:update_with(non_lifetime, fun native_time/1, 
+    	maps:update_with(exchange_lifetime,  fun native_time/1, 
     		maps:merge(config(), CustomConfig))).
+
+native_time(Time) ->
+    erlang:convert_time_unit(Time, millisecond, native).
 
 handler_config(Config) ->
 	maps:without([sock, sock_module, ep_id, handler_regs], Config).

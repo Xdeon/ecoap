@@ -17,7 +17,6 @@
 }).
 
 -define(HANDLER_TAB, ?MODULE).
--include("ecoap.hrl").
 
 %% API.
 
@@ -71,7 +70,13 @@ get_links(Reg) ->
 
 get_links(Prefix, Module) ->
     % for each pattern ask the handler to provide a list of resources
-    ecoap_handler:coap_discover(Module, Prefix).
+    call_coap_discover(Module, Prefix).
+
+call_coap_discover(Module, Prefix) -> 
+    case erlang:function_exported(Module, coap_discover, 1) of
+        true -> Module:coap_discover(Prefix);
+        false -> [{absolute, Prefix, []}]
+    end.
 
 %% gen_server.
 init([]) ->
