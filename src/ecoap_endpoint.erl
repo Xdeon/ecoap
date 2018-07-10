@@ -47,8 +47,6 @@
 -export_type([receiver/0]).
 -export_type([trans_args/0]).
 
--include("coap_message.hrl").
-
 %% API.
 
 -spec start_link(module(), inet:socket(), ecoap_udp_socket:ecoap_endpoint_id(), ecoap_default:config()) -> {ok, pid()} | {error, term()}.
@@ -61,12 +59,15 @@ start_link(SupPid, SocketModule, Socket, EpID, Config) ->
 
 -spec ping(pid()) -> {ok, reference()}.
 ping(EndpointPid) ->
-    send_message(EndpointPid, make_ref(), #coap_message{type='CON', id=0}).
+    send_message(EndpointPid, make_ref(), coap_message:ping_msg()).
 
 -spec send(pid(), coap_message:coap_message()) -> {ok, reference()}.
-send(EndpointPid, Message=#coap_message{type=Type, code=Code}) when is_tuple(Code); Type=='ACK'; Type=='RST' ->
+send(EndpointPid, Message) ->
+    send(EndpointPid, coap_message:get_type(Message), coap_message:get_code(Message), Message).
+
+send(EndpointPid, Type, Code, Message) when is_tuple(Code); Type=='ACK'; Type=='RST' ->
     send_response(EndpointPid, make_ref(), Message);
-send(EndpointPid, Message=#coap_message{}) ->
+send(EndpointPid, _Type, _Code, Message) ->
     send_request(EndpointPid, make_ref(), Message).
 
 -spec send_request(pid(), Ref, coap_message:coap_message()) -> {ok, Ref}.
@@ -145,10 +146,7 @@ handle_cast({cancel_request, Receiver}, State=#state{tokens=Tokens, trans=Trans,
         {ok, {Token, TrId}} ->
             Tokens2 = maps:remove(Token, Tokens),
             Receivers2 = maps:remove(Receiver, Receivers),
-            Trans2 = case maps:find(TrId, Trans) of
-                {ok, TrState} -> maps:update(TrId, ecoap_exchange:cancel_msg(TrState), Trans);
-                error -> Trans
-            end,
+            Trans2 = maybe_cancel_msg(TrId, Trans),
             {noreply, State#state{tokens=Tokens2, trans=Trans2, receivers=Receivers2}};
         error ->
             {noreply, State}
@@ -278,15 +276,12 @@ handle_info({'DOWN', _Ref, process, Pid, _Reason}, State=#state{rescnt=Count, tr
 handle_info({'EXIT', Pid, _Reason}, State=#state{receivers=Receivers, tokens=Tokens, trans=Trans}) ->
     % if this exit signal comes from an embedded client which shares the same socket process with the server
     % we should ensure all requests the client issued that have not been completed yet are cancelled
-    {Receivers2, Tokens2, Trans2} =  
+    {Tokens2, Receivers2, Trans2} =  
         maps:fold(fun(Receiver={ClientPid, _}, {Token, TrId}, {AccReceivers, AccTokens, AccTrans}) when ClientPid =:= Pid -> 
                 {
+                    maps:remove(Token, AccTokens),   
                     maps:remove(Receiver, AccReceivers), 
-                    maps:remove(Token, AccTokens), 
-                    case maps:find(TrId, AccTrans) of 
-                        {ok, TrState} -> maps:update(TrId, ecoap_exchange:cancel_msg(TrState), AccTrans); 
-                        error -> AccTrans 
-                    end
+                    maybe_cancel_msg(TrId, AccTrans)
                 };
                 (_, _, Acc) -> Acc 
             end, {Receivers, Tokens, Trans}, Receivers),
@@ -345,10 +340,10 @@ make_new_request(Message, Receiver, State=#state{tokens=Tokens, nextmid=MsgId, r
     end,
     Tokens2 = maps:put(Token, Receiver, Tokens),
     Receivers2 = maps:put(Receiver, {Token, {out, MsgId}}, Receivers),
-    make_new_message(Message#coap_message{token=Token}, Receiver, State#state{tokens=Tokens2, receivers=Receivers2}).
+    make_new_message(coap_message:set_token(Token, Message), Receiver, State#state{tokens=Tokens2, receivers=Receivers2}).
 
 make_new_message(Message, Receiver, State=#state{nextmid=MsgId}) ->
-    make_message({out, MsgId}, Message#coap_message{id=MsgId}, Receiver, State#state{nextmid=ecoap_message_id:next_mid(MsgId)}).
+    make_message({out, MsgId}, coap_message:set_id(MsgId, Message), Receiver, State#state{nextmid=ecoap_message_id:next_mid(MsgId)}).
 
 make_message(TrId, Message, Receiver, State=#state{trans_args=TransArgs}) ->
     update_state(State, TrId,
@@ -356,9 +351,9 @@ make_message(TrId, Message, Receiver, State=#state{trans_args=TransArgs}) ->
 
 % TODO: decide whether to send a CON notification considering other notifications may be in transit
 %       and how to keep the retransimit counter for a newer notification when the former one timed out
-make_new_response(Message=#coap_message{id=MsgId}, Receiver, State=#state{trans=Trans, trans_args=TransArgs}) ->
+make_new_response(Message, Receiver, State=#state{trans=Trans, trans_args=TransArgs}) ->
     % io:format("The response: ~p~n", [Message]),
-    TrId = {in, MsgId},
+    TrId = {in, coap_message:get_id(Message)},
     case maps:find(TrId, Trans) of
         {ok, TrState} ->
             % io:format("find TrState of ~p~n", [TrId]),
@@ -388,6 +383,12 @@ make_new_response(Message=#coap_message{id=MsgId}, Receiver, State=#state{trans=
             % 2. ... send a separate response whose original request has been empty acked and expired
             % 3. ... send an observe notification whose original request has been responded and expired
             make_new_message(Message, Receiver, State)
+    end.
+
+maybe_cancel_msg(TrId, Trans) ->
+    case maps:find(TrId, Trans) of 
+        {ok, TrState} -> maps:update(TrId, ecoap_exchange:cancel_msg(TrState), Trans); 
+        error -> Trans 
     end.
 
 % find or initialize a new exchange
