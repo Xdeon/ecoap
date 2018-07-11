@@ -275,9 +275,9 @@ handle_request(Message,
         {ok, Pid} ->
             Pid ! {coap_request, EpID, EndpointPid, undefined, Message},
             ok;
-        {error, shutdown} ->
-        	{ok, _} = ecoap_endpoint:send(EndpointPid,
-                ecoap_request:response({error, 'NotFound'}, Message)),
+        {error, _Error} ->
+            {ok, _} = ecoap_endpoint:send(EndpointPid,
+                ecoap_request:response({error, 'InternalServerError'}, Message)),
             ok
     end.
 

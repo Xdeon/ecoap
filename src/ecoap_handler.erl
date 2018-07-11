@@ -25,8 +25,8 @@
     obstate = undefined :: term(), 
     timer = undefined :: undefined | reference(),
     uri = undefined :: uri(),
-    prefix = undefined :: uri(), 
-    suffix = undefined :: uri(),
+    prefix = undefined :: undefined | uri(), 
+    suffix = undefined :: undefined | uri(),
     query = undefined :: query()}).
 
 -type method() :: atom().
@@ -170,17 +170,8 @@ handler_id(Message=#coap_message{code=Method, token=Token}) ->
 %% gen_server.
 
 init([ID={{_, Uri, Query}, _}, Config=#{endpoint_pid:=EndpointPid}]) ->
-    % the receiver will be determined based on the URI
-    case ecoap_registry:match_handler(Uri) of
-        {Prefix, Module} ->
-            % %io:fwrite("Prefix:~p Uri:~p~n", [Prefix, Uri]),
-            ecoap_endpoint:monitor_handler(EndpointPid, self()),
-            {ok, #state{config=Config, id=ID, uri=Uri, prefix=Prefix, 
-                suffix=uri_suffix(Prefix, Uri), query=Query, module=Module, insegs={orddict:new(), undefined}, obseq=0}};
-        undefined ->
-            % use shutdown as reason to avoid crash report logging
-            {stop, shutdown}
-    end.
+    ecoap_endpoint:monitor_handler(EndpointPid, self()),
+    {ok, #state{config=Config, id=ID, uri=Uri, query=Query, insegs={orddict:new(), undefined}, obseq=0}}.
 
 handle_call(_Request, _From, State) ->
     error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
@@ -194,6 +185,19 @@ handle_cast(_Msg, State) ->
     error_logger:error_msg("unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
     {noreply, State}.
 
+% the first time the handler process recv request
+handle_info({coap_request, EpID, EndpointPid, _Receiver=undefined, Request}, State=#state{prefix=undefined, suffix=undefined, uri=Uri}) ->
+    % the receiver will be determined based on the URI
+    case ecoap_registry:match_handler(Uri) of
+        {Prefix, Module} ->
+            % io:fwrite("Prefix:~p Uri:~p~n", [Prefix, Uri]),
+            handle(EpID, Request, State#state{prefix=Prefix, suffix=uri_suffix(Prefix, Uri), module=Module});
+        undefined ->
+            {ok, _} = ecoap_endpoint:send(EndpointPid,
+                ecoap_request:response({error, 'NotFound'}, Request)),
+            {stop, normal, State}
+    end;
+% following request sent to this handler process
 handle_info({coap_request, EpID, _EndpointPid, _Receiver=undefined, Request}, State) ->
     handle(EpID, Request, State);
 handle_info({coap_ack, _EpID, _EndpointPid, Ref}, State=#state{module=Module, obstate=ObState}) ->
