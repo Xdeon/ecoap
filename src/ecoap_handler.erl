@@ -185,6 +185,11 @@ handle_cast(_Msg, State) ->
     error_logger:error_msg("unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
     {noreply, State}.
 
+% TODO:
+% we can add another callback here which will be called before the request gets processed
+% it can be used to invoke customized request handling logic
+% question: do we need it?
+
 % the first time the handler process recv request
 handle_info({coap_request, EpID, EndpointPid, _Receiver=undefined, Request}, State=#state{prefix=undefined, suffix=undefined, uri=Uri}) ->
     % the receiver will be determined based on the URI
