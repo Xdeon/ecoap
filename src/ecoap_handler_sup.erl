@@ -1,7 +1,7 @@
 -module(ecoap_handler_sup).
 -behaviour(supervisor).
 
--export([start_link/0, start_handler/3]).
+-export([start_link/0, start_handler/2]).
 -export([init/1]).
 
 start_link() ->
@@ -17,5 +17,5 @@ init([]) ->
             ],
     {ok, {#{strategy => simple_one_for_one, intensity => 0, period => 1}, Procs}}.
 
-start_handler(SupPid, HandlerID, Config) ->
-    supervisor:start_child(SupPid, [HandlerID, Config]). 
+start_handler(SupPid, Args) ->
+    supervisor:start_child(SupPid, Args). 

@@ -12,8 +12,8 @@
 -export([ping/2]).
 -export([get/2, get/3, get/4, put/3, put/4, put/5, post/3, post/4, post/5, delete/2, delete/3, delete/4]).
 -export([get_async/2, get_async/3, put_async/3, put_async/4, post_async/3, post_async/4, delete_async/2, delete_async/3]).
--export([observe/2, observe/3, observe_and_wait_response/2, observe_and_wait_response/3]).
--export([unobserve/2, unobserve/3, unobserve_and_wait_response/2, unobserve_and_wait_response/3]).
+-export([observe/2, observe/3, observe_and_wait_response/2, observe_and_wait_response/3, observe_and_wait_response/4]).
+-export([unobserve/2, unobserve/3, unobserve_and_wait_response/2, unobserve_and_wait_response/3, unobserve_and_wait_response/4]).
 -export([cancel_request/2]).
 -export([flush/1]).
 
@@ -95,8 +95,8 @@ get(Pid, Uri, Options) ->
 	request(Pid, 'GET', Uri, <<>>, Options, infinity).
 
 -spec get(pid(), string(), coap_message:optionset(), non_neg_integer() | infinity) -> response().
-get(Pid, Uri, Options, Timeout) ->
-	request(Pid, 'GET', Uri, <<>>, Options, Timeout).
+get(Pid, Uri, Options, TimeOut) ->
+	request(Pid, 'GET', Uri, <<>>, Options, TimeOut).
 
 -spec get_async(pid(), string()) -> {ok, reference()}.
 get_async(Pid, Uri) ->
@@ -115,8 +115,8 @@ put(Pid, Uri, Content, Options) ->
 	request(Pid, 'PUT', Uri, Content, Options, infinity).
 
 -spec put(pid(), string(), binary(), coap_message:optionset(), non_neg_integer() | infinity) -> response().
-put(Pid, Uri, Content, Options, Timeout) ->
-	request(Pid, 'PUT', Uri, Content, Options, Timeout).
+put(Pid, Uri, Content, Options, TimeOut) ->
+	request(Pid, 'PUT', Uri, Content, Options, TimeOut).
 
 -spec put_async(pid(), string(), binary()) -> {ok, reference()}.
 put_async(Pid, Uri, Content) ->
@@ -135,8 +135,8 @@ post(Pid, Uri, Content, Options) ->
 	request(Pid, 'POST', Uri, Content, Options, infinity).
 
 -spec post(pid(), string(), binary(), coap_message:optionset(), non_neg_integer() | infinity) -> response().
-post(Pid, Uri, Content, Options, Timeout) ->
-	request(Pid, 'POST', Uri, Content, Options, Timeout).
+post(Pid, Uri, Content, Options, TimeOut) ->
+	request(Pid, 'POST', Uri, Content, Options, TimeOut).
 
 -spec post_async(pid(), string(), binary()) -> {ok, reference()}.
 post_async(Pid, Uri, Content) ->
@@ -155,8 +155,8 @@ delete(Pid, Uri, Options) ->
 	request(Pid, 'DELETE', Uri, <<>>, Options, infinity).
 
 -spec delete(pid(), string(), coap_message:optionset(), non_neg_integer() | infinity) -> response().
-delete(Pid, Uri, Options, Timeout) ->
-	request(Pid, 'DELETE', Uri, <<>>, Options, Timeout).
+delete(Pid, Uri, Options, TimeOut) ->
+	request(Pid, 'DELETE', Uri, <<>>, Options, TimeOut).
 
 -spec delete_async(pid(), string()) -> {ok, reference()}.
 delete_async(Pid, Uri) ->
@@ -167,8 +167,8 @@ delete_async(Pid, Uri, Options) ->
 	request_async(Pid, 'DELETE', Uri, <<>>, Options).
 
 -spec request(pid(), coap_message:coap_method(), string(), binary(), coap_message:optionset(), non_neg_integer() | infinity) -> response().
-request(Pid, Method, Uri, Content, Options, Timeout) ->
-	gen_server:call(Pid, {request, sync, Method, Uri, Content, Options}, Timeout).
+request(Pid, Method, Uri, Content, Options, TimeOut) ->
+	gen_server:call(Pid, {request, sync, Method, Uri, Content, Options}, TimeOut).
 
 -spec request_async(pid(), coap_message:coap_method(), string(), binary(), coap_message:optionset()) -> {ok, reference()}.
 request_async(Pid, Method, Uri, Content, Options) ->
@@ -188,20 +188,29 @@ observe(Pid, Uri, Options) ->
 
 -spec observe_and_wait_response(pid(), string()) -> observe_response() | response().
 observe_and_wait_response(Pid, Uri) ->
-	observe_and_wait_response(Pid, Uri, #{}).
+	observe_and_wait_response(Pid, Uri, #{}, infinity).
 
 -spec observe_and_wait_response(pid(), string(), coap_message:optionset()) -> observe_response() | response().
 observe_and_wait_response(Pid, Uri, Options) ->
+	observe_and_wait_response(Pid, Uri, Options, infinity).
+
+-spec observe_and_wait_response(pid(), string(), coap_message:optionset(), non_neg_integer() | infinity) -> observe_response() | response().
+observe_and_wait_response(Pid, Uri, Options, TimeOut) ->
 	{ok, Ref} = observe(Pid, Uri, Options),
-	Tag = erlang:monitor(process, Pid),
+	MonitorRef = erlang:monitor(process, Pid),
 	receive 
-		{coap_notify, Ref, Pid, ObsSeq, Response} ->
-			{ok, Ref, Pid, ObsSeq, Response};
-		{coap_response, Ref, Pid, Response} ->
+		{coap_notify, Ref, Pid2, ObsSeq, Response} ->
+			demonitor(MonitorRef, [flush]),
+			{ok, Ref, Pid2, ObsSeq, Response};
+		{coap_response, Ref, _Pid, Response} ->
+			demonitor(MonitorRef, [flush]),
 			Response;
-		{'DOWN', Tag, process, Pid, Reason} ->
+		{'DOWN', MonitorRef, process, Pid, Reason} ->
 			exit(Reason)
-	end.
+	after TimeOut ->
+		demonitor(MonitorRef, [flush]),
+		exit(timeout)
+	end.	
 
 -spec unobserve(pid(), reference()) -> {ok, reference()}.
 unobserve(Pid, Ref) ->
@@ -213,17 +222,25 @@ unobserve(Pid, Ref, ETag) ->
 
 -spec unobserve_and_wait_response(pid(), reference()) -> response().
 unobserve_and_wait_response(Pid, Ref) ->
-	unobserve_and_wait_response(Pid, Ref, []).
+	unobserve_and_wait_response(Pid, Ref, [], infinity).
 
 -spec unobserve_and_wait_response(pid(), reference(), [binary()]) -> response().
 unobserve_and_wait_response(Pid, Ref, ETag) ->
+	unobserve_and_wait_response(Pid, Ref, ETag, infinity).
+
+-spec unobserve_and_wait_response(pid(), reference(), [binary()], non_neg_integer() | infinity) -> response().
+unobserve_and_wait_response(Pid, Ref, ETag, TimeOut) ->
 	{ok, Ref2} = unobserve(Pid, Ref, ETag),
-	Tag = erlang:monitor(process, Pid),
+	MonitorRef = erlang:monitor(process, Pid),
 	receive 
-		{coap_response, Ref2, Pid, Response} ->
+		{coap_response, Ref2, _Pid, Response} ->
+			demonitor(MonitorRef, [flush]),
 			Response;
-		{'DOWN', Tag, process, Pid, Reason} ->
+		{'DOWN', MonitorRef, process, Pid, Reason} ->
 			exit(Reason)
+	after TimeOut ->
+		demonitor(MonitorRef, [flush]),
+		exit(timeout)
 	end.
 
 -spec flush(pid() | reference()) -> ok.

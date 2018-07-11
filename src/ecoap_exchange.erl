@@ -307,7 +307,7 @@ get_handler(SupPid, Config, HandlerID, HandlerRegs) ->
         {ok, Pid} ->
             {ok, Pid};
         error ->          
-            ecoap_handler_sup:start_handler(SupPid, HandlerID, Config)
+            ecoap_handler_sup:start_handler(SupPid, [HandlerID, Config])
     end.
 
 request_complete(EndpointPid, Message, Receiver) ->
