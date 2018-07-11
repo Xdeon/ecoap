@@ -224,7 +224,10 @@ handle_info(Info, State=#state{module=Module, observer=Observer, obstate=ObState
         {stop, ObState2} ->
             handle_notify([], {error, 'ServiceUnavailable'}, ObState2, Observer, State)
     end catch C:R:S ->
-        _ = handle_notify([], {error, 'InternalServerError'}, ObState, Observer, State),
+        % send message directly without calling another user-defined callback (coap_unobserve) if this is a crash
+        % because we do not want to be override by another possible crash
+        State2 = cancel_observer(State),
+        _ = return_response(Observer, {error, 'InternalServerError'}, State2),
         error_terminate(C, R, S)
     end.
 
