@@ -253,9 +253,9 @@ handle_info({register_handler, ID, Pid}, State=#state{trans_args=TransArgs=#{han
         {ok, Pid} -> 
             % handler already registered
             {noreply, State};
-        {ok, _Pid2} ->  
-            % only one handler for each operation allowed, so we terminate the one started later
-            ok = ecoap_handler:close(Pid),
+        {ok, Pid2} ->  
+            % only one handler for each operation allowed, so we terminate the one started earlier
+            ok = ecoap_handler:close(Pid2),
             {noreply, State};
         error ->
             Regs2 = update_handler_regs(ID, Pid, Regs),
