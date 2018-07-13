@@ -194,9 +194,9 @@ handle_cast(_Msg, State) ->
 handle_info({coap_request, EpID, EndpointPid, _Receiver=undefined, Request}, State=#state{prefix=undefined, suffix=undefined, uri=Uri}) ->
     % the receiver will be determined based on the URI
     case ecoap_registry:match_handler(Uri) of
-        {Prefix, Module} ->
+        {{Prefix, Module}, Suffix} ->
             % io:fwrite("Prefix:~p Uri:~p~n", [Prefix, Uri]),
-            handle(EpID, Request, State#state{prefix=Prefix, suffix=uri_suffix(Prefix, Uri), module=Module});
+            handle(EpID, Request, State#state{prefix=Prefix, suffix=Suffix, module=Module});
         undefined ->
             {ok, _} = ecoap_endpoint:send(EndpointPid,
                 ecoap_request:response({error, 'NotFound'}, Request)),
@@ -574,9 +574,6 @@ get_etag(Options) ->
         [ETag] -> ETag;
         _ -> undefined
     end.
-
-uri_suffix(Prefix, Uri) ->
-    lists:nthtail(length(Prefix), Uri).
 
 coap_get(Module, EpID, Prefix, Suffix, Query, Request) ->
     case erlang:function_exported(Module, coap_get, 5) of

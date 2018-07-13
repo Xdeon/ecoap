@@ -4,8 +4,8 @@
 
 -behaviour(ecoap_handler).
 
-coap_discover(_Prefix) ->
-    [].
+coap_discover(Prefix) ->
+    [{absolute, Prefix, []}].
 
 coap_get(_EpID, _Prefix, [], Query, _Request) ->
     Links = core_link:encode(filter(ecoap_registry:get_links(), Query)),
