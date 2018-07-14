@@ -54,11 +54,8 @@ encode_link_params(Attrs) ->
 encode_link_uri(absolute, UriList) -> ["</", join_uri(UriList), ">"];
 encode_link_uri(rootless, UriList) -> ["<", join_uri(UriList), ">"].
 
-join_uri([]) -> [];
-join_uri([Seg]) ->
-    http_uri:encode(binary_to_list(Seg));
-join_uri([Seg|Uri]) ->
-    http_uri:encode(binary_to_list(Seg))++"/"++join_uri(Uri).
+join_uri(Uri) ->
+    lists:join("/", lists:map(fun(Seg) -> http_uri:encode(binary_to_list(Seg)) end, Uri)).
 
 % sz, if, rt MUST NOT appear more than one in one link
 encode_link_param({_Any, undefined}) -> undefined;
