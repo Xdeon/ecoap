@@ -475,11 +475,11 @@ handle_download(EpID, EndpointPid, Ref, Request, Message,
             % store ongoing block2 transfer
 			OngoingBlocks2 = maps:put(BlockKey, Ref2, OngoingBlocks),
             Request2 = Request#request{block_key=BlockKey, observe_seq=ObsSeq, fragment= <<Fragment/binary, Data/binary>>},
-            {Requests3, ObsRegs2} = case ObsSeq of
-            	undefined -> 
+            {Requests3, ObsRegs2} = case is_observe(ObsSeq, ObsKey) of
+            	false -> 
             		% not an observe notification, update requests record and clean observe reg
             		{maps:put(Ref2, {EndpointPid, Request2}, maps:remove(Ref, Requests2)), maps:remove(ObsKey, ObsRegs)};
-            	_ ->               
+            	true ->               
             		case Ref of
             			OriginRef ->
             				% first block of an observe notification, update requests record but do not remove origin request
@@ -499,11 +499,11 @@ handle_download(EpID, EndpointPid, Ref, Request, Message,
 			send_response(Request#request{observe_seq=ObsSeq}, Response),
 			% clean ongoing block2 transfer, if any
 			OngoingBlocks2 = maps:remove(BlockKey, OngoingBlocks),
-			{Requests3, ObsRegs2} = case ObsSeq of
-				undefined -> 
+			{Requests3, ObsRegs2} = case is_observe(ObsSeq, ObsKey) of
+				false -> 
 					% not an observe notification, clean all state including observe registry
 					{maps:remove(Ref, Requests2), maps:remove(ObsKey, ObsRegs)};
-				_ ->
+				true ->
 					case Ref of 
 						OriginRef -> 
 							% an observe notification not segmented, keep origin request 
@@ -625,6 +625,9 @@ check_and_cancel_request(Ref, State=#state{requests=Requests, ongoing_blocks=Ong
 do_cancel_request(EndpointPid, Ref) ->
 	ecoap_endpoint:cancel_request(EndpointPid, Ref).
 
+is_observe(ObsSeq, ObsKey) when is_integer(ObsSeq), is_tuple(ObsKey) -> true;
+is_observe(_, _) -> false.
+
 separate(Request=#request{reply_to={Pid, _}}) ->
 	Request#request{reply_to=Pid};
 separate(Request=#request{}) ->
@@ -632,12 +635,11 @@ separate(Request=#request{}) ->
 
 return_response(Message) -> {ok, coap_message:get_code(Message), coap_content:get_content(Message)}.
 
-send_response(#request{reply_to=ReplyTo, origin_ref=Ref, observe_seq=undefined}, Response) when is_pid(ReplyTo) ->
-	ReplyTo ! {coap_response, Ref, self(), Response},
-	ok;
-send_response(#request{reply_to=ReplyTo, origin_ref=Ref, observe_seq=ObsSeq}, Response) when is_pid(ReplyTo) ->
-	ReplyTo ! {coap_notify, Ref, self(), ObsSeq, Response}, 
-	ok;
+send_response(#request{reply_to=ReplyTo, origin_ref=Ref, observe_seq=ObsSeq, observe_key=ObsKey}, Response) when is_pid(ReplyTo) ->
+	case is_observe(ObsSeq, ObsKey) of
+		true -> ReplyTo ! {coap_notify, Ref, self(), ObsSeq, Response}, ok;
+		false -> ReplyTo ! {coap_response, Ref, self(), Response}, ok
+	end;
 send_response(#request{reply_to=ReplyTo}, Response) ->
 	gen_server:reply(ReplyTo, Response),
 	ok.
