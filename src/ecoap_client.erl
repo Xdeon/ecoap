@@ -77,7 +77,7 @@ open(Opts) ->
 
 -spec close(pid()) -> ok.
 close(Pid) ->
-	gen_server:cast(Pid, shutdown).
+	gen_server:stop(Pid).
 
 -spec ping(pid(), string()) -> ok | {error, _}.
 ping(Pid, Uri) ->
@@ -386,8 +386,6 @@ handle_call(get_obsregs, _From, State=#state{observe_regs=ObsRegs}) ->
 handle_call(_Request, _From, State) ->
 	{reply, ignored, State}.
 
-handle_cast(shutdown, State) ->
-	{stop, normal, State};
 handle_cast(_Msg, State) ->
 	{noreply, State}.
 
