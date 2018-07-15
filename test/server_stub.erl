@@ -1,8 +1,6 @@
 -module(server_stub).
 -behaviour(gen_server).
 
--include("ecoap.hrl").
-
 %% API.
 -export([start_link/1]).
 -export([expect_request/2, expect_empty/3, send_empty/3, send_response/2, close/1, match/2]).

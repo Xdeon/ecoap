@@ -305,16 +305,15 @@ handle_call({ping, Uri}, From, State=#state{socket=Socket, requests=Requests}) -
 	Request = #request{method=undefined, origin_ref=Ref, reply_to=From},
 	{noreply, State#state{requests=maps:put(Ref, {EndpointPid, Request}, Requests)}};
 
-handle_call({request, Sync, Method, Uri, Content, Options}, From, State=#state{socket=Socket, requests=Requests}) ->
+handle_call({request, Sync, Method, Uri, Content, Options}, {Pid, _}=From, State=#state{socket=Socket, requests=Requests}) ->
 	{ok, EpID, _, Options2} = make_request(Uri, Options),
 	{ok, EndpointPid} = get_endpoint(Socket, EpID),
-	{ok, Ref} = request_block(EndpointPid, Method, Options2, Content),
+	{ok, Ref} = request_block1(EndpointPid, erlang:monitor(process, Pid), Method, Options2, Content),
 	case Sync of
 		sync ->
 			Request = #request{method=Method, options=Options2, content=Content, origin_ref=Ref, reply_to=From},
 			{noreply, State#state{requests=maps:put(Ref, {EndpointPid, Request}, Requests)}};
 		async ->
-			{Pid, _} = From,
 			Request = #request{method=Method, options=Options2, content=Content, origin_ref=Ref, reply_to=Pid},
 			{reply, {ok, Ref}, State#state{requests=maps:put(Ref, {EndpointPid, Request}, Requests)}}
 	end;
@@ -342,15 +341,11 @@ handle_call({observe, Uri, Options}, {Pid, _}, State=#state{socket=Socket, reque
 	ObsKey = {EpID, Path, coap_message:get_option('Accept', Options2)},
 	{ok, EndpointPid} = get_endpoint(Socket, EpID),
 	Ref = case maps:find(ObsKey, ObsRegs) of 
-		{ok, OldRef} ->
-			{ok, OldRef} = ecoap_endpoint:send_request(EndpointPid, OldRef, 
-				ecoap_request:request('CON', 'GET', coap_message:add_option('Observe', 0, Options2))),
-			OldRef;
-		error ->	
-			{ok, NewRef} = ecoap_endpoint:send(EndpointPid, 
-				ecoap_request:request('CON', 'GET', coap_message:add_option('Observe', 0, Options2))),
-			NewRef
+		{ok, OldRef} -> OldRef;
+		error -> erlang:monitor(process, Pid)
 	end,
+	{ok, Ref} = ecoap_endpoint:send_request(EndpointPid, Ref, 
+				ecoap_request:request('CON', 'GET', coap_message:add_option('Observe', 0, Options2))),
 	Request = #request{method='GET', options=Options2, origin_ref=Ref, reply_to=Pid, observe_key=ObsKey},
 	Requests2 = maps:put(Ref, {EndpointPid, Request}, Requests),
 	ObsRegs2 = maps:put(ObsKey, Ref, ObsRegs),
@@ -426,6 +421,15 @@ handle_info({coap_ack, _EpID, EndpointPid, Ref}, State=#state{requests=Requests}
 			{noreply, State}
 	end;
 
+% monitor down message is only received for observe request
+handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{requests=Requests}) ->
+	case maps:find(Ref, Requests) of
+		{ok, {_, #request{origin_ref=OriginRef}}} ->
+			{noreply, check_and_cancel_request(OriginRef, State)};
+		error ->
+			{noreply, State}
+	end;
+
 handle_info(_Info, State) ->
 	{noreply, State}.
 
@@ -439,23 +443,24 @@ code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
 
 %% Internal
-handle_upload(EpID, EndpointPid, Ref, Request, Message, State=#state{requests=Requests, ongoing_blocks=OngoingBlocks, request_mapping=RequestMapping}) ->
-	#request{method=Method, options=RequestOptions, content=Content, origin_ref=OriginRef} = Request,
+handle_upload(EpID, EndpointPid, Ref, Request, Message, 
+	State=#state{requests=Requests, ongoing_blocks=OngoingBlocks, request_mapping=RequestMapping}) ->
+	#request{method=Method, options=RequestOptions, content=Content, origin_ref=OriginRef, reply_to=ReplyTo} = Request,
 	{Num, true, Size} = coap_message:get_option('Block1', Message),
-	{ok, Ref2} = request_block(EndpointPid, Method, RequestOptions, {Num+1, false, Size}, Content),
+	{ok, Ref2} = request_block1(EndpointPid, make_reference(ReplyTo), Method, RequestOptions, {Num+1, false, Size}, Content),
 	% store ongoing block1 transfer
 	BlockKey = {EpID, coap_message:get_option('Uri-Path', RequestOptions)},
 	{Requests2, RequestMapping2} = maybe_cancel_ongoing_blocks(EndpointPid, BlockKey, Ref, OngoingBlocks, Requests, RequestMapping),
 	OngoingBlocks2 = maps:put(BlockKey, Ref2, OngoingBlocks),
 	% update request mapping
 	RequestMapping3 = maps:put(OriginRef, Ref2, RequestMapping2),
-	Requests3 = maps:put(Ref2, {EndpointPid, Request#request{block_key=BlockKey}}, maps:remove(Ref, Requests2)),
+	Requests3 = maps:put(Ref2, {EndpointPid, Request#request{block_key=BlockKey}}, remove_request(Ref, Requests2)),
 	{noreply, State#state{requests=Requests3, ongoing_blocks=OngoingBlocks2, request_mapping=RequestMapping3}}.
 
 handle_download(EpID, EndpointPid, Ref, Request, Message, 
 	State=#state{requests=Requests, ongoing_blocks=OngoingBlocks, request_mapping=RequestMapping, observe_regs=ObsRegs}) ->
 	#request{method=Method, options=RequestOptions, origin_ref=OriginRef, 
-		fragment=Fragment, observe_seq=Seq, observe_key=ObsKey} = Request,
+		fragment=Fragment, observe_seq=Seq, observe_key=ObsKey, reply_to=ReplyTo} = Request,
 	Data = coap_message:get_payload(Message),
 	% block key is generated based on resource uri
 	BlockKey = {EpID, coap_message:get_option('Uri-Path', RequestOptions)},
@@ -467,16 +472,14 @@ handle_download(EpID, EndpointPid, Ref, Request, Message,
 		{Num, true, Size} ->
 			% more blocks follow, ask for more
             % no payload for requests with Block2 with NUM != 0
-            {ok, Ref2} = ecoap_endpoint:send(EndpointPid,
-                ecoap_request:request('CON', Method, 
-                	coap_message:add_option('Block2', {Num+1, false, Size}, RequestOptions))),
+            {ok, Ref2} = request_block2(EndpointPid, make_reference(ReplyTo), Method, RequestOptions, {Num+1, false, Size}),
             % store ongoing block2 transfer
 			OngoingBlocks2 = maps:put(BlockKey, Ref2, OngoingBlocks),
             Request2 = Request#request{block_key=BlockKey, observe_seq=ObsSeq, fragment= <<Fragment/binary, Data/binary>>},
             {Requests3, ObsRegs2} = case is_observe(ObsSeq, ObsKey) of
             	false -> 
             		% not an observe notification, update requests record and clean observe reg
-            		{maps:put(Ref2, {EndpointPid, Request2}, maps:remove(Ref, Requests2)), maps:remove(ObsKey, ObsRegs)};
+            		{maps:put(Ref2, {EndpointPid, Request2}, remove_request(Ref, Requests2)), maps:remove(ObsKey, ObsRegs)};
             	true ->               
             		case Ref of
             			OriginRef ->
@@ -484,7 +487,7 @@ handle_download(EpID, EndpointPid, Ref, Request, Message,
             				{maps:put(Ref2, {EndpointPid, Request2}, Requests2), ObsRegs};
             			_ ->
             				% following block of an observe notification, update requests record
-            				{maps:put(Ref2, {EndpointPid, Request2}, maps:remove(Ref, Requests2)), ObsRegs}
+            				{maps:put(Ref2, {EndpointPid, Request2}, remove_request(Ref, Requests2)), ObsRegs}
             		end
             end,
             % update request mapping
@@ -500,7 +503,7 @@ handle_download(EpID, EndpointPid, Ref, Request, Message,
 			{Requests3, ObsRegs2} = case is_observe(ObsSeq, ObsKey) of
 				false -> 
 					% not an observe notification, clean all state including observe registry
-					{maps:remove(Ref, Requests2), maps:remove(ObsKey, ObsRegs)};
+					{remove_request(Ref, Requests2), maps:remove(ObsKey, ObsRegs)};
 				true ->
 					case Ref of 
 						OriginRef -> 
@@ -508,7 +511,7 @@ handle_download(EpID, EndpointPid, Ref, Request, Message,
 							{Requests2, ObsRegs};
 						_ ->
 							% all blocks of an observe notification received, clean last block reference
-							{maps:remove(Ref, Requests2), ObsRegs}
+							{remove_request(Ref, Requests2), ObsRegs}
 					end
 			end,
 			% clean request mapping
@@ -549,12 +552,26 @@ get_endpoint(Socket={_, SocketPid}, EpID) ->
 		get_endpoint(Socket, EpID)
 	end.
 
-request_block(EndpointPid, Method, RequestOptions, Content) ->
-    request_block(EndpointPid, Method, RequestOptions, undefined, Content).
+make_reference({Pid, _}) -> 
+	make_reference(Pid);
+make_reference(Pid) ->
+	erlang:monitor(process, Pid).
 
-request_block(EndpointPid, Method, RequestOptions, Block1, Content) ->
-	ecoap_endpoint:send(EndpointPid, 
+remove_request(Ref, Requests) ->
+	erlang:demonitor(Ref, [flush]),
+	maps:remove(Ref, Requests).
+
+request_block1(EndpointPid, Ref, Method, RequestOptions, Content) ->
+	request_block1(EndpointPid, Ref, Method, RequestOptions, undefined, Content).
+
+request_block1(EndpointPid, Ref, Method, RequestOptions, Block1, Content) ->
+	ecoap_endpoint:send_request(EndpointPid, Ref,
 		ecoap_request:set_payload(Content, Block1, ecoap_request:request('CON', Method, RequestOptions))).
+
+request_block2(EndpointPid, Ref, Method, RequestOptions, Block2) ->
+	ecoap_endpoint:send_request(EndpointPid, Ref,
+        ecoap_request:request('CON', Method, 
+        	coap_message:add_option('Block2', Block2, RequestOptions))).
 
 maybe_cancel_ongoing_blocks(EndpointPid, BlockKey, CurrentRef, OngoingBlocks, Requests, RequestMapping) ->
 	case maps:find(BlockKey, OngoingBlocks) of
