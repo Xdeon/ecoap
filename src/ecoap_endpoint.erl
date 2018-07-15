@@ -141,13 +141,10 @@ handle_cast({send_message, Message, Receiver}, State) ->
 handle_cast({send_response, Message, Receiver}, State) ->
     make_new_response(Message, Receiver, State);
 % cancel request include removing token, request exchange state and receiver reference
-handle_cast({cancel_request, Receiver}, State=#state{tokens=Tokens, trans=Trans, receivers=Receivers}) ->
+handle_cast({cancel_request, Receiver}, State=#state{receivers=Receivers}) ->
     case maps:find(Receiver, Receivers) of
         {ok, {Token, TrId}} ->
-            Tokens2 = maps:remove(Token, Tokens),
-            Receivers2 = maps:remove(Receiver, Receivers),
-            Trans2 = maybe_cancel_msg(TrId, Trans),
-            {noreply, State#state{tokens=Tokens2, trans=Trans2, receivers=Receivers2}};
+            {noreply, do_cancel_msg(TrId, complete_request(Receiver, Token, State))};
         error ->
             {noreply, State}
     end;
@@ -237,10 +234,10 @@ handle_info({timeout, TrId, Event}, State=#state{trans=Trans, trans_args=TransAr
         error -> {noreply, State} % ignore unexpected responses
     end;
 
-handle_info({request_complete, Receiver}, State=#state{tokens=Tokens, receivers=Receivers}) ->
+handle_info({request_complete, Receiver}, State=#state{receivers=Receivers}) ->
     %io:format("request_complete~n"),
     {Token, _} = maps:get(Receiver, Receivers, {undefined, undefined}),
-    {noreply, State#state{tokens=maps:remove(Token, Tokens), receivers=maps:remove(Receiver, Receivers)}};
+    {noreply, complete_request(Receiver, Token, State)};
 
 handle_info({handler_started, Pid}, State=#state{rescnt=Count, handler_refs=Refs}) ->
     erlang:monitor(process, Pid),
@@ -273,19 +270,14 @@ handle_info({'DOWN', _Ref, process, Pid, _Reason}, State=#state{rescnt=Count, tr
             {noreply, State}
     end;
 
-handle_info({'EXIT', Pid, _Reason}, State=#state{receivers=Receivers, tokens=Tokens, trans=Trans}) ->
+handle_info({'EXIT', Pid, _Reason}, State=#state{receivers=Receivers}) ->
     % if this exit signal comes from an embedded client which shares the same socket process with the server
     % we should ensure all requests the client issued that have not been completed yet are cancelled
-    {Tokens2, Receivers2, Trans2} =  
-        maps:fold(fun(Receiver={ClientPid, _}, {Token, TrId}, {AccReceivers, AccTokens, AccTrans}) when ClientPid =:= Pid -> 
-                {
-                    maps:remove(Token, AccTokens),   
-                    maps:remove(Receiver, AccReceivers), 
-                    maybe_cancel_msg(TrId, AccTrans)
-                };
+    State2 =  maps:fold(fun(Receiver={ClientPid, _}, {Token, TrId}, Acc) when ClientPid =:= Pid -> 
+                    do_cancel_msg(TrId, complete_request(Receiver, Token, Acc));
                 (_, _, Acc) -> Acc 
-            end, {Receivers, Tokens, Trans}, Receivers),
-    {noreply, State#state{tokens=Tokens2, trans=Trans2, receivers=Receivers2}};
+        end, State, Receivers),
+    {noreply, State2};
     
 handle_info(_Info, State) ->
     error_logger:error_msg("unexpected info ~p received by ~p as ~p~n", [_Info, self(), ?MODULE]),
@@ -385,10 +377,15 @@ make_new_response(Message, Receiver, State=#state{trans=Trans, trans_args=TransA
             make_new_message(Message, Receiver, State)
     end.
 
-maybe_cancel_msg(TrId, Trans) ->
+complete_request(Receiver, Token, State=#state{receivers=Receivers, tokens=Tokens}) ->
+    State#state{receivers=maps:remove(Receiver, Receivers), tokens=maps:remove(Token, Tokens)}.
+
+do_cancel_msg(TrId, State=#state{trans=Trans}) ->
     case maps:find(TrId, Trans) of 
-        {ok, TrState} -> maps:update(TrId, ecoap_exchange:cancel_msg(TrState), Trans); 
-        error -> Trans 
+        {ok, TrState} -> 
+            State#state{trans=maps:update(TrId, ecoap_exchange:cancel_msg(TrState), Trans)}; 
+        error -> 
+            State 
     end.
 
 % find or initialize a new exchange
