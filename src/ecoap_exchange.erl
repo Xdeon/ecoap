@@ -311,17 +311,10 @@ get_handler(SupPid, Config, HandlerID, HandlerRegs) ->
     end.
 
 request_complete(EndpointPid, Message, Receiver) ->
-    case coap_message:get_option('Observe', Message) of
-        undefined ->
-            EndpointPid ! {request_complete, Receiver},
-            ok;
-        % an observe notification should not remove the request token
-        _Else ->
-            ok
-    end.
+    ecoap_endpoint:request_complete(EndpointPid, Receiver, coap_message:get_option('Observe', Message)).
 
 send_datagram(#{sock:=Socket, sock_module:=SocketModule, ep_id:=EpID}, BinMessage) ->
-    ok = SocketModule:send_datagram(Socket, EpID, BinMessage).
+    SocketModule:send_datagram(Socket, EpID, BinMessage).
 
 % erlang:start_timer(Time, Dest, Msg) -> TimerRef, receive {timeout, TimerRef, Msg}
 % erlang:send_after(Time, Dest, Msg) -> TimerRef, receive Msg

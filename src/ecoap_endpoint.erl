@@ -2,9 +2,10 @@
 -behaviour(gen_server).
 
 %% API.
--export([start_link/5, start_link/4,
-        ping/1, send/2, send_message/3, send_request/3, send_response/3, cancel_request/2]).
+-export([start_link/5, start_link/4]).
+-export([ping/1, send/2, send_message/3, send_request/3, send_response/3, cancel_request/2]).
 -export([monitor_handler/2, register_handler/3]).
+-export([request_complete/3]).
 
 %% gen_server.
 -export([init/1]).
@@ -23,7 +24,7 @@
     trans_args = undefined :: trans_args(),
 	tokens = #{} :: #{coap_message:token() => receiver()},
 	trans = #{} :: #{trid() => ecoap_exchange:exchange()},
-    receivers = #{} :: #{receiver() => {coap_message:token(), trid()}},
+    receivers = #{} :: #{receiver() => {coap_message:token(), trid(), non_neg_integer()}},
 	nextmid = undefined :: coap_message:msg_id(),
 	rescnt = 0 :: non_neg_integer(),
     handler_refs = #{} ::  #{pid() => tuple() | undefined},
@@ -70,7 +71,7 @@ send(EndpointPid, Type, Code, Message) when is_tuple(Code); Type=='ACK'; Type=='
 send(EndpointPid, _Type, _Code, Message) ->
     send_request(EndpointPid, make_ref(), Message).
 
--spec send_request(pid(), Ref, coap_message:coap_message()) -> {ok, Ref}.
+% -spec send_request(pid(), Ref, coap_message:coap_message()) -> {ok, Ref}.
 % send_request(EndpointPid, Ref, Message=#coap_message{token= <<>>}) ->
 %     % when no token is assigned then generate one
 %     gen_server:cast(EndpointPid, {send_request, Message#coap_message{token=ecoap_message_token:generate_token()}, {self(), Ref}}),
@@ -80,6 +81,7 @@ send(EndpointPid, _Type, _Code, Message) ->
 %     gen_server:cast(EndpointPid, {send_request, Message, {self(), Ref}}),
 %     {ok, Ref}.
 
+-spec send_request(pid(), Ref, coap_message:coap_message()) -> {ok, Ref}.
 send_request(EndpointPid, Ref, Message) ->
     gen_server:cast(EndpointPid, {send_request, Message, {self(), Ref}}),
     {ok, Ref}.
@@ -103,6 +105,9 @@ monitor_handler(EndpointPid, Pid) ->
 
 register_handler(EndpointPid, ID, Pid) ->
     EndpointPid ! {register_handler, ID, Pid}, ok.
+
+request_complete(EndpointPid, Receiver, ResponseType) ->
+    EndpointPid ! {request_complete, Receiver, ResponseType}, ok. 
 
 %% gen_server.
 
@@ -143,7 +148,7 @@ handle_cast({send_response, Message, Receiver}, State) ->
 % cancel request include removing token, request exchange state and receiver reference
 handle_cast({cancel_request, Receiver}, State=#state{receivers=Receivers}) ->
     case maps:find(Receiver, Receivers) of
-        {ok, {Token, TrId}} ->
+        {ok, {Token, TrId, _}} ->
             {noreply, do_cancel_msg(TrId, complete_request(Receiver, Token, State))};
         error ->
             {noreply, State}
@@ -234,11 +239,15 @@ handle_info({timeout, TrId, Event}, State=#state{trans=Trans, trans_args=TransAr
         error -> {noreply, State} % ignore unexpected responses
     end;
 
-handle_info({request_complete, Receiver}, State=#state{receivers=Receivers}) ->
+handle_info({request_complete, Receiver, ResObserve}, State=#state{receivers=Receivers}) ->
     %io:format("request_complete~n"),
-    {Token, _} = maps:get(Receiver, Receivers, {undefined, undefined}),
-    {noreply, complete_request(Receiver, Token, State)};
-
+    case maps:find(Receiver, Receivers) of
+        {ok, {Token, _, ReqObserve}} ->
+            {noreply, maybe_complete_request(ReqObserve, ResObserve, Receiver, Token, State)};
+        error ->
+            {noreply, State}
+    end;
+ 
 handle_info({handler_started, Pid}, State=#state{rescnt=Count, handler_refs=Refs}) ->
     erlang:monitor(process, Pid),
     {noreply, State#state{rescnt=Count+1, handler_refs=maps:put(Pid, undefined, Refs)}};
@@ -273,7 +282,7 @@ handle_info({'DOWN', _Ref, process, Pid, _Reason}, State=#state{rescnt=Count, tr
 handle_info({'EXIT', Pid, _Reason}, State=#state{receivers=Receivers}) ->
     % if this exit signal comes from an embedded client which shares the same socket process with the server
     % we should ensure all requests the client issued that have not been completed yet are cancelled
-    State2 =  maps:fold(fun(Receiver={ClientPid, _}, {Token, TrId}, Acc) when ClientPid =:= Pid -> 
+    State2 =  maps:fold(fun(Receiver={ClientPid, _}, {Token, TrId, _}, Acc) when ClientPid =:= Pid -> 
                     do_cancel_msg(TrId, complete_request(Receiver, Token, Acc));
                 (_, _, Acc) -> Acc 
         end, State, Receivers),
@@ -327,11 +336,11 @@ code_change(_OldVsn, State, _Extra) ->
 
 make_new_request(Message, Receiver, State=#state{tokens=Tokens, nextmid=MsgId, receivers=Receivers}) ->
     Token = case maps:find(Receiver, Receivers) of
-        {ok, {OldToken, _}} -> OldToken;
+        {ok, {OldToken, _, _}} -> OldToken;
         error -> ecoap_message_token:generate_token()
     end,
     Tokens2 = maps:put(Token, Receiver, Tokens),
-    Receivers2 = maps:put(Receiver, {Token, {out, MsgId}}, Receivers),
+    Receivers2 = maps:put(Receiver, {Token, {out, MsgId}, coap_message:get_option('Observe', Message)}, Receivers),
     make_new_message(coap_message:set_token(Token, Message), Receiver, State#state{tokens=Tokens2, receivers=Receivers2}).
 
 make_new_message(Message, Receiver, State=#state{nextmid=MsgId}) ->
@@ -376,6 +385,11 @@ make_new_response(Message, Receiver, State=#state{trans=Trans, trans_args=TransA
             % 3. ... send an observe notification whose original request has been responded and expired
             make_new_message(Message, Receiver, State)
     end.
+
+maybe_complete_request(ReqObserve, ResObserve, _, _, State) when is_integer(ReqObserve), is_integer(ResObserve) ->
+    State;
+maybe_complete_request(_, _, Receiver, Token, State) ->
+    complete_request(Receiver, Token, State).
 
 complete_request(Receiver, Token, State=#state{receivers=Receivers, tokens=Tokens}) ->
     State#state{receivers=maps:remove(Receiver, Receivers), tokens=maps:remove(Token, Tokens)}.
