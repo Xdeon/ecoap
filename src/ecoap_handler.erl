@@ -226,7 +226,7 @@ handle_info(Info, State=#state{module=Module, observer=Observer, obstate=ObState
     try case handle_info(Module, Info, Observer, ObState) of
         {notify, Msg, ObState2} -> 
             handle_notify([], Msg, ObState2, Observer, State);
-        {notify, Ref, Msg, ObState2, State} ->
+        {notify, Ref, Msg, ObState2} ->
             handle_notify(Ref, Msg, ObState2, Observer, State);
         {noreply, ObState2} ->
             {noreply, State#state{obstate=ObState2}};
