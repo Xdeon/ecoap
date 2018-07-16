@@ -1,5 +1,6 @@
 -module(ecoap_udp_socket).
 -behaviour(gen_server).
+-behaviour(ecoap_socket).
 
 %% TODO: add supoort for multicast
 %% can be done by:
@@ -13,7 +14,7 @@
 %% API.
 -export([start_link/0, start_link/1, start_link/2, start_link/4, close/1]).
 -export([get_endpoint/2, get_all_endpoints/1, get_endpoint_count/1]).
--export([send_datagram/3]).
+-export([send/3]).
 
 %% gen_server.
 -export([init/1]).
@@ -38,10 +39,8 @@
 }).
 
 -opaque state() :: #state{}.
--type ecoap_endpoint_id() :: {inet:ip_address(), inet:port_number()}.
 
 -export_type([state/0]).
--export_type([ecoap_endpoint_id/0]).
 
 %% API.
 
@@ -69,7 +68,7 @@ start_link(SupPid, Name, SocketOpts, Config) when is_pid(SupPid) ->
 	gen_server:start_link({local, Name}, ?MODULE, [SupPid, SocketOpts, Config], []).
 
 %% start endpoint manually
--spec get_endpoint(pid(), ecoap_endpoint_id()) -> {ok, pid()} | term().
+-spec get_endpoint(pid(), ecoap_endpoint:ecoap_endpoint_id()) -> {ok, pid()} | term().
 get_endpoint(Pid, {PeerIP, PeerPortNo}) ->
     gen_server:call(Pid, {get_endpoint, {PeerIP, PeerPortNo}}).
 
@@ -83,8 +82,8 @@ get_endpoint_count(Pid) ->
 	gen_server:call(Pid, get_endpoint_count).
 
 %% module specific send function 
--spec send_datagram(inet:socket(), ecoap_udp_socket:ecoap_endpoint_id(), binary()) -> ok.
-send_datagram(Socket, {PeerIP, PeerPortNo}, Datagram) ->
+-spec send(inet:socket(), ecoap_endpoint:ecoap_endpoint_id(), binary()) -> ok | {error, term()}.
+send(Socket, {PeerIP, PeerPortNo}, Datagram) ->
     inet_udp:send(Socket, PeerIP, PeerPortNo, Datagram).
 
 %% gen_server.

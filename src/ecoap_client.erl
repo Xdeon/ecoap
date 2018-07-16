@@ -54,10 +54,10 @@
 -type request() :: #request{}.
 
 % block_key() :: {EpID, Path}
--type block_key() :: {ecoap_udp_socket:ecoap_endpoint_id(), [binary()]}.
+-type block_key() :: {ecoap_endpoint:ecoap_endpoint_id(), [binary()]}.
 
 % observe_key() :: {EpID, Path, Accept}
--type observe_key() :: {ecoap_udp_socket:ecoap_endpoint_id(), [binary()], atom() | non_neg_integer()}.
+-type observe_key() :: {ecoap_endpoint:ecoap_endpoint_id(), [binary()], atom() | non_neg_integer()}.
 
 -type response() ::
 	{ok, coap_message:success_code() | coap_message:error_code(), coap_content:coap_content()} |

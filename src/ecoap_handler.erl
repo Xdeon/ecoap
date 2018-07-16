@@ -54,7 +54,7 @@
 % GET handler
 -callback coap_get(EpID, Prefix, Suffix, Query, Request) -> 
     {ok, Content} | {error, Error} | {error, Error, Reason} when
-    EpID :: ecoap_udp_socket:ecoap_endpoint_id(),
+    EpID :: ecoap_endpoint:ecoap_endpoint_id(),
     Prefix :: uri(),
     Suffix :: uri(),
     Query :: 'query'(),
@@ -67,7 +67,7 @@
 % POST handler
 -callback coap_post(EpID, Prefix, Suffix, Request) -> 
     {ok, Code, Content} | {error, Error} | {error, Error, Reason} when
-    EpID :: ecoap_udp_socket:ecoap_endpoint_id(),
+    EpID :: ecoap_endpoint:ecoap_endpoint_id(),
     Prefix :: uri(),
     Suffix :: uri(),
     Request :: coap_message:coap_message(),
@@ -79,7 +79,7 @@
 
 % PUT handler
 -callback coap_put(EpID, Prefix, Suffix, Request) -> ok | {error, Error} | {error, Error, Reason} when
-    EpID :: ecoap_udp_socket:ecoap_endpoint_id(),
+    EpID :: ecoap_endpoint:ecoap_endpoint_id(),
     Prefix :: uri(),
     Suffix :: uri(),
     Request :: coap_message:coap_message(),
@@ -89,7 +89,7 @@
 
 % DELETE handler
 -callback coap_delete(EpID, Prefix, Suffix, Request) -> ok | {error, Error} | {error, Error, Reason} when
-    EpID :: ecoap_udp_socket:ecoap_endpoint_id(),
+    EpID :: ecoap_endpoint:ecoap_endpoint_id(),
     Prefix :: uri(),
     Suffix :: uri(),
     Request :: coap_message:coap_message(),
@@ -99,7 +99,7 @@
 
 % observe request handler
 -callback coap_observe(EpID, Prefix, Suffix, Request) -> {ok, ObState} | {error, Error} | {error, Error, Reason} when
-    EpID :: ecoap_udp_socket:ecoap_endpoint_id(),
+    EpID :: ecoap_endpoint:ecoap_endpoint_id(),
     Prefix :: uri(),
     Suffix :: uri(),
     Request :: coap_message:coap_message(),

@@ -4,13 +4,13 @@
 
 -include("ecoap.hrl").
 
-% -type uri() :: string().
-% -type scheme() :: atom().
-% -type host() :: binary().
-% -type path() :: [binary()].
-% -type query() :: [binary()].
+-type uri() :: string().
+-type scheme() :: atom().
+-type host() :: binary().
+-type path() :: [binary()].
+-type query() :: [binary()].
 
-% -export_type([uri/0, scheme/0, host/0, path/0, query/0]).
+-export_type([uri/0, scheme/0, host/0, path/0, query/0]).
 
 % -spec decode_uri(Uri) -> {Scheme, Host, PeerAddress, Path, Query} | {error, Error} when
 %     Uri :: uri(),
@@ -37,15 +37,18 @@
 %             end
 %     end.
 
+decode_uri(Uri) when is_list(Uri) ->
+    decode_uri(list_to_binary(Uri));
 decode_uri(Uri) ->
     {ok, {Scheme, Host, Port, Path, Query}} = parse_uri(Uri),
-    case inet:parse_address(Host) of
+    HostString = binary_to_list(Host),
+    case inet:parse_address(HostString) of
         {ok, PeerIP} -> 
             {Scheme, undefined, {PeerIP, Port}, split_path(Path), split_query2(Query)};
         {error,einval} -> 
-            case inet:getaddr(Host, inet) of
+            case inet:getaddr(HostString, inet) of
                 {ok, PeerIP} ->
-                {Scheme, list_to_binary(Host), {PeerIP, Port}, split_path(Path), split_query2(Query)};
+                    {Scheme, Host, {PeerIP, Port}, split_path(Path), split_query2(Query)};
                 {error, Error} ->
                     {error, Error}
             end
@@ -58,14 +61,14 @@ parse_uri(Uri) ->
             Scheme = scheme_to_atom(maps:get(scheme, ParsedUri, '')),
             Host = maps:get(host, ParsedUri, undefined),
             Port = maps:get(port, ParsedUri, default_port(Scheme)),
-            Path = maps:get(path, ParsedUri, ""),
-            Query = maps:get(query, ParsedUri, ""),
+            Path = maps:get(path, ParsedUri, <<>>),
+            Query = maps:get(query, ParsedUri, <<>>),
             {ok, {Scheme, Host, Port, Path, Query}}
     end.
 
-scheme_to_atom("coap") ->
+scheme_to_atom(<<"coap">>) ->
     coap;
-scheme_to_atom("coaps") ->
+scheme_to_atom(<<"coaps">>) ->
     coaps;
 scheme_to_atom('') ->
     throw({error, no_scheme});
@@ -73,9 +76,9 @@ scheme_to_atom(Scheme) ->
     throw({error, {bad_scheme, Scheme}}).
 
 atom_to_scheme(coap) ->
-    "coap";
+    <<"coap">>;
 atom_to_scheme(coaps) ->
-    "coaps";
+    <<"coaps">>;
 atom_to_scheme(Scheme) when is_atom(Scheme) ->
     throw({error, {bad_scheme, Scheme}});
 atom_to_scheme(_) ->
@@ -84,12 +87,12 @@ atom_to_scheme(_) ->
 default_port(coap) -> ?DEFAULT_COAP_PORT;
 default_port(coaps) -> ?DEFAULT_COAPS_PORT.
 
-split_query2([]) -> [];
-split_query2(Path) -> split_segments(Path, "&").
+split_query2(<<>>) -> [];
+split_query2(Path) -> split_segments(Path, <<"&">>).
 
-split_path([]) -> [];
-split_path([$/]) -> [];
-split_path([$/ | Path]) -> split_segments(Path, "/").
+split_path(<<>>) -> [];
+split_path(<<"/">>) -> [];
+split_path(<<"/", Path/binary>>) -> split_segments(Path, <<"/">>).
 
 % split_query([]) -> [];
 % split_query([$? | Path]) -> split_segments(Path, "&", []).
@@ -107,7 +110,7 @@ split_segments(Path, Char) ->
     lists:map(fun make_segment/1, string:split(Path, Char, all)).
  
 make_segment(Seg) ->
-    list_to_binary(http_uri:decode(Seg)).
+    http_uri:decode(Seg).
 
 encode_uri({Scheme, Host, {PeerIP, Port}, Path, Query}) -> 
     Uri0 = #{scheme=>atom_to_scheme(Scheme), 

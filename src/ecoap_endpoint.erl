@@ -31,11 +31,12 @@
     timer = undefined :: endpoint_timer:timer_state()
 }).
 
+-type ecoap_endpoint_id() :: {inet:ip_address(), inet:port_number()}.
 -type trid() :: {in | out, coap_message:msg_id()}.
 -type receiver() :: {pid(), reference()}.
 -type trans_args() :: #{sock := inet:socket(),
                         sock_module := module(), 
-                        ep_id := ecoap_udp_socket:ecoap_endpoint_id(), 
+                        ep_id := ecoap_endpoint_id(), 
                         endpoint_pid := pid(), 
                         handler_sup => pid(),
                         handler_regs => #{ecoap_handler:handler_id() => pid()},
@@ -47,14 +48,15 @@
 -export_type([trid/0]).
 -export_type([receiver/0]).
 -export_type([trans_args/0]).
+-export_type([ecoap_endpoint_id/0]).
 
 %% API.
 
--spec start_link(module(), inet:socket(), ecoap_udp_socket:ecoap_endpoint_id(), ecoap_default:config()) -> {ok, pid()} | {error, term()}.
+-spec start_link(module(), inet:socket(), ecoap_endpoint_id(), ecoap_default:config()) -> {ok, pid()} | {error, term()}.
 start_link(SocketModule, Socket, EpID, Config) ->
     start_link(undefined, SocketModule, Socket, EpID, Config).
     
--spec start_link(pid() | undefined, module(), inet:socket(), ecoap_udp_socket:ecoap_endpoint_id(), ecoap_default:config()) -> {ok, pid()} | {error, term()}.
+-spec start_link(pid() | undefined, module(), inet:socket(), ecoap_endpoint_id(), ecoap_default:config()) -> {ok, pid()} | {error, term()}.
 start_link(SupPid, SocketModule, Socket, EpID, Config) ->
     gen_server:start_link(?MODULE, [SupPid, SocketModule, Socket, EpID, Config], []).
 
@@ -196,7 +198,7 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgI
                     % token was not recognized
                     BinRST = coap_message:encode(ecoap_request:rst(MsgId)),
                     %io:fwrite("<- reset~n"),
-                    ok = SocketModule:send_datagram(Socket, EpID, BinRST),
+                    ok = SocketModule:send(Socket, EpID, BinRST),
                     {noreply, State}
             end
     end;

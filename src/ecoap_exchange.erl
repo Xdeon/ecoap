@@ -110,7 +110,7 @@ got_non({in, _Message}, _TransArgs, State) ->
 out_non({out, Message}, TransArgs, State) ->
     %io:fwrite("~p send outgoing non msg ~p~n", [self(), Message]),
     BinMessage = coap_message:encode(Message),
-    ok = send_datagram(TransArgs, BinMessage),
+    ok = send(TransArgs, BinMessage),
     check_next_state(sent_non, State).
 
 % we may get reset
@@ -160,7 +160,7 @@ await_aack({in, _BinMessage}, _TransArgs, State) ->
 
 await_aack({timeout, await_aack}, TransArgs, State=#exchange{msgbin=BinAck}) ->
     io:fwrite("~p <- ack [application didn't respond]~n", [self()]),
-    ok = send_datagram(TransArgs, BinAck),
+    ok = send(TransArgs, BinAck),
     check_next_state(pack_sent, State);
 
 await_aack({out, Ack}, TransArgs, State) ->
@@ -175,19 +175,19 @@ await_aack({out, Ack}, TransArgs, State) ->
 go_pack_sent(Ack, TransArgs, State) ->
 	%io:fwrite("~p send ack msg ~p~n", [self(), Ack]),
     BinAck = coap_message:encode(Ack),
-    ok = send_datagram(TransArgs, BinAck),
+    ok = send(TransArgs, BinAck),
     check_next_state(pack_sent, State#exchange{msgbin=BinAck}).
 
 -spec go_rst_sent(coap_message:coap_message(), ecoap_endpoint:trans_args(), exchange()) -> exchange().
 go_rst_sent(RST, TransArgs, State) ->
     BinRST = coap_message:encode(RST),
-    ok = send_datagram(TransArgs, BinRST),
+    ok = send(TransArgs, BinRST),
     next_state(undefined, State).
 
 -spec pack_sent({in, binary()} | {timeout, await_aack}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
 pack_sent({in, _BinMessage}, TransArgs, State=#exchange{msgbin=BinAck}) ->
     % retransmit the ack
-    ok = send_datagram(TransArgs, BinAck),
+    ok = send(TransArgs, BinAck),
     next_state(pack_sent, State);
 pack_sent({timeout, await_aack}, _TransArgs, State) ->
 	% in case the timeout msg was sent before we cancel the timer
@@ -215,7 +215,7 @@ pack_sent({timeout, await_aack}, _TransArgs, State) ->
 out_con({out, Message}, TransArgs, State) ->
     %io:fwrite("~p send outgoing con msg ~p~n", [self(), Message]),
     BinMessage = coap_message:encode(Message),
-    ok = send_datagram(TransArgs, BinMessage),
+    ok = send(TransArgs, BinMessage),
     % _ = rand:seed(exs1024),
     Timeout = ?ACK_TIMEOUT(TransArgs)+rand:uniform(?ACK_RANDOM_FACTOR(TransArgs)),
     next_state(await_pack, TransArgs, State#exchange{msgbin=BinMessage, retry_time=Timeout, retry_count=0}, Timeout).
@@ -245,7 +245,7 @@ await_pack({in, BinAck}, TransArgs, State) ->
 await_pack({timeout, await_pack}, TransArgs, State=#exchange{msgbin=BinMessage, retry_time=Timeout, retry_count=Count}) when Count < ?MAX_RETRANSMIT(TransArgs) ->
     % BinMessage = coap_message:encode(Message),
     %io:fwrite("resend msg for ~p time~n", [Count]),
-    ok = send_datagram(TransArgs, BinMessage),
+    ok = send(TransArgs, BinMessage),
     Timeout2 = Timeout*2,
     next_state(await_pack, TransArgs, State#exchange{retry_time=Timeout2, retry_count=Count+1}, Timeout2);
 await_pack({timeout, await_pack}, TransArgs, State=#exchange{trid={out, MsgId}}) ->
@@ -313,8 +313,8 @@ get_handler(SupPid, Config, HandlerID, HandlerRegs) ->
 request_complete(EndpointPid, Message, Receiver) ->
     ecoap_endpoint:request_complete(EndpointPid, Receiver, coap_message:get_option('Observe', Message)).
 
-send_datagram(#{sock:=Socket, sock_module:=SocketModule, ep_id:=EpID}, BinMessage) ->
-    SocketModule:send_datagram(Socket, EpID, BinMessage).
+send(#{sock:=Socket, sock_module:=SocketModule, ep_id:=EpID}, BinMessage) ->
+    SocketModule:send(Socket, EpID, BinMessage).
 
 % erlang:start_timer(Time, Dest, Msg) -> TimerRef, receive {timeout, TimerRef, Msg}
 % erlang:send_after(Time, Dest, Msg) -> TimerRef, receive Msg
