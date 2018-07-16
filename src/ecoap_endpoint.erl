@@ -125,13 +125,7 @@ handle_continue({init, undefined}, State) ->
     {noreply, State};
 % server 
 handle_continue({init, SupPid}, State=#state{trans_args=TransArgs}) ->
-    {ok, HdlSupPid} = supervisor:start_child(SupPid, 
-        #{id => ecoap_handler_sup,
-          start => {ecoap_handler_sup, start_link, []},
-          restart => permanent, 
-          shutdown => infinity, 
-          type => supervisor, 
-          modules => [ecoap_handler_sup]}),
+    {ok, HdlSupPid} = endpoint_sup:start_handler_sup(SupPid),
     {noreply, State#state{trans_args=TransArgs#{handler_sup=>HdlSupPid}}}.
 
 handle_call(_Request, _From, State) ->
