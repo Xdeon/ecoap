@@ -25,6 +25,6 @@ native_time(Time) ->
     erlang:convert_time_unit(Time, millisecond, native).
 
 handler_config(Config) ->
-	maps:without([sock, sock_module, ep_id, handler_regs], Config).
+	maps:with([endpoint_pid, exchange_lifetime, max_body_size, max_block_size], Config).
 
 default_max_block_size() -> 1024.
