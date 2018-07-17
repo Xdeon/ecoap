@@ -6,14 +6,14 @@ PROJECT_REGISTERED = ecoap_udp_socket ecoap_registry
 
 LOCAL_DEPS = crypto inets
 
-COMPILE_FIRST = ecoap_handler
+# EUNIT_OPTS = verbose
+
+# PLT_APPS = ssl
 
 include erlang.mk
-
-app:: rebar.config
-
-# EUNIT_OPTS = verbose
 
 ERLC_OPTS += +report +verbose +warn_deprecated_function +warn_deprecated_type +warn_untyped_record +warn_unused_import +inline_list_funcs
 
 SHELL_OPTS = +K true +spp true -kernel start_pg2 true
+
+app:: rebar.config
