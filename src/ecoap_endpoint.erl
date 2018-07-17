@@ -405,15 +405,12 @@ create_exchange(TrId, Receiver, #state{trans=Trans}) ->
 init_exchange(TrId, Receiver) ->
     ecoap_exchange:init(TrId, Receiver).
 
--ifdef(NODEDUP).
-scan_state(State) ->
-    purge_state(State).
--else.
+scan_state(State=#state{trans_args=#{exchange_lifetime:=0}}) ->
+    purge_state(State);
 scan_state(State=#state{trans=Trans}) ->
     CurrentTime = erlang:monotonic_time(),
     Trans2 = maps:filter(fun(_TrId, TrState) -> ecoap_exchange:not_expired(CurrentTime, TrState) end, Trans),
     purge_state(State#state{trans=Trans2}).
--endif.
 
 update_handler_regs({_, undefined}=ID, Pid, Regs) ->
     Regs#{ID=>Pid};

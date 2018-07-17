@@ -91,10 +91,10 @@ in_non({in, BinMessage}, TransArgs, State) ->
     case catch {ok, coap_message:decode(BinMessage)} of
         {ok, #coap_message{code=Method}=Message} when is_atom(Method) ->
             handle_request(Message, TransArgs, State),
-            check_next_state(got_non, State);
+            check_next_state(got_non, TransArgs, State);
         {ok, #coap_message{}=Message} ->
             handle_response(Message, TransArgs, State),
-            check_next_state(got_non, State);
+            check_next_state(got_non, TransArgs, State);
         _ ->
             % shall we send reset?
             next_state(undefined, State)
@@ -111,7 +111,7 @@ out_non({out, Message}, TransArgs, State) ->
     %io:fwrite("~p send outgoing non msg ~p~n", [self(), Message]),
     BinMessage = coap_message:encode(Message),
     ok = send(TransArgs, BinMessage),
-    check_next_state(sent_non, State).
+    check_next_state(sent_non, TransArgs, State).
 
 % we may get reset
 -spec sent_non({in, binary()}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
@@ -161,7 +161,7 @@ await_aack({in, _BinMessage}, _TransArgs, State) ->
 await_aack({timeout, await_aack}, TransArgs, State=#exchange{msgbin=BinAck}) ->
     io:fwrite("~p <- ack [application didn't respond]~n", [self()]),
     ok = send(TransArgs, BinAck),
-    check_next_state(pack_sent, State);
+    check_next_state(pack_sent, TransArgs, State);
 
 await_aack({out, Ack}, TransArgs, State) ->
     % set correct type for a piggybacked response
@@ -176,7 +176,7 @@ go_pack_sent(Ack, TransArgs, State) ->
 	%io:fwrite("~p send ack msg ~p~n", [self(), Ack]),
     BinAck = coap_message:encode(Ack),
     ok = send(TransArgs, BinAck),
-    check_next_state(pack_sent, State#exchange{msgbin=BinAck}).
+    check_next_state(pack_sent, TransArgs, State#exchange{msgbin=BinAck}).
 
 -spec go_rst_sent(coap_message:coap_message(), ecoap_endpoint:trans_args(), exchange()) -> exchange().
 go_rst_sent(RST, TransArgs, State) ->
@@ -230,13 +230,13 @@ await_pack({in, BinAck}, TransArgs, State) ->
             % since we can confirm when an outgoing confirmable message
             % has been acknowledged or reset, we can safely clean the msgbin 
             % which won't be used again from this moment
-            check_next_state(aack_sent, State#exchange{msgbin= <<>>});
+            check_next_state(aack_sent, TransArgs, State#exchange{msgbin= <<>>});
         {ok, #coap_message{type='RST', code=undefined}=Message} ->
             handle_error(Message, 'RST', TransArgs, State),
-            check_next_state(aack_sent, State#exchange{msgbin= <<>>});
+            check_next_state(aack_sent, TransArgs, State#exchange{msgbin= <<>>});
         {ok, #coap_message{}=Message} ->
             handle_response(Message, TransArgs, State),
-            check_next_state(aack_sent, State#exchange{msgbin= <<>>});
+            check_next_state(aack_sent, TransArgs, State#exchange{msgbin= <<>>});
         _ ->
             % shall we inform the receiver the error?
             next_state(await_pack, State)   
@@ -250,7 +250,7 @@ await_pack({timeout, await_pack}, TransArgs, State=#exchange{msgbin=BinMessage, 
     next_state(await_pack, TransArgs, State#exchange{retry_time=Timeout2, retry_count=Count+1}, Timeout2);
 await_pack({timeout, await_pack}, TransArgs, State=#exchange{trid={out, MsgId}}) ->
     handle_error(ecoap_request:rst(MsgId), timeout, TransArgs, State),
-    check_next_state(aack_sent, State#exchange{msgbin= <<>>}).
+    check_next_state(aack_sent, TransArgs, State#exchange{msgbin= <<>>}).
 
 -spec aack_sent({in, binary()} | {timeout, await_pack}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
 aack_sent({in, _Ack}, _TransArgs, State) ->
@@ -325,12 +325,8 @@ timeout_after(Time, EndpointPid, TrId, Event) ->
 cancel_timer(Timer) ->
     erlang:cancel_timer(Timer, [{async, true}, {info, false}]).
 
-% check deduplication flag to decide whether clean up state
--ifdef(NODEDUP).
-check_next_state(_, State) -> next_state(undefined, State).
--else.
-check_next_state(Stage, State) -> next_state(Stage, State).
--endif.
+check_next_state(_, #{exchange_lifetime:=0}, State) -> next_state(undefined, State);
+check_next_state(Stage, _, State) -> next_state(Stage, State).
 
 % start the timer
 next_state(Stage, #{endpoint_pid:=EndpointPid}, State=#exchange{trid=TrId, timer=undefined}, Timeout) ->
