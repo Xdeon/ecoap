@@ -8,7 +8,7 @@
 %% 3. return {error, _} when synchronously sending a 'NON' request (which should be send asynchronously)
 
 %% API.
--export([open/0, open/1, close/1]).
+-export([open/0, open/1, open/2, close/1]).
 -export([ping/2]).
 -export([get/2, get/3, get/4, put/3, put/4, put/5, post/3, post/4, post/5, delete/2, delete/3, delete/4]).
 -export([get_async/2, get_async/3, put_async/3, put_async/4, post_async/3, post_async/4, delete_async/2, delete_async/3]).
@@ -21,7 +21,7 @@
 -export([get_reqrefs/1, get_obsregs/1, get_blockregs/1]).
 -endif.
 
--export([start_link/1]).
+-export([start_link/2]).
 
 %% gen_server.
 -export([init/1]).
@@ -67,13 +67,17 @@
 	{ok, reference(), pid(), non_neg_integer(), response()}.
 
 %% API.
--spec open() -> {ok, pid()}.
+-spec open() -> {ok, pid()} | {error, term()}.
 open() ->
-	start_link({port, 0}).
+	start_link([], #{}).
 
--spec open({port, inet:port_number()} | {socket, pid() | atom()}) -> {ok, pid()}.
-open(Opts) ->
-	start_link(Opts).
+-spec open([gen_udp:option()] | {socket, pid() | atom()}) -> {ok, pid()} | {error, term()}.
+open(SocketOpts) ->
+	start_link(SocketOpts, #{}).
+
+-spec open([gen_udp:option()] | {socket, pid() | atom()}, ecoap:env()) -> {ok, pid()} | {error, term()}.
+open(SocketOpts, Env) ->
+	start_link(SocketOpts, Env).
 
 -spec close(pid()) -> ok.
 close(Pid) ->
@@ -271,8 +275,9 @@ flush_pid(Pid) ->
 		ok
 	end.
 
-start_link(Opts) ->
-	gen_server:start_link(?MODULE, [Opts], []).
+-spec start_link([gen_udp:option()] | {socket, pid() | atom()}, ecoap:env()) -> {ok, pid()} | {error, term()}.
+start_link(SocketOpts, Env) ->
+	gen_server:start_link(?MODULE, [SocketOpts, Env], []).
 
 
 -ifdef(TEST).
@@ -291,11 +296,11 @@ get_blockregs(Pid) -> gen_server:call(Pid, get_blockregs).
 
 %% gen_server.
 
-init([{port, Port}]) ->
-	{ok, Socket} = ecoap_udp_socket:start_link([{port, Port}]),
-	{ok, #state{socket={client_socket, Socket}}};
-init([{socket, Socket}]) ->
-	{ok, #state{socket={server_socket, Socket}}}.
+init([{socket, Socket}, _Env]) ->
+	{ok, #state{socket={server_socket, Socket}}};
+init([SocketOpts, Env]) ->
+	{ok, Socket} = ecoap_udp_socket:start_link(SocketOpts, Env),
+	{ok, #state{socket={client_socket, Socket}}}.
 
 handle_call({ping, Uri}, From, State=#state{socket=Socket, requests=Requests}) ->
 	{_Scheme, _Host, {PeerIP, PortNo}, _Path, _Query} = ecoap_uri:decode_uri(Uri),
