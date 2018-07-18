@@ -25,9 +25,12 @@ start_server(SocketMFA, Name, SocketOpts, Config) ->
 			  	  shutdown => infinity,
 			  	  type => supervisor,
 			  	  modules => [ecoap_server_sup]},
-	{ok, ServerSupPid} = supervisor:start_child(?MODULE, ChildSpec),
-	{ok, ecoap_server_sup:ecoap_server(ServerSupPid, Name)}.
-
+	case supervisor:start_child(?MODULE, ChildSpec) of
+		{ok, ServerSupPid} -> {ok, ecoap_server_sup:ecoap_server(ServerSupPid, Name)};
+		{error, {already_started, ServerSupPid}} -> {error, {already_started, ecoap_server_sup:ecoap_server(ServerSupPid, Name)}};
+		{error, Other} -> {error, Other}
+	end.
+	
 stop_server(Name) -> 
 	_ = supervisor:terminate_child(?MODULE, Name),
 	_ = supervisor:delete_child(?MODULE, Name),
