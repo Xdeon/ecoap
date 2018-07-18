@@ -330,10 +330,10 @@ code_change(_OldVsn, State, _Extra) ->
 %     Tokens2 = maps:put(Token, Receiver, Tokens),
 %     make_new_message(Message, Receiver, State#state{tokens=Tokens2, receivers=Receivers2}).
 
-make_new_request(Message, Receiver, State=#state{tokens=Tokens, nextmid=MsgId, receivers=Receivers}) ->
+make_new_request(Message, Receiver, State=#state{tokens=Tokens, nextmid=MsgId, receivers=Receivers, trans_args=#{token_length:=TKL}}) ->
     Token = case maps:find(Receiver, Receivers) of
         {ok, {OldToken, _, _}} -> OldToken;
-        error -> ecoap_message_token:generate_token()
+        error -> ecoap_message_token:generate_token(TKL)
     end,
     Tokens2 = maps:put(Token, Receiver, Tokens),
     Receivers2 = maps:put(Receiver, {Token, {out, MsgId}, coap_message:get_option('Observe', Message)}, Receivers),

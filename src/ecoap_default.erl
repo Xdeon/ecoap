@@ -6,6 +6,7 @@
 
 config() ->
 	#{
+		token_length => 4,  		% shall be at least 32 random bits
 		exchange_lifetime => 247000,
 		non_lifetime => 145000,
 		processing_delay => 1000,	% standard allows 2000
