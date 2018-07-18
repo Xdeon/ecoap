@@ -33,6 +33,7 @@
 
 -record(state, {
 	socket = undefined :: {client_socket, pid()} | {server_socket, pid() | atom()},
+	socket_ref = undefined :: reference(),
 	requests = #{} :: #{reference() => {pid(), request()}},
 	ongoing_blocks = #{} :: #{block_key() => reference()},
 	observe_regs = #{} :: #{observe_key() => reference()},
@@ -297,10 +298,12 @@ get_blockregs(Pid) -> gen_server:call(Pid, get_blockregs).
 %% gen_server.
 
 init([{socket, Socket}, _Env]) ->
-	{ok, #state{socket={server_socket, Socket}}};
+	SocketRef = erlang:monitor(process, Socket),
+	{ok, #state{socket={server_socket, Socket}, socket_ref=SocketRef}};
 init([SocketOpts, Env]) ->
 	{ok, Socket} = ecoap_udp_socket:start_link(SocketOpts, Env),
-	{ok, #state{socket={client_socket, Socket}}}.
+	SocketRef = erlang:monitor(process, Socket),
+	{ok, #state{socket={client_socket, Socket}, socket_ref=SocketRef}}.
 
 handle_call({ping, Uri}, From, State=#state{socket=Socket, requests=Requests}) ->
 	{_Scheme, _Host, {PeerIP, PortNo}, _Path, _Query} = ecoap_uri:decode_uri(Uri),
@@ -426,7 +429,9 @@ handle_info({coap_ack, _EpID, EndpointPid, Ref}, State=#state{requests=Requests}
 			{noreply, State}
 	end;
 
-% monitor down message is only received for observe request
+handle_info({'DOWN', Ref, process, _Pid, Reason}, State=#state{socket_ref=Ref}) ->
+	{stop, Reason, State};
+
 handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{requests=Requests}) ->
 	case maps:find(Ref, Requests) of
 		{ok, {_, #request{origin_ref=OriginRef}}} ->
@@ -439,7 +444,7 @@ handle_info(_Info, State) ->
 	{noreply, State}.
 
 terminate(_Reason, #state{socket={client_socket, Socket}}) ->
-	ok = ecoap_udp_socket:close(Socket),
+	catch ecoap_udp_socket:close(Socket),
 	ok;
 terminate(_Reason, _State) ->
 	ok.
