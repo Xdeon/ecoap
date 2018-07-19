@@ -166,8 +166,9 @@ process_reg({[_|_]=Prefix, Module}) ->
         <<"*">> -> {lists:droplast(Prefix), {wildcard, Module}}; 
         _ -> {Prefix, {normal, Module}}
     end;
-process_reg(Reg) -> 
-    {normal, Reg}.
+% for root resource where Prefix = []
+process_reg({Prefix, Module}) -> 
+    {Prefix, {normal, Module}}.
 
 process_dup([{Key, Val2} | Rest], [{Key, Val1} | Acc]) ->
     process_dup(Rest, [{Key, [Val2 | make_list(Val1)]} | Acc]);
