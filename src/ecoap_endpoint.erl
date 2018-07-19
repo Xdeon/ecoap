@@ -62,7 +62,7 @@ start_link(SupPid, SocketModule, Socket, EpID, Config) ->
 
 -spec ping(pid()) -> {ok, reference()}.
 ping(EndpointPid) ->
-    send_message(EndpointPid, make_ref(), coap_message:ping_msg()).
+    send_message(EndpointPid, make_ref(), ecoap_request:ping_msg()).
 
 -spec send(pid(), coap_message:coap_message()) -> {ok, reference()}.
 send(EndpointPid, Message) ->

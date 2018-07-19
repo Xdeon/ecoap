@@ -1,5 +1,5 @@
 -module(ecoap_request).
--export([requires_ack/1]).
+-export([ping_msg/0, get_query/1, requires_ack/1]).
 -export([request/2, request/3, request/4]).
 -export([response/2, response/3]).
 -export([ack/1, rst/1]).
@@ -8,6 +8,15 @@
 -include("coap_message.hrl").
 
 -type block_opt() :: {non_neg_integer(), boolean(), non_neg_integer()}.
+
+-spec ping_msg() -> coap_message:coap_message().
+ping_msg() ->
+    % id set to 0 and will be overwritten afterwards
+    #coap_message{type='CON', id=0}.
+
+-spec get_query(coap_message:coap_message()) -> [binary()].
+get_query(Request=#coap_message{}) ->
+    coap_message:get_option('Uri-Query', Request, []).
 
 -spec requires_ack(coap_message:coap_message()) -> boolean().
 requires_ack(#coap_message{type='CON'}) -> true;

@@ -10,7 +10,6 @@
 % utility functions for options
 -export([get_option/2, get_option/3, set_option/3, merge_options/2]).
 -export([add_option/3, add_options/2, has_option/2, remove_option/2, remove_options/2]).
--export([ping_msg/0]).
 
 -define(VERSION, 1).
 -define(OPTION_IF_MATCH, 1).
@@ -111,10 +110,6 @@
               optionset/0]).
 
 % utility functions
--spec ping_msg() -> coap_message().
-ping_msg() ->
-    % id set to 0 and will be overwritten afterwards
-    #coap_message{type='CON', id=0}.
 
 -spec get_type(coap_message()) -> coap_type().
 get_type(#coap_message{type=Type}) -> Type.
