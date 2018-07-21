@@ -154,7 +154,7 @@ load_handlers(Reg) ->
         case code:ensure_loaded(Module) of
             {module, Module} -> ok;
             {error, embedded} -> ok;
-            {error, Error} -> error_logger:error_msg("handler module ~p load fail: ~p~n", [Module, Error])
+            {error, Error} -> error_logger:error_msg("handler module load fail: ~p~n", [{Module, {error, Error}}])
         end end, Reg).
 
 process_regs(Regs) ->
