@@ -412,15 +412,22 @@ scan_state(State=#state{trans=Trans}) ->
     Trans2 = maps:filter(fun(_TrId, TrState) -> ecoap_exchange:not_expired(CurrentTime, TrState) end, Trans),
     purge_state(State#state{trans=Trans2}).
 
-update_handler_regs({_, undefined}=ID, Pid, Regs) ->
-    Regs#{ID=>Pid};
-update_handler_regs({RID, _}=ID, Pid, Regs) ->
-    Regs#{ID=>Pid, {RID, undefined}=>Pid}.
+% This is the code for issue where one client send mulitiple observer requests to same resource with different tokens
+% update_handler_regs({_, undefined}=ID, Pid, Regs) ->
+%     Regs#{ID=>Pid};
+% update_handler_regs({RID, _}=ID, Pid, Regs) ->
+%     Regs#{ID=>Pid, {RID, undefined}=>Pid}.
 
-purge_handler_regs({_, undefined}=ID, Regs) ->
-    maps:remove(ID, Regs);
-purge_handler_regs({RID, _}=ID, Regs) ->
-    maps:remove(ID, maps:remove({RID, undefined}, Regs)).
+% purge_handler_regs({_, undefined}=ID, Regs) ->
+%     maps:remove(ID, Regs);
+% purge_handler_regs({RID, _}=ID, Regs) ->
+%     maps:remove(ID, maps:remove({RID, undefined}, Regs)).
+
+update_handler_regs(ID, Pid, Regs) ->
+    maps:put(ID, Pid, Regs).
+
+purge_handler_regs(ID, Regs) ->
+    maps:remove(ID, Regs).
 
 update_state(State=#state{trans=Trans, timer=Timer}, TrId, undefined) ->
     Trans2 = maps:remove(TrId, Trans),

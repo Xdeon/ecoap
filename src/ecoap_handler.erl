@@ -35,7 +35,7 @@
 -type reason() :: binary().
 -type observe_ref() :: term().
 -type observe_state() :: term().
--type handler_id() :: {{method(), uri(), query()}, coap_message:token() | undefined}.
+-type handler_id() :: {method(), uri(), query()}.
 
 -type last_response() ::
     undefined |
@@ -162,18 +162,24 @@ notify(Uri, Info) ->
 
 
 -spec handler_id(coap_message:coap_message()) -> handler_id().
-handler_id(Message=#coap_message{code=Method, token=Token}) ->
+handler_id(Message=#coap_message{code=Method}) ->
     Uri = coap_message:get_option('Uri-Path', Message, []),
     Query = coap_message:get_option('Uri-Query', Message, []),
-    case coap_message:get_option('Observe', Message) of
-        undefined -> {{Method, Uri, Query}, undefined};
-        _ -> {{Method, Uri, Query}, Token}
-    end.
+    % According to RFC7641, a client should always use the same token in observe re-register requests
+    % But this can not be met when the client crashed after starting observing 
+    % and has no clue of what the former token is
+    % Question: Do we need to handler the case where a client issues multiple observe GET requests 
+    % with same URI and QUERY but different tokens? This may be intentional or the client just crashed before
+    % case coap_message:get_option('Observe', Message) of
+    %     undefined -> {{Method, Uri, Query}, undefined};
+    %     _ -> {{Method, Uri, Query}, Token}
+    % end.
+    {Method, Uri, Query}.
 
 
 %% gen_server.
 
-init([ID={{_, Uri, Query}, _}, Config=#{endpoint_pid:=EndpointPid}]) ->
+init([ID={_, Uri, Query}, Config=#{endpoint_pid:=EndpointPid}]) ->
     ecoap_endpoint:monitor_handler(EndpointPid, self()),
     {ok, #state{config=Config, id=ID, uri=Uri, query=Query, insegs={orddict:new(), undefined}, obseq=0}}.
 
