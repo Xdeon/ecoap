@@ -67,16 +67,19 @@
 -type observe_response() :: 
 	{ok, reference(), pid(), non_neg_integer(), response()}.
 
+% socket_id() refers to the id of the socket holder, can be pid/registered name/remote
+-type socket_id() :: pid() | atom() | tuple().
+
 %% API.
 -spec open() -> {ok, pid()} | {error, term()}.
 open() ->
 	start_link([], #{}).
 
--spec open([gen_udp:option()] | {socket, pid() | atom()}) -> {ok, pid()} | {error, term()}.
+-spec open([gen_udp:option()] | {socket, socket_id()}) -> {ok, pid()} | {error, term()}.
 open(SocketOpts) ->
 	start_link(SocketOpts, #{}).
 
--spec open([gen_udp:option()] | {socket, pid() | atom()}, ecoap:env()) -> {ok, pid()} | {error, term()}.
+-spec open([gen_udp:option()] | {socket, socket_id()}, ecoap:env()) -> {ok, pid()} | {error, term()}.
 open(SocketOpts, Env) ->
 	start_link(SocketOpts, Env).
 
