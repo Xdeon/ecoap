@@ -51,7 +51,7 @@ start_link() ->
 
 -spec start_link([gen_udp:option()]) -> {ok, pid()} | {error, term()}.
 start_link(SocketOpts) ->
-	start_link(SocketOpts, ecoap_default:config()).
+	start_link(SocketOpts, #{}).
 
 -spec start_link([gen_udp:option()], ecoap_default:config()) -> {ok, pid()} | {error, term()}.
 start_link(SocketOpts, Config) ->
