@@ -136,7 +136,7 @@ in_con({in, BinMessage}, TransArgs, State) ->
     case catch {ok, coap_message:decode(BinMessage)} of
         {ok, #coap_message{code=undefined}=Message} ->
             % provoked reset
-            go_rst_sent(ecoap_request:rst(Message), TransArgs, State);
+            go_pack_sent(ecoap_request:rst(Message), TransArgs, State);
         {ok, #coap_message{code=Method}=Message} when is_atom(Method) ->
             handle_request(Message, TransArgs, State),
             go_await_aack(Message, TransArgs, State);
@@ -144,7 +144,7 @@ in_con({in, BinMessage}, TransArgs, State) ->
             handle_response(Message, TransArgs, State),
             go_await_aack(Message, TransArgs, State);
         _ ->
-            go_rst_sent(ecoap_request:rst(coap_message:get_id(BinMessage)), TransArgs, State)
+            go_pack_sent(ecoap_request:rst(coap_message:get_id(BinMessage)), TransArgs, State)
     end.
 
 -spec go_await_aack(coap_message:coap_message(), ecoap_endpoint:trans_args(), exchange()) -> exchange().
@@ -173,16 +173,16 @@ await_aack({out, Ack}, TransArgs, State) ->
 
 -spec go_pack_sent(coap_message:coap_message(), ecoap_endpoint:trans_args(), exchange()) -> exchange().
 go_pack_sent(Ack, TransArgs, State) ->
-	%io:fwrite("~p send ack msg ~p~n", [self(), Ack]),
+	%io:fwrite("~p send ack/rst msg ~p~n", [self(), Ack]),
     BinAck = coap_message:encode(Ack),
     ok = send(TransArgs, BinAck),
     check_next_state(pack_sent, State#exchange{msgbin=BinAck}).
 
--spec go_rst_sent(coap_message:coap_message(), ecoap_endpoint:trans_args(), exchange()) -> exchange().
-go_rst_sent(RST, TransArgs, State) ->
-    BinRST = coap_message:encode(RST),
-    ok = send(TransArgs, BinRST),
-    next_state(undefined, State).
+% -spec go_rst_sent(coap_message:coap_message(), ecoap_endpoint:trans_args(), exchange()) -> exchange().
+% go_rst_sent(RST, TransArgs, State) ->
+%     BinRST = coap_message:encode(RST),
+%     ok = send(TransArgs, BinRST),
+%     next_state(undefined, State).
 
 -spec pack_sent({in, binary()} | {timeout, await_aack}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
 pack_sent({in, _BinMessage}, TransArgs, State=#exchange{msgbin=BinAck}) ->
