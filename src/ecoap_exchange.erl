@@ -90,15 +90,14 @@ idle(Msg={out, #coap_message{type='CON'}}, TransArgs, Exchange) ->
 in_non({in, BinMessage}, TransArgs, Exchange) ->
     case catch {ok, coap_message:decode(BinMessage)} of
         {ok, #coap_message{code=Method}=Message} when is_atom(Method) ->
-            handle_request(Message, TransArgs, Exchange),
-            check_next_state(got_non, Exchange);
+            handle_request(Message, TransArgs, Exchange);
         {ok, #coap_message{}=Message} ->
-            handle_response(Message, TransArgs, Exchange),
-            check_next_state(got_non, Exchange);
+            handle_response(Message, TransArgs, Exchange);
         _ ->
             % shall we send reset?
-            next_state(undefined, Exchange)
-    end.
+            ok
+    end,
+    check_next_state(got_non, Exchange).
 
 -spec got_non({in, binary()}, ecoap_endpoint:trans_args(), exchange()) -> exchange().
 got_non({in, _Message}, _TransArgs, Exchange) ->
@@ -316,9 +315,6 @@ request_complete(EndpointPid, Message, Receiver) ->
 send(#{sock:=Socket, sock_module:=SocketModule, ep_id:=EpID}, BinMessage) ->
     SocketModule:send(Socket, EpID, BinMessage).
 
-% erlang:start_timer(Time, Dest, Msg) -> TimerRef, receive {timeout, TimerRef, Msg}
-% erlang:send_after(Time, Dest, Msg) -> TimerRef, receive Msg
-
 timeout_after(Time, EndpointPid, TrId, Event) ->
     erlang:send_after(Time, EndpointPid, {timeout, TrId, Event}).
 
@@ -355,4 +351,3 @@ next_state(Stage, Exchange=#exchange{stage=Stage1, timer=Timer}) ->
         true ->
             Exchange
     end.
-
