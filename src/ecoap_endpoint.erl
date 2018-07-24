@@ -5,7 +5,7 @@
 -export([start_link/5, start_link/4]).
 -export([ping/1, send/2, send_message/3, send_request/3, send_response/3, cancel_request/2]).
 -export([monitor_handler/2, register_handler/3]).
--export([request_complete/3]).
+% -export([request_complete/3]).
 
 %% gen_server.
 -export([init/1]).
@@ -28,18 +28,24 @@
 	nextmid = undefined :: coap_message:msg_id(),
 	rescnt = 0 :: non_neg_integer(),
     handler_refs = #{} ::  #{pid() => tuple() | undefined},
-    timer = undefined :: endpoint_timer:timer_state()
+    timer = undefined :: endpoint_timer:timer_state(),
+    sock = undefined :: inet:socket(),
+    sock_module = undefined :: module(),
+    ep_id = undefined :: ecoap_endpoint_id(),
+    handler_sup = undefined :: undefined | pid(),
+    handler_regs = #{} :: #{ecoap_handler:handler_id() => pid()}
 }).
 
 -type ecoap_endpoint_id() :: {inet:ip_address(), inet:port_number()}.
 -type trid() :: {in | out, coap_message:msg_id()}.
 -type receiver() :: {pid(), reference()}.
--type trans_args() :: #{sock := inet:socket(),
-                        sock_module := module(), 
-                        ep_id := ecoap_endpoint_id(), 
-                        endpoint_pid := pid(), 
-                        handler_sup => pid(),
-                        handler_regs => #{ecoap_handler:handler_id() => pid()},
+-type trans_args() :: #{
+                        % sock_module := module(), 
+                        % ep_id := ecoap_endpoint_id(), 
+                        % sock := inet:socket(),
+                        endpoint_pid := pid(),
+                        % handler_sup => pid(),
+                        % handler_regs => #{ecoap_handler:handler_id() => pid()},
                         _ => _}.
 
 -opaque state() :: #state{}.
@@ -108,25 +114,25 @@ monitor_handler(EndpointPid, Pid) ->
 register_handler(EndpointPid, ID, Pid) ->
     EndpointPid ! {register_handler, ID, Pid}, ok.
 
-request_complete(EndpointPid, Receiver, ResponseType) ->
-    EndpointPid ! {request_complete, Receiver, ResponseType}, ok. 
+% request_complete(EndpointPid, Receiver, ResponseType) ->
+%     EndpointPid ! {request_complete, Receiver, ResponseType}, ok. 
 
 %% gen_server.
 
 init([SupPid, SocketModule, Socket, EpID, Config]) ->
     % we would like to terminate as well when upper layer socket process terminates
     process_flag(trap_exit, true),
-    TransArgs = #{sock=>Socket, sock_module=>SocketModule, ep_id=>EpID, endpoint_pid=>self(), handler_regs=>#{}},
+    TransArgs=maps:merge(Config, #{endpoint_pid=>self()}),
     Timer = endpoint_timer:start_timer(?SCAN_INTERVAL, start_scan),
-    {ok, #state{nextmid=ecoap_message_id:first_mid(), timer=Timer, trans_args=maps:merge(Config, TransArgs)}, {continue, {init, SupPid}}}.
+    {ok, #state{sock_module=SocketModule, sock=Socket, ep_id=EpID, nextmid=ecoap_message_id:first_mid(), timer=Timer, trans_args=TransArgs}, {continue, {init, SupPid}}}.
 
 % client
 handle_continue({init, undefined}, State) ->
     {noreply, State};
 % server 
-handle_continue({init, SupPid}, State=#state{trans_args=TransArgs}) ->
+handle_continue({init, SupPid}, State) ->
     {ok, HdlSupPid} = endpoint_sup:start_handler_sup(SupPid),
-    {noreply, State#state{trans_args=TransArgs#{handler_sup=>HdlSupPid}}}.
+    {noreply, State#state{handler_sup=HdlSupPid}}.
 
 handle_call(_Request, _From, State) ->
     error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
@@ -176,7 +182,7 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, _TKL:4, 0:3, _CodeDe
         ecoap_exchange:received(BinMessage, TransArgs, create_exchange(TrId, undefined, State)));
 % incoming CON(0) or NON(1) response
 handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgId:16, Token:TKL/bytes, _/bytes>>},
-    State=#state{trans=Trans, tokens=Tokens, trans_args=TransArgs=#{sock:=Socket, sock_module:=SocketModule, ep_id:=EpID}}) ->
+    State=#state{trans=Trans, tokens=Tokens, sock=Socket, sock_module=SocketModule, ep_id=EpID, trans_args=TransArgs}) ->
 	TrId = {in, MsgId},
     case maps:find(TrId, Trans) of
         % this is a duplicate msg, i.e. a retransmitted CON response
@@ -235,14 +241,14 @@ handle_info({timeout, TrId, Event}, State=#state{trans=Trans, trans_args=TransAr
         error -> {noreply, State} % ignore unexpected responses
     end;
 
-handle_info({request_complete, Receiver, ResObserve}, State=#state{receivers=Receivers}) ->
-    %io:format("request_complete~n"),
-    case maps:find(Receiver, Receivers) of
-        {ok, {Token, _, ReqObserve}} ->
-            {noreply, maybe_complete_request(ReqObserve, ResObserve, Receiver, Token, State)};
-        error ->
-            {noreply, State}
-    end;
+% handle_info({request_complete, Receiver, ResObserve}, State=#state{receivers=Receivers}) ->
+%     %io:format("request_complete~n"),
+%     case maps:find(Receiver, Receivers) of
+%         {ok, {Token, _, ReqObserve}} ->
+%             {noreply, maybe_complete_request(ReqObserve, ResObserve, Receiver, Token, State)};
+%         error ->
+%             {noreply, State}
+%     end;
  
 handle_info({handler_started, Pid}, State=#state{rescnt=Count, handler_refs=Refs}) ->
     erlang:monitor(process, Pid),
@@ -250,7 +256,7 @@ handle_info({handler_started, Pid}, State=#state{rescnt=Count, handler_refs=Refs
 
 % Only record pid of possible observe/blockwise handlers instead of every new spawned handler
 % so that we have better parallelism
-handle_info({register_handler, ID, Pid}, State=#state{trans_args=TransArgs=#{handler_regs:=Regs}, handler_refs=Refs}) ->
+handle_info({register_handler, ID, Pid}, State=#state{handler_regs=Regs, handler_refs=Refs}) ->
     case maps:find(ID, Regs) of
         {ok, Pid} -> 
             % handler already registered
@@ -261,16 +267,16 @@ handle_info({register_handler, ID, Pid}, State=#state{trans_args=TransArgs=#{han
             {noreply, State};
         error ->
             Regs2 = update_handler_regs(ID, Pid, Regs),
-            {noreply, State#state{trans_args=TransArgs#{handler_regs:=Regs2}, handler_refs=maps:update(Pid, ID, Refs)}}
+            {noreply, State#state{handler_regs=Regs2, handler_refs=maps:update(Pid, ID, Refs)}}
     end;
 
-handle_info({'DOWN', _Ref, process, Pid, _Reason}, State=#state{rescnt=Count, trans_args=TransArgs=#{handler_regs:=Regs}, handler_refs=Refs}) ->
+handle_info({'DOWN', _Ref, process, Pid, _Reason}, State=#state{rescnt=Count, handler_regs=Regs, handler_refs=Refs}) ->
     case maps:find(Pid, Refs) of
         {ok, undefined} ->
             {noreply, State#state{rescnt=Count-1, handler_refs=maps:remove(Pid, Refs)}};
         {ok, ID} -> 
             Regs2 = purge_handler_regs(ID, Regs),
-            {noreply, State#state{rescnt=Count-1, trans_args=TransArgs#{handler_regs:=Regs2}, handler_refs=maps:remove(Pid, Refs)}};
+            {noreply, State#state{rescnt=Count-1, handler_regs=Regs2, handler_refs=maps:remove(Pid, Refs)}};
         error -> 
             {noreply, State}
     end;
@@ -405,7 +411,7 @@ create_exchange(TrId, Receiver, #state{trans=Trans}) ->
 init_exchange(TrId, Receiver) ->
     ecoap_exchange:init(TrId, Receiver).
 
-scan_state(State=#state{trans_args=#{exchange_lifetime:=0}}) ->
+scan_state(State=#state{trans_args=#{exchange_lifetime:=0, non_lifetime:=0}}) ->
     purge_state(State);
 scan_state(State=#state{trans=Trans}) ->
     CurrentTime = erlang:monotonic_time(),
@@ -429,12 +435,102 @@ update_handler_regs(ID, Pid, Regs) ->
 purge_handler_regs(ID, Regs) ->
     maps:remove(ID, Regs).
 
-update_state(State=#state{trans=Trans, timer=Timer}, TrId, undefined) ->
-    Trans2 = maps:remove(TrId, Trans),
-    {noreply, State#state{trans=Trans2, timer=endpoint_timer:kick_timer(Timer)}};
-update_state(State=#state{trans=Trans, timer=Timer}, TrId, TrState) ->
-    Trans2 = maps:put(TrId, TrState, Trans),
-    {noreply, State#state{trans=Trans2, timer=endpoint_timer:kick_timer(Timer)}}.
+update_state(State=#state{trans=Trans, timer=Timer}, TrId, {Actions, Exchange}) ->
+    {Exchange2, State2} = execute(Actions, Exchange, State),
+    {noreply, State2#state{trans=update_trans(TrId, Exchange2, Trans), timer=endpoint_timer:kick_timer(Timer)}}.
+
+update_trans(TrId, undefined, Trans) ->
+    maps:remove(TrId, Trans);
+update_trans(TrId, Exchange, Trans) ->
+    maps:put(TrId, Exchange, Trans).
+
+
+execute([], Exchange, State) ->
+    {ecoap_exchange:check_next_state(Exchange), State};
+
+execute([{start_timer, TimeOut}|Rest], Exchange, State) ->
+    Timer = ecoap_exchange:timeout_after(TimeOut, self(), Exchange),
+    execute(Rest, ecoap_exchange:set_timer(Timer, Exchange), State);
+
+execute([cancel_timer|Rest], Exchange, State) ->
+    _ = ecoap_exchange:cancel_timer(Exchange),
+    execute(Rest, ecoap_exchange:set_timer(undefined, Exchange), State);
+
+execute([{handle_request, Message}|Rest], Exchange, State) ->
+    ok = handle_request(Message, State),
+    execute(Rest, Exchange, State);
+
+execute([{handle_response, Message}|Rest], Exchange, State) ->
+    State2 = handle_response(Message, Exchange, State),
+    execute(Rest, Exchange, State2);
+
+execute([{handle_error, Message, Reason}|Rest], Exchange, State) ->
+    State2 = handle_error(Message, Reason, Exchange, State),
+    execute(Rest, Exchange, State2);
+
+execute([{handle_ack, Message}|Rest], Exchange, State) ->
+    ok = handle_ack(Message, Exchange, State),
+    execute(Rest, Exchange, State);
+
+execute([{send, BinMessage}|Rest], Exchange, State=#state{sock=Socket, sock_module=SocketModule, ep_id=EpID}) ->
+    ok = SocketModule:send(Socket, EpID, BinMessage),
+    execute(Rest, Exchange, State).
+
+
+handle_request(Message, #state{ep_id=EpID, handler_sup=HdlSupPid, handler_regs=HandlerRegs, trans_args=TransArgs}) ->
+    %io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
+    HandlerConfig = ecoap_default:handler_config(TransArgs),
+    HandlerID = ecoap_handler:handler_id(Message),
+    case get_handler(HdlSupPid, HandlerConfig, HandlerID, HandlerRegs) of
+        {ok, Pid} ->
+            Pid ! {coap_request, EpID, self(), undefined, Message},
+            ok;
+        {error, _Error} ->
+            {ok, _} = ecoap_endpoint:send(self(),
+                ecoap_request:response({error, 'InternalServerError'}, Message)),
+            ok
+    end.
+
+handle_response(Message, Exchange, State=#state{ep_id=EpID}) ->
+    %io:fwrite("handle_response called from ~p with ~p~n", [self(), Message]),    
+    {Sender, Ref} = Receiver = ecoap_exchange:get_receiver(Exchange),
+    Sender ! {coap_response, EpID, self(), Ref, Message},
+    request_complete(Message, Receiver, State).
+
+handle_error(Message, Error, Exchange, State=#state{ep_id=EpID}) ->
+    %io:fwrite("handle_error called from ~p with ~p~n", [self(), Message]),
+    {Sender, Ref} = Receiver = ecoap_exchange:get_receiver(Exchange),
+    Sender ! {coap_error, EpID, self(), Ref, Error},
+    request_complete(Message, Receiver, State).
+
+handle_ack(_Message, Exchange, #state{ep_id=EpID}) ->
+    %io:fwrite("handle_ack called from ~p with ~p~n", [self(), _Message]),
+    {Sender, Ref} = ecoap_exchange:get_receiver(Exchange),
+    Sender ! {coap_ack, EpID, self(), Ref},
+    ok.
+
+request_complete(Message, Receiver, State=#state{receivers=Receivers}) ->
+    case maps:find(Receiver, Receivers) of
+        {ok, {Token, _, ReqObserve}} ->
+            maybe_complete_request(ReqObserve, coap_message:get_option('Observe', Message), Receiver, Token, State);
+        error ->
+            State
+    end.
+
+get_handler(SupPid, Config, HandlerID, HandlerRegs) ->
+    case maps:find(HandlerID, HandlerRegs) of
+        {ok, Pid} ->
+            {ok, Pid};
+        error ->          
+            ecoap_handler_sup:start_handler(SupPid, [HandlerID, Config])
+    end.
+
+% update_state(State=#state{trans=Trans, timer=Timer}, TrId, undefined) ->
+%     Trans2 = maps:remove(TrId, Trans),
+%     {noreply, State#state{trans=Trans2, timer=endpoint_timer:kick_timer(Timer)}};
+% update_state(State=#state{trans=Trans, timer=Timer}, TrId, TrState) ->
+%     Trans2 = maps:put(TrId, TrState, Trans),
+%     {noreply, State#state{trans=Trans2, timer=endpoint_timer:kick_timer(Timer)}}.
 
 purge_state(State=#state{tokens=Tokens, trans=Trans, rescnt=Count, timer=Timer}) ->
     case {maps:size(Tokens) + maps:size(Trans) + Count, endpoint_timer:is_kicked(Timer)} of
