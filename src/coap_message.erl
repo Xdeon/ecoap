@@ -126,7 +126,7 @@ set_code(Code, Msg) -> Msg#coap_message{code=Code}.
 % shortcut function for reset generation
 -spec get_id(coap_message() | binary()) -> msg_id().
 get_id(#coap_message{id=MsgId}) -> MsgId;
-get_id(<<_:16, MsgId:16, _Tail/bytes>>) -> MsgId.
+get_id(<<_:16, MsgId:16, _Tail/binary>>) -> MsgId.
 
 -spec set_id(msg_id(), coap_message()) -> coap_message().
 set_id(MsgId, Msg) -> Msg#coap_message{id=MsgId}.
@@ -219,7 +219,7 @@ remove_options_helper(OptionList, Options) ->
 % +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 % |Ver| T |  TKL  |      Code     |          Message ID           |
 % +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-% |   Token (if any, TKL bytes) ...                               |
+% |   Token (if any, TKL binary) ...                               |
 % +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 % |   Options (if any) ...                                        |
 % +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -285,8 +285,8 @@ remove_options_helper(OptionList, Options) ->
 decode(<<?VERSION:2, Type:2, 0:4, 0:3, 0:5, MsgId:16>>) ->
     #coap_message{type=coap_iana:decode_type(Type), id=MsgId};
 
-decode(<<?VERSION:2, Type:2, TKL:4, Class:3, DetailedCode:5, MsgId:16, Token:TKL/bytes, Tail/bytes>>) ->
-    {Options, Payload} = decode_option_list(Tail),
+decode(<<?VERSION:2, Type:2, TKL:4, Class:3, DetailedCode:5, MsgId:16, Token:TKL/binary, Tail/binary>>) ->
+    {Options, Payload} = decode_option_list(Tail, 0, []),
     #coap_message{
         type=coap_iana:decode_type(Type),
         code=coap_iana:decode_code({Class, DetailedCode}),
@@ -295,40 +295,37 @@ decode(<<?VERSION:2, Type:2, TKL:4, Class:3, DetailedCode:5, MsgId:16, Token:TKL
         options=maps:from_list(Options),
         payload=Payload}.
 
-decode_option_list(Tail) ->
-    decode_option_list(Tail, 0, []).
-
 % option parsing is based on Patrick's CoAP Message Parsing in Erlang
 % https://gist.github.com/azdle/b2d477ff183b8bbb0aa0
 
 decode_option_list(<<>>, _LastNum, OptionList) ->
     {OptionList, <<>>};
 % RFC7252: The presence of a marker followed by a zero-length payload MUST be processed as a message format error.
-decode_option_list(<<16#FF, Payload/bytes>>, _LastNum, OptionList) when Payload /= <<>> ->
+decode_option_list(<<16#FF:8/integer, Payload/binary>>, _LastNum, OptionList) when byte_size(Payload) > 0 ->
     {OptionList, Payload};
-decode_option_list(<<Delta:4, Len:4, Tail/bytes>>, LastNum, OptionList) ->
+decode_option_list(<<Delta:4, Len:4, Tail/binary>>, LastNum, OptionList) ->
     {Tail1, OptNum} = if
         Delta =< 12 ->
             {Tail, LastNum + Delta};
         Delta == 13 ->
-            <<ExtOptNum, NewTail1/bytes>> = Tail,
+            <<ExtOptNum, NewTail1/binary>> = Tail,
             {NewTail1, LastNum + ExtOptNum + 13};
         Delta == 14 ->
-            <<ExtOptNum:16, NewTail1/bytes>> = Tail,
+            <<ExtOptNum:16, NewTail1/binary>> = Tail,
             {NewTail1, LastNum + ExtOptNum + 269}
     end,
     {Tail2, OptLen} = if
         Len < 13 ->
             {Tail1, Len};
         Len == 13 ->
-            <<ExtOptLen, NewTail2/bytes>> = Tail1,
+            <<ExtOptLen, NewTail2/binary>> = Tail1,
             {NewTail2, ExtOptLen + 13};
         Len == 14 ->
-            <<ExtOptLen:16, NewTail2/bytes>> = Tail1,
+            <<ExtOptLen:16, NewTail2/binary>> = Tail1,
             {NewTail2, ExtOptLen + 269}
     end,
     case Tail2 of
-        <<OptVal:OptLen/bytes, NextOpt/bytes>> ->
+        <<OptVal:OptLen/binary, NextOpt/binary>> ->
             decode_option_list(NextOpt, OptNum, append_option(decode_option({OptNum, OptVal}), OptionList));
         <<>> ->
             decode_option_list(<<>>, OptNum, append_option(decode_option({OptNum, <<>>}), OptionList))
@@ -453,12 +450,12 @@ encode(#coap_message{type=Type, code=Code, id=MsgId, token=Token, options=Option
     TKL = byte_size(Token),
     {Class, DetailedCode} = coap_iana:encode_code(Code),
     Tail = encode_option_list(maps:to_list(Options), Payload),
-    <<?VERSION:2, (coap_iana:encode_type(Type)):2, TKL:4, Class:3, DetailedCode:5, MsgId:16, Token:TKL/bytes, Tail/bytes>>.
+    <<?VERSION:2, (coap_iana:encode_type(Type)):2, TKL:4, Class:3, DetailedCode:5, MsgId:16, Token:TKL/binary, Tail/binary>>.
 
 encode_option_list(Options, <<>>) ->
     encode_option_list1(Options);
 encode_option_list(Options, Payload) ->
-    <<(encode_option_list1(Options))/bytes, 16#FF, Payload/bytes>>.
+    <<(encode_option_list1(Options))/binary, 16#FF, Payload/binary>>.
 
 encode_option_list1(Options) ->
     Options1 = encode_options(Options, []),
@@ -505,7 +502,7 @@ encode_option_list([{OptNum, OptVal} | OptionList], LastNum, Acc) ->
         true ->
             {byte_size(OptVal), <<>>}
     end,
-    Acc2 = <<Acc/bytes, Delta:4, Len:4, ExtNum/bytes, ExtLen/bytes, OptVal/bytes>>,
+    Acc2 = <<Acc/binary, Delta:4, Len:4, ExtNum/binary, ExtLen/binary, OptVal/binary>>,
     encode_option_list(OptionList, OptNum, Acc2);
 
 encode_option_list([], _LastNum, Acc) ->
