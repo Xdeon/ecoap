@@ -24,7 +24,7 @@
 -define(EXCHANGE_LIFETIME(Config), map_get(exchange_lifetime, Config)).
 -define(NON_LIFETIME(Config), map_get(non_lifetime, Config)).
 
--type exchange() :: undefined | #exchange{}.
+-type exchange() :: #exchange{}.
 
 -export_type([exchange/0]).
 

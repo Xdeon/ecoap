@@ -55,7 +55,7 @@ encode_link_uri(absolute, UriList) -> ["</", join_uri(UriList), ">"];
 encode_link_uri(rootless, UriList) -> ["<", join_uri(UriList), ">"].
 
 join_uri(Uri) ->
-    lists:join("/", lists:map(fun(Seg) -> http_uri:encode(binary_to_list(Seg)) end, Uri)).
+    lists:join("/", lists:map(fun(Seg) -> http_uri:encode(Seg) end, Uri)).
 
 % sz, if, rt MUST NOT appear more than one in one link
 encode_link_param({_Any, undefined}) -> undefined;
