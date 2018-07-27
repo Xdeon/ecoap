@@ -20,7 +20,7 @@ init([{Module, Fun, Args}, Name, SocketOpts, Config]) ->
 		       restart => permanent, 
 		       shutdown => 10000, 
 		       type => worker, 
-			   modules => [ecoap_udp_socket]}],
+			   modules => [Module]}],
 	{ok, {#{strategy => one_for_all, intensity => 3, period => 10}, Procs}}.
 
 endpoint_sup_sup(SupPid) ->
