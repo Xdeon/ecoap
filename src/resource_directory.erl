@@ -35,16 +35,25 @@ coap_get(_EpID, _Prefix, _Else, _Query, _Request) ->
 
 filter(Links, Querys) ->
     lists:foldl(fun(Query, Acc) ->
-        case uri_string:dissect_query(Query) of
-            {error, _, _} -> Acc;
-            [{Name0, Value0}] ->             
-                Name = list_to_atom(binary_to_list(Name0)),
-                Value = wildcard_value(Value0),
-                lists:filter(
-                    fun (Link) -> match_link(Link, Name, Value) end,
-                    Acc)
-        end 
+        case parse_query(Query) of
+            {error, bad_query} -> Acc;
+            {error, not_existing_query} -> [];
+            {Name, Value} -> lists:filter(fun(Link) -> match_link(Link, Name, Value) end, Acc)
+        end
     end, Links, Querys).
+
+parse_query(Query) ->
+    case uri_string:dissect_query(Query) of
+        [{Name0, Value0}] ->
+            try list_to_existing_atom(binary_to_list(Name0)) of
+                Name -> 
+                    Value = wildcard_value(Value0),
+                    {Name, Value}
+            catch error:badarg ->
+                {error, not_existing_query}
+            end;
+        _ -> {error, bad_query}
+    end.
 
 wildcard_value(<<>>) ->
     {global, <<>>};
@@ -86,16 +95,20 @@ attribute_query_test_() ->
            {absolute, [<<"sensors">>, <<"temp">>], [{rt, <<"temperature-c">>}, {'if', <<"sensor">>}, {foo, <<>>}, {bar, [<<"one">>, <<"two">>]}]},
            {absolute, [<<"sensors">>, <<"light">>], [{rt, [<<"light-lux">>, <<"core.sen-light">>]}, {'if', <<"sensor">>}, {foo, <<>>}]}],
     Sensors = <<"</sensors/temp>;rt=\"temperature-c\";if=\"sensor\";foo;bar=\"one two\"">>,
-    [?_assertEqual(Sensors, core_link:encode(filter(Link, parse_query("bar=one&if=sensor")))),
-    ?_assertEqual(Sensors, core_link:encode(filter(Link, parse_query("bar=one&foo")))),
-    ?_assertEqual(Sensors, core_link:encode(filter(Link, parse_query("if=sensor&bar=one")))),
-    ?_assertEqual(Sensors, core_link:encode(filter(Link, parse_query("foo&bar=one")))),
-    ?_assertEqual(Sensors, core_link:encode(filter(Link, parse_query("bar=one&bar=two")))),
-    ?_assertEqual(Sensors, core_link:encode(filter(Link, parse_query("bar=one*")))),
-    ?_assertEqual(<<>>, core_link:encode(filter(Link, parse_query("bar=one&bar=three"))))
+    [?_assertEqual(Sensors, core_link:encode(filter(Link, make_query("bar=one&if=sensor")))),
+    ?_assertEqual(Sensors, core_link:encode(filter(Link, make_query("bar=one&foo")))),
+    ?_assertEqual(Sensors, core_link:encode(filter(Link, make_query("if=sensor&bar=one")))),
+    ?_assertEqual(Sensors, core_link:encode(filter(Link, make_query("foo&bar=one")))),
+    ?_assertEqual(Sensors, core_link:encode(filter(Link, make_query("bar=one&bar=two")))),
+    ?_assertEqual(Sensors, core_link:encode(filter(Link, make_query("bar=one*")))),
+    ?_assertEqual(<<>>, core_link:encode(filter(Link, make_query("bar=one&bar=three")))),
+    % test for not qualified query
+    ?_assertEqual(core_link:encode(Link), core_link:encode(filter(Link, make_query("bar&")))),
+    % test unknown atoms for safety
+    ?_assertEqual(<<>>, core_link:encode(filter(Link, make_query("what=one&thefuck=three"))))
     ]. 
 
-parse_query(Query) ->
+make_query(Query) ->
     binary:split(list_to_binary(Query), <<$&>>).
 
 -endif.

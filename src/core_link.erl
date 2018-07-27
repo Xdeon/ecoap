@@ -59,26 +59,26 @@ join_uri(Uri) ->
 
 % sz, if, rt MUST NOT appear more than one in one link
 encode_link_param({_Any, undefined}) -> undefined;
-encode_link_param({ct, Value}) -> [";ct=", content_type_to_int(Value)];
-encode_link_param({sz, Value}) -> [";sz=", param_value_to_list(Value)];
-encode_link_param({rt, Value}) -> [";rt=\"", param_value_to_list(Value), "\""];
+encode_link_param({ct, Value}) -> [";ct=", process_content_type(Value)];
+encode_link_param({sz, Value}) -> [";sz=", process_param_value(Value)];
+encode_link_param({rt, Value}) -> [";rt=\"", process_param_value(Value), "\""];
 % for param that has no value
 encode_link_param({Other, <<>>}) -> [";", atom_to_list(Other)];
-encode_link_param({Other, Value}) -> [";", atom_to_list(Other), "=\"", param_value_to_list(Value), "\""].
+encode_link_param({Other, Value}) -> [";", atom_to_list(Other), "=\"", process_param_value(Value), "\""].
 
-param_value_to_list(Value) when is_integer(Value) ->
-    integer_to_list(Value);
-param_value_to_list(Value) when is_binary(Value) ->
-    binary_to_list(Value);
-param_value_to_list(Values) when is_list(Values) ->
-    lists:join(" ", [param_value_to_list(Val) || Val <- Values]). 
+process_param_value(Value) when is_integer(Value) ->
+    integer_to_binary(Value);
+process_param_value(Value) when is_binary(Value) ->
+    Value;
+process_param_value(Values) when is_list(Values) ->
+    lists:join(" ", [process_param_value(Val) || Val <- Values]). 
 
-content_type_to_int(Value) when is_binary(Value) ->
-    integer_to_list(coap_iana:encode_content_format(Value));
-content_type_to_int(Value) when is_integer(Value) ->
-    integer_to_list(Value);
-content_type_to_int(Values) when is_list(Values) ->
-    ["\"", lists:join(" ", [content_type_to_int(Val) || Val <- Values]), "\""].
+process_content_type(Value) when is_binary(Value) ->
+    integer_to_binary(coap_iana:encode_content_format(Value));
+process_content_type(Value) when is_integer(Value) ->
+    integer_to_binary(Value);
+process_content_type(Values) when is_list(Values) ->
+    ["\"", lists:join(" ", [process_content_type(Val) || Val <- Values]), "\""].
 
 -ifdef(TEST).
 
