@@ -104,9 +104,9 @@ return_match(Prefix, Suffix, Match) when is_list(Match) ->
 %         [], Reg).
 
 get_links(Reg) ->
-    lists:flatten(lists:foldl(
-        fun({Prefix, Match}, Acc) -> [get_links(Prefix, Match)|Acc] end,
-        [], Reg)).
+    lists:foldl(
+        fun({Prefix, Match}, Acc) -> get_links(Prefix, Match) ++ Acc end,
+        [], Reg).
 
 
 get_links(Prefix, Match) when is_list(Match) ->
