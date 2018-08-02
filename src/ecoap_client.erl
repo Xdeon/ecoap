@@ -32,7 +32,7 @@
 -export([code_change/3]).
 
 -record(state, {
-	socket = undefined :: {client_socket, pid()} | {server_socket, pid() | atom()},
+	socket = undefined :: closed | {client_socket, pid()} | {server_socket, pid() | atom()},
 	socket_ref = undefined :: reference(),
 	requests = #{} :: #{reference() => {pid(), request()}},
 	ongoing_blocks = #{} :: #{block_key() => reference()},
@@ -433,7 +433,7 @@ handle_info({coap_ack, _EpID, EndpointPid, Ref}, State=#state{requests=Requests}
 	end;
 
 handle_info({'DOWN', Ref, process, _Pid, Reason}, State=#state{socket_ref=Ref}) ->
-	{stop, Reason, State};
+	{stop, Reason, State#state{socket=closed}};
 
 handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{requests=Requests}) ->
 	case maps:find(Ref, Requests) of
@@ -447,8 +447,7 @@ handle_info(_Info, State) ->
 	{noreply, State}.
 
 terminate(_Reason, #state{socket={client_socket, Socket}}) ->
-	catch ecoap_udp_socket:close(Socket),
-	ok;
+	ecoap_udp_socket:close(Socket);
 terminate(_Reason, _State) ->
 	ok.
 
