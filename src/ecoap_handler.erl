@@ -15,7 +15,10 @@
 -include("coap_content.hrl").
 
 -record(state, {
-    config = undefined :: ecoap_default:config(),
+    endpoint_pid = undefined :: pid(),
+    cache_timeout = undefined :: non_neg_integer(),
+    max_body_size = undefined :: non_neg_integer(),
+    max_block_size = undefined :: non_neg_integer(),
     id = undefined :: handler_id(),
     module = undefined :: module(), 
     insegs = undefined :: {orddict:orddict(), undefined | binary() | non_neg_integer()}, 
@@ -78,7 +81,8 @@
 -optional_callbacks([coap_post/4]). 
 
 % PUT handler
--callback coap_put(EpID, Prefix, Suffix, Request) -> ok | {error, Error} | {error, Error, Reason} when
+-callback coap_put(EpID, Prefix, Suffix, Request) -> 
+    ok | {error, Error} | {error, Error, Reason} when
     EpID :: ecoap_endpoint:ecoap_endpoint_id(),
     Prefix :: uri(),
     Suffix :: uri(),
@@ -88,7 +92,8 @@
 -optional_callbacks([coap_put/4]).  
 
 % DELETE handler
--callback coap_delete(EpID, Prefix, Suffix, Request) -> ok | {error, Error} | {error, Error, Reason} when
+-callback coap_delete(EpID, Prefix, Suffix, Request) -> 
+    ok | {error, Error} | {error, Error, Reason} when
     EpID :: ecoap_endpoint:ecoap_endpoint_id(),
     Prefix :: uri(),
     Suffix :: uri(),
@@ -98,7 +103,8 @@
 -optional_callbacks([coap_delete/4]).   
 
 % observe request handler
--callback coap_observe(EpID, Prefix, Suffix, Request) -> {ok, ObState} | {error, Error} | {error, Error, Reason} when
+-callback coap_observe(EpID, Prefix, Suffix, Request) -> 
+    {ok, ObState} | {error, Error} | {error, Error, Reason} when
     EpID :: ecoap_endpoint:ecoap_endpoint_id(),
     Prefix :: uri(),
     Suffix :: uri(),
@@ -109,7 +115,8 @@
 -optional_callbacks([coap_observe/4]).  
 
 % cancellation request handler
--callback coap_unobserve(ObState) -> ok when
+-callback coap_unobserve(ObState) -> 
+    ok when
     ObState :: observe_state().
 -optional_callbacks([coap_unobserve/1]).    
 
@@ -135,7 +142,8 @@
 -optional_callbacks([handle_info/3]).   
 
 % response to notifications
--callback coap_ack(Ref, ObState) -> {ok, NewObState} when
+-callback coap_ack(Ref, ObState) -> 
+    {ok, NewObState} when
     Ref :: observe_ref(),
     ObState :: observe_state(),
     NewObState :: observe_state().
@@ -143,7 +151,7 @@
 
 %% API.
 
--spec start_link(handler_id(), ecoap_default:config()) -> {ok, pid()} | {error, term()}.
+-spec start_link(handler_id(), ecoap:config()) -> {ok, pid()} | {error, term()}.
 start_link(ID, Config) ->
     gen_server:start_link(?MODULE, [ID, Config], []).
 
@@ -179,9 +187,19 @@ handler_id(Message=#coap_message{code=Method}) ->
 
 %% gen_server.
 
-init([ID={_, Uri, Query}, Config=#{endpoint_pid:=EndpointPid}]) ->
-    ecoap_endpoint:monitor_handler(EndpointPid, self()),
-    {ok, #state{config=Config, id=ID, uri=Uri, query=Query, insegs={orddict:new(), undefined}, obseq=0}}.
+init([ID={_, Uri, Query}, Config]) ->
+    #{endpoint_pid:=EndpointPid, exchange_lifetime:=Timeout, max_body_size:=MaxBodySize, max_block_size:=MaxBlockSize} = Config,
+    ok = ecoap_endpoint:monitor_handler(EndpointPid, self()),
+    State = #state{insegs={orddict:new(), undefined},
+                    endpoint_pid=EndpointPid, 
+                    cache_timeout=Timeout, 
+                    max_body_size=MaxBodySize, 
+                    max_block_size=MaxBlockSize,
+                    query=Query,
+                    uri=Uri,
+                    id=ID,
+                    obseq=0},
+    {ok, State}.
 
 
 handle_call(_Request, _From, State) ->
@@ -290,7 +308,7 @@ code_change(_OldVsn, State, _Extra) ->
 %% (Handle Observe/Unobserve)
 %% Return response
 
-handle(EpID, Request, State=#state{id=ID, config=#{exchange_lifetime:=TimeOut, endpoint_pid:=EndpointPid}}) ->
+handle(EpID, Request, State=#state{id=ID, cache_timeout=TimeOut, endpoint_pid=EndpointPid}) ->
     Block1 = coap_message:get_option('Block1', Request),
     case catch assemble_payload(Request, Block1, State) of
         {error, Code} ->
@@ -333,9 +351,9 @@ assemble_payload(Request, Block1={Num, _, _}, State=#state{insegs={Segs, Current
     end.
 
 
-process_blocks(#coap_message{payload=Segment}, {Num, true, Size}, State=#state{insegs={Segs, Format}, config=#{max_body_size:=MaxSize}}) ->
+process_blocks(#coap_message{payload=Segment}, {Num, true, Size}, State=#state{insegs={Segs, Format}, max_body_size=MaxBodySize}) ->
     case byte_size(Segment) of
-        Size when Num*Size < MaxSize -> {'Continue', State#state{insegs={orddict:store(Num, Segment, Segs), Format}}};
+        Size when Num*Size < MaxBodySize -> {'Continue', State#state{insegs={orddict:store(Num, Segment, Segs), Format}}};
         Size -> {error, 'RequestEntityTooLarge'};
         _ -> {error, 'BadRequest'}
     end;
@@ -435,7 +453,7 @@ handle_method(_EpID, Request, _Content, State) ->
 
 
 handle_observe(EpID, Request, Content, 
-        State=#state{config=#{endpoint_pid:=EndpointPid}, id=ID, prefix=Prefix, suffix=Suffix, uri=Uri, module=Module, observer=undefined}) ->
+        State=#state{endpoint_pid=EndpointPid, id=ID, prefix=Prefix, suffix=Suffix, uri=Uri, module=Module, observer=undefined}) ->
     % the first observe request from this user to this resource
     try case coap_observe(Module, EpID, Prefix, Suffix, Request) of
         {ok, ObState} ->
@@ -561,7 +579,7 @@ return_resource(Request, Content, State) ->
     return_resource([], Request, {ok, 'Content'}, Content, State).
 
 
-return_resource(Ref, Request, {ok, Code}, Content=#coap_content{payload=Payload, options=Options}, State=#state{config=#{max_block_size:=MaxBlockSize}}) ->
+return_resource(Ref, Request, {ok, Code}, Content=#coap_content{payload=Payload, options=Options}, State=#state{max_block_size=MaxBlockSize}) ->
     ETag = get_etag(Options),
     Response = case lists:member(ETag, coap_message:get_option('ETag', Request, [])) of
             true ->
@@ -595,7 +613,7 @@ return_response(Ref, Request, Code, Reason, State) ->
     send_response(Ref, ecoap_request:response(Code, Reason, Request), State#state{last_response=Code}).
 
 
-send_response(Ref, Response, State=#state{config=#{endpoint_pid:=EndpointPid, exchange_lifetime:=TimeOut}, observer=Observer, id=ID}) ->
+send_response(Ref, Response, State=#state{endpoint_pid=EndpointPid, cache_timeout=TimeOut, observer=Observer, id=ID}) ->
     % io:fwrite("<- ~p~n", [Response]),
     {ok, _} = ecoap_endpoint:send_response(EndpointPid, Ref, Response),
     case coap_message:get_option('Block2', Response) of
@@ -706,7 +724,7 @@ send_server_error(Request, State) ->
     send_server_error([], Request, State).
 
 
-send_server_error(Ref, Request, State=#state{config=#{endpoint_pid:=EndpointPid}}) ->
+send_server_error(Ref, Request, State=#state{endpoint_pid=EndpointPid}) ->
     _ = cancel_observer(State),
     {ok, _} = ecoap_endpoint:send_response(EndpointPid, Ref, ecoap_request:response({error, 'InternalServerError'}, <<>>, Request)),
     ok.

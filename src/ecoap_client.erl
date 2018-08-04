@@ -79,9 +79,9 @@ open() ->
 open(SocketOpts) ->
 	start_link(SocketOpts, #{}).
 
--spec open([gen_udp:option()] | {socket, socket_id()}, ecoap:env()) -> {ok, pid()} | {error, term()}.
-open(SocketOpts, Env) ->
-	start_link(SocketOpts, Env).
+-spec open([gen_udp:option()] | {socket, socket_id()}, ecoap:config()) -> {ok, pid()} | {error, term()}.
+open(SocketOpts, Config) ->
+	start_link(SocketOpts, Config).
 
 -spec close(pid()) -> ok.
 close(Pid) ->
@@ -279,9 +279,9 @@ flush_pid(Pid) ->
 		ok
 	end.
 
--spec start_link([gen_udp:option()] | {socket, pid() | atom()}, ecoap:env()) -> {ok, pid()} | {error, term()}.
-start_link(SocketOpts, Env) ->
-	gen_server:start_link(?MODULE, [SocketOpts, Env], []).
+-spec start_link([gen_udp:option()] | {socket, pid() | atom()}, ecoap:config()) -> {ok, pid()} | {error, term()}.
+start_link(SocketOpts, Config) ->
+	gen_server:start_link(?MODULE, [SocketOpts, Config], []).
 
 
 -ifdef(TEST).
@@ -300,11 +300,11 @@ get_blockregs(Pid) -> gen_server:call(Pid, get_blockregs).
 
 %% gen_server.
 
-init([{socket, Socket}, _Env]) ->
+init([{socket, Socket}, _Config]) ->
 	SocketRef = erlang:monitor(process, Socket),
 	{ok, #state{socket={server_socket, Socket}, socket_ref=SocketRef}};
-init([SocketOpts, Env]) ->
-	{ok, Socket} = ecoap_udp_socket:start_link(SocketOpts, Env),
+init([SocketOpts, Config]) ->
+	{ok, Socket} = ecoap_udp_socket:start_link(SocketOpts, Config),
 	SocketRef = erlang:monitor(process, Socket),
 	{ok, #state{socket={client_socket, Socket}, socket_ref=SocketRef}}.
 

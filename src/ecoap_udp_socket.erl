@@ -35,7 +35,7 @@
 	sock = undefined :: inet:socket(),
 	endpoint_pool = undefined :: undefined | pid(),
 	endpoint_count = 0 :: non_neg_integer(),
-	config = undefined :: ecoap_default:config()
+	config = undefined :: ecoap:config()
 }).
 
 -opaque state() :: #state{}.
@@ -53,7 +53,7 @@ start_link() ->
 start_link(SocketOpts) ->
 	start_link(SocketOpts, #{}).
 
--spec start_link([gen_udp:option()], ecoap_default:config()) -> {ok, pid()} | {error, term()}.
+-spec start_link([gen_udp:option()], ecoap:config()) -> {ok, pid()} | {error, term()}.
 start_link(SocketOpts, Config) ->
 	gen_server:start_link(?MODULE, [SocketOpts, Config], []).
 
@@ -63,7 +63,7 @@ close(Pid) ->
 	gen_server:stop(Pid).
 
 %% server
--spec start_link(pid(), atom(), [gen_udp:option()], ecoap_default:config()) -> {ok, pid()} | {error, term()}.
+-spec start_link(pid(), atom(), [gen_udp:option()], ecoap:config()) -> {ok, pid()} | {error, term()}.
 start_link(SupPid, Name, SocketOpts, Config) when is_pid(SupPid) ->
 	gen_server:start_link({local, Name}, ?MODULE, [SupPid, SocketOpts, Config], []).
 

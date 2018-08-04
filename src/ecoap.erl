@@ -16,14 +16,14 @@
 % 	_ => _
 % }.
 
--type env() :: map().
+-type config() :: map().
 
--export_type([env/0]).
+-export_type([config/0]).
 
--spec start_udp(atom(), [tuple()], env()) -> {ok, pid()} | {error, {already_started, pid()}} | {error, term()}.
-start_udp(Name, SocketOpts, Env) ->
-	Routes = maps:get(routes, Env, []),
-	Config = maps:remove(routes, Env),
+-spec start_udp(atom(), [tuple()], config()) -> {ok, pid()} | {error, {already_started, pid()}} | {error, term()}.
+start_udp(Name, SocketOpts, Config0) ->
+	Routes = maps:get(routes, Config0, []),
+	Config = maps:remove(routes, Config0),
 	ok = ecoap_registry:register_handler(Routes),
 	ecoap_sup:start_server({ecoap_udp_socket, start_link, []}, Name, [{port, ?DEFAULT_COAP_PORT}|SocketOpts], Config).
 

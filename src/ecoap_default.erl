@@ -1,9 +1,6 @@
 -module(ecoap_default).
 -export([config/0, merge_config/1, handler_config/1, default_max_block_size/0]).
 
--type config() :: map().
--export_type([config/0]).
-
 config() ->
 	#{
 		token_length => 4,  		% shall be at least 32 random bits

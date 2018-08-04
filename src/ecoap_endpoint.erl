@@ -39,13 +39,7 @@
 -type ecoap_endpoint_id() :: {inet:ip_address(), inet:port_number()}.
 -type trid() :: {in | out, coap_message:msg_id()}.
 -type receiver() :: {pid(), reference()}.
--type trans_args() :: #{
-                        % sock_module := module(), 
-                        % ep_id := ecoap_endpoint_id(), 
-                        % sock := inet:socket(),
-                        endpoint_pid := pid(),
-                        % handler_sup => pid(),
-                        % handler_regs => #{ecoap_handler:handler_id() => pid()},
+-type trans_args() :: #{endpoint_pid := pid(),
                         _ => _}.
 
 -opaque state() :: #state{}.
@@ -58,11 +52,11 @@
 
 %% API.
 
--spec start_link(module(), inet:socket(), ecoap_endpoint_id(), ecoap_default:config()) -> {ok, pid()} | {error, term()}.
+-spec start_link(module(), inet:socket(), ecoap_endpoint_id(), ecoap:config()) -> {ok, pid()} | {error, term()}.
 start_link(SocketModule, Socket, EpID, Config) ->
     start_link(undefined, SocketModule, Socket, EpID, Config).
     
--spec start_link(pid() | undefined, module(), inet:socket(), ecoap_endpoint_id(), ecoap_default:config()) -> {ok, pid()} | {error, term()}.
+-spec start_link(pid() | undefined, module(), inet:socket(), ecoap_endpoint_id(), ecoap:config()) -> {ok, pid()} | {error, term()}.
 start_link(SupPid, SocketModule, Socket, EpID, Config) ->
     gen_server:start_link(?MODULE, [SupPid, SocketModule, Socket, EpID, Config], []).
 
@@ -122,7 +116,7 @@ register_handler(EndpointPid, ID, Pid) ->
 init([SupPid, SocketModule, Socket, EpID, Config]) ->
     % we would like to terminate as well when upper layer socket process terminates
     process_flag(trap_exit, true),
-    TransArgs=maps:merge(Config, #{endpoint_pid=>self()}),
+    TransArgs = Config#{endpoint_pid=>self()},
     Timer = endpoint_timer:start_timer(?SCAN_INTERVAL, start_scan),
     {ok, #state{sock_module=SocketModule, sock=Socket, ep_id=EpID, nextmid=ecoap_message_id:first_mid(), timer=Timer, trans_args=TransArgs}, {continue, {init, SupPid}}}.
 

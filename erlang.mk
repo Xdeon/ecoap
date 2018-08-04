@@ -4449,7 +4449,7 @@ define dep_autopatch_rebar.erl
 		{ok, Conf0} -> Conf0;
 		_ -> []
 	end,
-	{Conf, OsEnv} = fun() ->
+	{Conf, OsConfig} = fun() ->
 		case filelib:is_file("$(call core_native_path,$(DEPS_DIR)/$1/rebar.config.script)") of
 			false -> {Conf1, []};
 			true ->
@@ -4612,9 +4612,9 @@ define dep_autopatch_rebar.erl
 							true -> {ShellToMk(Output), Input, []};
 							false -> []
 						end;
-					{Regex, Output, Input, [{env, Env}]} ->
+					{Regex, Output, Input, [{env, Config}]} ->
 						case rebar_utils:is_arch(Regex) of
-							true -> {ShellToMk(Output), Input, Env};
+							true -> {ShellToMk(Output), Input, Config};
 							false -> []
 						end
 				end || S <- Specs])
@@ -4631,8 +4631,8 @@ define dep_autopatch_rebar.erl
 				[code:root_dir(), erlang:system_info(version), code:lib_dir(erl_interface, include)])),
 			PortSpecWrite(io_lib:format("ERL_LDFLAGS ?= -L \\"~s\\" -lerl_interface -lei\n",
 				[code:lib_dir(erl_interface, lib)])),
-			[PortSpecWrite(["\n", E, "\n"]) || E <- OsEnv],
-			FilterEnv = fun(Env) ->
+			[PortSpecWrite(["\n", E, "\n"]) || E <- OsConfig],
+			FilterConfig = fun(Config) ->
 				lists:flatten([case E of
 					{_, _} -> E;
 					{Regex, K, V} ->
@@ -4640,25 +4640,25 @@ define dep_autopatch_rebar.erl
 							true -> {K, V};
 							false -> []
 						end
-				end || E <- Env])
+				end || E <- Config])
 			end,
-			MergeEnv = fun(Env) ->
+			MergeConfig = fun(Config) ->
 				lists:foldl(fun ({K, V}, Acc) ->
 					case lists:keyfind(K, 1, Acc) of
 						false -> [{K, rebar_utils:expand_env_variable(V, K, "")}|Acc];
 						{_, V0} -> [{K, rebar_utils:expand_env_variable(V, K, V0)}|Acc]
 					end
-				end, [], Env)
+				end, [], Config)
 			end,
-			PortEnv = case lists:keyfind(port_env, 1, Conf) of
+			PortConfig = case lists:keyfind(port_env, 1, Conf) of
 				false -> [];
-				{_, PortEnv0} -> FilterEnv(PortEnv0)
+				{_, PortConfig0} -> FilterConfig(PortConfig0)
 			end,
-			PortSpec = fun ({Output, Input0, Env}) ->
+			PortSpec = fun ({Output, Input0, Config}) ->
 				filelib:ensure_dir("$(call core_native_path,$(DEPS_DIR)/$1/)" ++ Output),
 				Input = [[" ", I] || I <- Input0],
 				PortSpecWrite([
-					[["\n", K, " = ", ShellToMk(V)] || {K, V} <- lists:reverse(MergeEnv(PortEnv))],
+					[["\n", K, " = ", ShellToMk(V)] || {K, V} <- lists:reverse(MergeConfig(PortConfig))],
 					case $(PLATFORM) of
 						darwin -> "\n\nLDFLAGS += -flat_namespace -undefined suppress";
 						_ -> ""
@@ -4668,7 +4668,7 @@ define dep_autopatch_rebar.erl
 					"%.o: %.C\n\t$$\(CXX) -c -o $$\@ $$\< $$\(CXXFLAGS) $$\(ERL_CFLAGS) $$\(DRV_CFLAGS) $$\(EXE_CFLAGS)\n\n",
 					"%.o: %.cc\n\t$$\(CXX) -c -o $$\@ $$\< $$\(CXXFLAGS) $$\(ERL_CFLAGS) $$\(DRV_CFLAGS) $$\(EXE_CFLAGS)\n\n",
 					"%.o: %.cpp\n\t$$\(CXX) -c -o $$\@ $$\< $$\(CXXFLAGS) $$\(ERL_CFLAGS) $$\(DRV_CFLAGS) $$\(EXE_CFLAGS)\n\n",
-					[[Output, ": ", K, " += ", ShellToMk(V), "\n"] || {K, V} <- lists:reverse(MergeEnv(FilterEnv(Env)))],
+					[[Output, ": ", K, " += ", ShellToMk(V), "\n"] || {K, V} <- lists:reverse(MergeConfig(FilterConfig(Config)))],
 					Output, ": $$\(foreach ext,.c .C .cc .cpp,",
 						"$$\(patsubst %$$\(ext),%.o,$$\(filter %$$\(ext),$$\(wildcard", Input, "))))\n",
 					"\t$$\(CC) -o $$\@ $$\? $$\(LDFLAGS) $$\(ERL_LDFLAGS) $$\(DRV_LDFLAGS) $$\(EXE_LDFLAGS)",
@@ -6124,7 +6124,7 @@ define bs_c_nif
 
 static int loads = 0;
 
-static int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
+static int load(ErlNifConfig* env, void** priv_data, ERL_NIF_TERM load_info)
 {
 	/* Initialize private data. */
 	*priv_data = NULL;
@@ -6134,7 +6134,7 @@ static int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
 	return 0;
 }
 
-static int upgrade(ErlNifEnv* env, void** priv_data, void** old_priv_data, ERL_NIF_TERM load_info)
+static int upgrade(ErlNifConfig* env, void** priv_data, void** old_priv_data, ERL_NIF_TERM load_info)
 {
 	/* Convert the private data to the new version. */
 	*priv_data = *old_priv_data;
@@ -6144,7 +6144,7 @@ static int upgrade(ErlNifEnv* env, void** priv_data, void** old_priv_data, ERL_N
 	return 0;
 }
 
-static void unload(ErlNifEnv* env, void* priv_data)
+static void unload(ErlNifConfig* env, void* priv_data)
 {
 	if (loads == 1) {
 		/* Destroy the private data. */
@@ -6153,7 +6153,7 @@ static void unload(ErlNifEnv* env, void* priv_data)
 	loads--;
 }
 
-static ERL_NIF_TERM hello(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+static ERL_NIF_TERM hello(ErlNifConfig* env, int argc, const ERL_NIF_TERM argv[])
 {
 	if (enif_is_atom(env, argv[0])) {
 		return enif_make_tuple2(env,
