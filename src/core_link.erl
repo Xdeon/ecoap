@@ -55,7 +55,7 @@ encode_link_uri(absolute, UriList) -> ["</", join_uri(UriList), ">"];
 encode_link_uri(rootless, UriList) -> ["<", join_uri(UriList), ">"].
 
 join_uri(Uri) ->
-    lists:join("/", lists:map(fun(Seg) -> http_uri:encode(Seg) end, Uri)).
+    mapjoin(fun http_uri:encode/1, "/", Uri).
 
 % sz, if, rt MUST NOT appear more than one in one link
 encode_link_param({_Any, undefined}) -> undefined;
@@ -71,14 +71,20 @@ process_param_value(Value) when is_integer(Value) ->
 process_param_value(Value) when is_binary(Value) ->
     Value;
 process_param_value(Values) when is_list(Values) ->
-    lists:join(" ", [process_param_value(Val) || Val <- Values]). 
+    mapjoin(fun process_param_value/1, " ", Values).
 
 process_content_type(Value) when is_binary(Value) ->
     integer_to_binary(coap_iana:encode_content_format(Value));
 process_content_type(Value) when is_integer(Value) ->
     integer_to_binary(Value);
 process_content_type(Values) when is_list(Values) ->
-    ["\"", lists:join(" ", [process_content_type(Val) || Val <- Values]), "\""].
+    ["\"", mapjoin(fun process_content_type/1, " ", Values), "\""].
+
+mapjoin(_, _, []) -> [];
+mapjoin(Fun, Sep, [H | T]) -> [Fun(H) | join_prepend(Fun, Sep, T)].
+
+join_prepend(_, _, []) -> [];
+join_prepend(Fun, Sep, [H | T]) -> [Sep, Fun(H) | join_prepend(Fun, Sep, T)].
 
 -ifdef(TEST).
 
