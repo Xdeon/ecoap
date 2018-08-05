@@ -151,11 +151,17 @@ code_change(_OldVsn, State, _Extra) ->
 % in case the system is not run as release, we should manually load all module files
 load_handlers(Reg) ->
     lists:foreach(fun({_, {_, Module}}) -> 
-        case code:ensure_loaded(Module) of
+        case ensure_loaded(Module) of
             {module, Module} -> ok;
             {error, embedded} -> ok;
             {error, Error} -> error_logger:error_msg("handler module load fail: ~p~n", [{Module, {error, Error}}])
         end end, Reg).
+
+ensure_loaded(Module) ->
+    case erlang:module_loaded(Module) of
+        true -> {module, Module};
+        false -> code:ensure_loaded(Module)
+    end.
 
 process_regs(Regs) ->
     NormalizedRegs = lists:map(fun process_reg/1, Regs),
