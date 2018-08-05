@@ -166,6 +166,8 @@ notify(Uri, Info) ->
     case pg2:get_members({coap_observer, Uri}) of
         {error, _} -> ok;
         List -> lists:foreach(fun(Pid) -> Pid ! {coap_notify, Info} end, List)
+        % Maybe the following is better
+        % List -> lists:foreach(fun(Pid) -> erlang:send(Pid, {coap_notify, Info}, [noconnect]) end, List)
     end.
 
 
