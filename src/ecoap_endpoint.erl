@@ -4,7 +4,7 @@
 %% API.
 -export([start_link/5, start_link/4]).
 -export([ping/1, send/2, send_message/3, send_request/3, send_response/3, cancel_request/2]).
--export([monitor_handler/2, register_handler/3]).
+-export([register_handler/3]).
 % -export([request_complete/3]).
 
 %% gen_server.
@@ -27,13 +27,13 @@
     receivers = #{} :: #{receiver() => {coap_message:token(), trid(), non_neg_integer()}},
 	nextmid = undefined :: coap_message:msg_id(),
 	rescnt = 0 :: non_neg_integer(),
-    handler_refs = #{} ::  #{pid() => tuple() | undefined},
     timer = undefined :: endpoint_timer:timer_state(),
     sock = undefined :: inet:socket(),
     sock_module = undefined :: module(),
     ep_id = undefined :: ecoap_endpoint_id(),
     handler_sup = undefined :: undefined | pid(),
-    handler_regs = #{} :: #{ecoap_handler:handler_id() => pid()}
+    handler_regs = #{} :: #{ecoap_handler:handler_id() => pid()},
+    handler_refs = #{} :: #{pid() => ecoap_handler:handler_id() | undefined}
 }).
 
 -type ecoap_endpoint_id() :: {inet:ip_address(), inet:port_number()}.
@@ -102,8 +102,8 @@ send_response(EndpointPid, Ref, Message) ->
 cancel_request(EndpointPid, Ref) ->
     gen_server:cast(EndpointPid, {cancel_request, {self(), Ref}}).
 
-monitor_handler(EndpointPid, Pid) ->
-    EndpointPid ! {handler_started, Pid}, ok.
+% monitor_handler(EndpointPid, Pid) ->
+%     EndpointPid ! {handler_started, Pid}, ok.
 
 register_handler(EndpointPid, ID, Pid) ->
     EndpointPid ! {register_handler, ID, Pid}, ok.
@@ -244,9 +244,9 @@ handle_info({timeout, TrId, Event}, State=#state{trans=Trans, trans_args=TransAr
 %             {noreply, State}
 %     end;
  
-handle_info({handler_started, Pid}, State=#state{rescnt=Count, handler_refs=Refs}) ->
-    erlang:monitor(process, Pid),
-    {noreply, State#state{rescnt=Count+1, handler_refs=maps:put(Pid, undefined, Refs)}};
+% handle_info({handler_started, Pid}, State=#state{rescnt=Count, handler_refs=Refs}) ->
+%     erlang:monitor(process, Pid),
+%     {noreply, State#state{rescnt=Count+1, handler_refs=maps:put(Pid, undefined, Refs)}};
 
 % Only record pid of possible observe/blockwise handlers instead of every new spawned handler
 % so that we have better parallelism
@@ -382,22 +382,6 @@ make_new_response(Message, Receiver, State=#state{trans=Trans, trans_args=TransA
             make_new_message(Message, Receiver, State)
     end.
 
-maybe_complete_request(ReqObserve, ResObserve, _, _, State) when is_integer(ReqObserve), is_integer(ResObserve) ->
-    State;
-maybe_complete_request(_, _, Receiver, Token, State) ->
-    complete_request(Receiver, Token, State).
-
-complete_request(Receiver, Token, State=#state{receivers=Receivers, tokens=Tokens}) ->
-    State#state{receivers=maps:remove(Receiver, Receivers), tokens=maps:remove(Token, Tokens)}.
-
-do_cancel_msg(TrId, State=#state{trans=Trans}) ->
-    case maps:find(TrId, Trans) of 
-        {ok, TrState} -> 
-            State#state{trans=maps:update(TrId, ecoap_exchange:cancel_msg(TrState), Trans)}; 
-        error -> 
-            State 
-    end.
-
 % find or initialize a new exchange
 create_exchange(TrId, Receiver, #state{trans=Trans}) ->
     maps:get(TrId, Trans, init_exchange(TrId, Receiver)).
@@ -451,8 +435,8 @@ execute([cancel_timer|Rest], Exchange, State) ->
     execute(Rest, ecoap_exchange:set_timer(undefined, Exchange), State);
 
 execute([{handle_request, Message}|Rest], Exchange, State) ->
-    ok = handle_request(Message, State),
-    execute(Rest, Exchange, State);
+    State2 = handle_request(Message, State),
+    execute(Rest, Exchange, State2);
 
 execute([{handle_response, Message}|Rest], Exchange, State) ->
     State2 = handle_response(Message, Exchange, State),
@@ -471,18 +455,18 @@ execute([{send, BinMessage}|Rest], Exchange, State=#state{sock=Socket, sock_modu
     execute(Rest, Exchange, State).
 
 
-handle_request(Message, #state{ep_id=EpID, handler_sup=HdlSupPid, handler_regs=HandlerRegs, trans_args=TransArgs}) ->
+handle_request(Message, State=#state{ep_id=EpID, trans_args=TransArgs, handler_sup=HdlSupPid}) ->
     %io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
-    HandlerConfig = ecoap_default:handler_config(TransArgs),
     HandlerID = ecoap_handler:handler_id(Message),
-    case get_handler(HdlSupPid, HandlerConfig, HandlerID, HandlerRegs) of
-        {ok, Pid} ->
+    HandlerConfig = ecoap_default:handler_config(TransArgs),
+    case get_handler(HdlSupPid, HandlerID, HandlerConfig, State) of
+        {ok, Pid, State2} ->
             Pid ! {coap_request, EpID, self(), undefined, Message},
-            ok;
+            State2;
         {error, _Error} ->
             {ok, _} = ecoap_endpoint:send(self(),
                 ecoap_request:response({error, 'InternalServerError'}, Message)),
-            ok
+            State
     end.
 
 handle_response(Message, Exchange, State=#state{ep_id=EpID}) ->
@@ -511,12 +495,34 @@ request_complete(Message, Receiver, State=#state{receivers=Receivers}) ->
             State
     end.
 
-get_handler(SupPid, Config, HandlerID, HandlerRegs) ->
-    case maps:find(HandlerID, HandlerRegs) of
+get_handler(SupPid, ID, Config, State=#state{rescnt=Count, handler_regs=Regs, handler_refs=Refs}) ->
+    case maps:find(ID, Regs) of
         {ok, Pid} ->
-            {ok, Pid};
+            {ok, Pid, State};
         error ->          
-            ecoap_handler_sup:start_handler(SupPid, [HandlerID, Config])
+            case ecoap_handler_sup:start_handler(SupPid, [ID, Config]) of
+                {ok, Pid} ->
+                    _ = erlang:monitor(process, Pid),
+                    {ok, Pid, State#state{rescnt=Count+1, handler_refs=maps:put(Pid, undefined, Refs)}};
+                Else ->
+                    Else    
+            end
+    end.
+
+maybe_complete_request(ReqObserve, ResObserve, _, _, State) when is_integer(ReqObserve), is_integer(ResObserve) ->
+    State;
+maybe_complete_request(_, _, Receiver, Token, State) ->
+    complete_request(Receiver, Token, State).
+
+complete_request(Receiver, Token, State=#state{receivers=Receivers, tokens=Tokens}) ->
+    State#state{receivers=maps:remove(Receiver, Receivers), tokens=maps:remove(Token, Tokens)}.
+
+do_cancel_msg(TrId, State=#state{trans=Trans}) ->
+    case maps:find(TrId, Trans) of 
+        {ok, TrState} -> 
+            State#state{trans=maps:update(TrId, ecoap_exchange:cancel_msg(TrState), Trans)}; 
+        error -> 
+            State 
     end.
 
 % update_state(State=#state{trans=Trans, timer=Timer}, TrId, undefined) ->

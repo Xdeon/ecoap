@@ -191,7 +191,7 @@ handler_id(Message=#coap_message{code=Method}) ->
 
 init([ID={_, Uri, Query}, Config]) ->
     #{endpoint_pid:=EndpointPid, exchange_lifetime:=Timeout, max_body_size:=MaxBodySize, max_block_size:=MaxBlockSize} = Config,
-    ok = ecoap_endpoint:monitor_handler(EndpointPid, self()),
+    % ok = ecoap_endpoint:monitor_handler(EndpointPid, self()),
     State = #state{insegs={orddict:new(), undefined},
                     endpoint_pid=EndpointPid, 
                     cache_timeout=Timeout, 
