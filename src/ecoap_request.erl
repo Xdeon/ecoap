@@ -64,7 +64,7 @@ set_payload(Payload, Msg) ->
 
 -spec set_payload(binary(), undefined | block_opt(), coap_message:coap_message()) -> coap_message:coap_message().
 set_payload(Payload, Block, Msg) ->
-    set_payload(Payload, Block, Msg, ecoap_default:default_max_block_size()).
+    set_payload(Payload, Block, Msg, ecoap_config:default_max_block_size()).
 
 -spec set_payload(binary(), undefined | block_opt(), coap_message:coap_message(), non_neg_integer()) -> coap_message:coap_message().
 % segmentation not requested and not required

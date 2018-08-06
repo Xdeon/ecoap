@@ -458,7 +458,7 @@ execute([{send, BinMessage}|Rest], Exchange, State=#state{sock=Socket, sock_modu
 handle_request(Message, State=#state{ep_id=EpID, trans_args=TransArgs, handler_sup=HdlSupPid}) ->
     %io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
     HandlerID = ecoap_handler:handler_id(Message),
-    HandlerConfig = ecoap_default:handler_config(TransArgs),
+    HandlerConfig = ecoap_config:handler_config(TransArgs),
     case get_handler(HdlSupPid, HandlerID, HandlerConfig, State) of
         {ok, Pid, State2} ->
             Pid ! {coap_request, EpID, self(), undefined, Message},

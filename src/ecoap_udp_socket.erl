@@ -93,7 +93,7 @@ init([SocketOpts, Config]) ->
 	{ok, Socket} = gen_udp:open(0, merge_opts(?DEFAULT_SOCK_OPTS, SocketOpts)),
 	error_logger:info_msg("socket setting: ~p~n", [inet:getopts(Socket, [recbuf, sndbuf, buffer])]),
 	error_logger:info_msg("coap listen on *:~p~n", [inet:port(Socket)]),
-	{ok, #state{sock=Socket, config=ecoap_default:merge_config(Config)}};
+	{ok, #state{sock=Socket, config=ecoap_config:merge_config(Config)}};
 init([SupPid, SocketOpts, Config]) ->
 	{ok, State} = init([SocketOpts, Config]),
 	{ok, State, {continue, {init, SupPid}}}.

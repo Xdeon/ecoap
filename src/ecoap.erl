@@ -3,19 +3,6 @@
 
 -include("ecoap.hrl").
 
-% -type env() :: #{
-% 	exchange_lifetime => non_neg_integer(),
-% 	non_neg_integer => non_neg_integer(),
-% 	processing_delay => non_neg_integer(),
-% 	max_retransmit => non_neg_integer(),
-% 	ack_random_factor => non_neg_integer(),
-% 	ack_timeout => non_neg_integer(),
-% 	max_block_size => non_neg_integer(),
-% 	max_body_size => non_neg_integer(),
-% 	token_length => non_neg_integer(),
-% 	_ => _
-% }.
-
 -type config() :: map().
 
 -export_type([config/0]).
