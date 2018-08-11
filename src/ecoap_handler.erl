@@ -453,7 +453,14 @@ handle_method(EpID, Request=#coap_message{code='DELETE'}, _Content, State) ->
 handle_method(_EpID, Request, _Content, State) ->
     return_response(Request, {error, 'MethodNotAllowed'}, State).
 
-
+% TODO: when there is a cluster of servers, it is likely a load balancer that does not use sticky mode
+% dispatches observe requests from a single client to different server instances, which creates duplicate 
+% observer handler instances
+% This can be avoided using another type of group which looks like {EpID, Uri} consisting of only one member 
+% Let the first started handler join and followers can detect duplicate by checking if the group is empty or not
+% PROBLEM: what should the follower do to resolve the duplication? 
+% forward the request to the one it found and terminate
+% or kill the one it found and serve the request by itself? 
 handle_observe(EpID, Request, Content, 
         State=#state{endpoint_pid=EndpointPid, id=ID, prefix=Prefix, suffix=Suffix, uri=Uri, module=Module, observer=undefined}) ->
     % the first observe request from this user to this resource
