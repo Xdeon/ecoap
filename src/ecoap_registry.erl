@@ -64,7 +64,7 @@ match_handler(Key, Tab) ->
     end.
 
 match_handler_with_wildcard(Key, Tab) ->
-    case match(ets:lookup(Tab, Key), Key, Tab) of
+    case match([], Key, Tab) of
         {Prefix, Match} -> 
             return_match(Prefix, uri_suffix(Prefix, Key), Match);
         _ -> 
@@ -196,7 +196,9 @@ match_test_() ->
             {[<<"foo">>], foo},
             {[<<"foo">>, <<"bar">>], foobar},
             {[<<"bar">>, <<"foo">>], barfoo},
-            {[<<"bar">>, <<"foo">>, <<"*">>], barfoo_wild}
+            {[<<"bar">>, <<"foo">>, <<"*">>], barfoo_wild},
+            {[<<"b">>, <<"c">>, <<"*">>], bc_wild},
+            {[<<"b">>, <<"c">>, <<"d">>], bcd}
     ],
     ets:insert(Tab, process_regs(Regs)),
     [?_assertEqual(undefined, match_handler([<<"bar">>], Tab)),
@@ -204,7 +206,8 @@ match_test_() ->
     ?_assertEqual({{[<<"foo">>, <<"bar">>], foobar}, []}, match_handler([<<"foo">>, <<"bar">>], Tab)),
     ?_assertEqual(undefined, match_handler([<<"foo">>, <<"bar">>, <<"hoge">>], Tab)),
     ?_assertEqual({{[<<"bar">>, <<"foo">>], barfoo}, []}, match_handler([<<"bar">>, <<"foo">>], Tab)),
-    ?_assertEqual({{[<<"bar">>, <<"foo">>], barfoo_wild}, [<<"hoge">>]}, match_handler([<<"bar">>, <<"foo">>, <<"hoge">>], Tab))
+    ?_assertEqual({{[<<"bar">>, <<"foo">>], barfoo_wild}, [<<"hoge">>]}, match_handler([<<"bar">>, <<"foo">>, <<"hoge">>], Tab)),
+    ?_assertEqual({{[<<"b">>, <<"c">>], bc_wild}, [<<"extra">>]}, match_handler([<<"b">>, <<"c">>, <<"extra">>], Tab))
     ].
 
 match_root_test_() ->
