@@ -23,7 +23,7 @@ URI  -> segment '/' URI : [strval('$1')|'$3'].
 PARAMS -> ';' PARAM PARAMS: ['$2'|'$3'].
 PARAMS -> '$empty' : [].
 
-PARAM -> segment : {atomval('$1'), <<>>}.
+PARAM -> segment : {atomval('$1'), true}.
 PARAM -> segment '=' segment : {atomval('$1'), strval(atomval('$1'), '$3')}.
 PARAM -> segment '=' string : {atomval('$1'), strval(atomval('$1'), '$3')}.
 

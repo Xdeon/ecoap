@@ -92,8 +92,8 @@ convert_attrval(AttrVal) -> AttrVal.
 
 attribute_query_test_() ->
     Link = [{absolute, [<<"sensor">>], [{title, <<"Sensor Index">>}]},
-           {absolute, [<<"sensors">>, <<"temp">>], [{rt, <<"temperature-c">>}, {'if', <<"sensor">>}, {foo, <<>>}, {bar, [<<"one">>, <<"two">>]}]},
-           {absolute, [<<"sensors">>, <<"light">>], [{rt, [<<"light-lux">>, <<"core.sen-light">>]}, {'if', <<"sensor">>}, {foo, <<>>}]}],
+           {absolute, [<<"sensors">>, <<"temp">>], [{rt, <<"temperature-c">>}, {'if', <<"sensor">>}, {foo, true}, {bar, [<<"one">>, <<"two">>]}]},
+           {absolute, [<<"sensors">>, <<"light">>], [{rt, [<<"light-lux">>, <<"core.sen-light">>]}, {'if', <<"sensor">>}, {foo, true}]}],
     Sensors = <<"</sensors/temp>;rt=\"temperature-c\";if=\"sensor\";foo;bar=\"one two\"">>,
     [?_assertEqual(Sensors, core_link:encode(filter(Link, make_query("bar=one&if=sensor")))),
     ?_assertEqual(Sensors, core_link:encode(filter(Link, make_query("bar=one&foo")))),

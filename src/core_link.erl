@@ -63,7 +63,7 @@ encode_link_param({ct, Value}) -> [";ct=", process_content_type(Value)];
 encode_link_param({sz, Value}) -> [";sz=", process_param_value(Value)];
 encode_link_param({rt, Value}) -> [";rt=\"", process_param_value(Value), "\""];
 % for param that has no value
-encode_link_param({Other, <<>>}) -> [";", atom_to_list(Other)];
+encode_link_param({Other, true}) -> [";", atom_to_list(Other)];
 encode_link_param({Other, Value}) -> [";", atom_to_list(Other), "=\"", process_param_value(Value), "\""].
 
 process_param_value(Value) when is_integer(Value) ->
@@ -98,7 +98,7 @@ codec_test_() ->
         [{absolute, [<<"link1">>], [{par, <<"val">>}]}, {rootless, [<<"link2">>], [{par, <<"val">>}, {par2, <<"val2">>}]}]),
     test_decode(<<"</sensors/temp>;rt=\"temperature-c\";if=\"sensor\";foo;bar=\"one two\"">>, 
         [{absolute, [<<"sensors">>, <<"temp">>], 
-                    [{rt, <<"temperature-c">>}, {'if', <<"sensor">>}, {foo, <<>>}, {bar, [<<"one">>, <<"two">>]}]
+                    [{rt, <<"temperature-c">>}, {'if', <<"sensor">>}, {foo, true}, {bar, [<<"one">>, <<"two">>]}]
         }]),
     test_decode(<<"/link">>, error)
     ].
