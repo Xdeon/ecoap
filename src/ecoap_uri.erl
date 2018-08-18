@@ -1,6 +1,6 @@
 -module(ecoap_uri).
 
--export([decode_uri/1, encode_uri/1, split_path/1]).
+-export([decode_uri/1, encode_uri/1, get_path/1, get_query/1]).
 
 -include("ecoap.hrl").
 
@@ -45,13 +45,31 @@ decode_uri(Uri) ->
     case inet:parse_address(HostString) of
         {ok, PeerIP} -> 
             {Scheme, undefined, {PeerIP, Port}, split_path(Path), split_query2(Query)};
-        {error,einval} -> 
+        {error, einval} -> 
             case inet:getaddr(HostString, inet) of
                 {ok, PeerIP} ->
                     {Scheme, Host, {PeerIP, Port}, split_path(Path), split_query2(Query)};
                 {error, Error} ->
                     {error, Error}
             end
+    end.
+
+get_path(Uri) when is_list(Uri) ->
+    get_path(list_to_binary(Uri));
+get_path(<<"/", _/binary>>=Uri) ->
+    case uri_string:parse(uri_string:normalize(Uri)) of
+        {error, Reason, _} -> {error, Reason};
+        ParsedUri -> split_path(maps:get(path, ParsedUri, <<>>))
+    end;
+get_path(Uri) -> 
+    {error, {bad_uri, Uri}}.
+
+get_query(Uri) when is_list(Uri) ->
+    get_query(list_to_binary(Uri));
+get_query(Uri) ->
+    case uri_string:parse(uri_string:normalize(Uri)) of
+        {error, Reason, _} -> {error, Reason};
+        ParsedUri -> split_query2(maps:get(query, ParsedUri, <<>>))
     end.
 
 parse_uri(Uri) ->

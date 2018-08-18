@@ -8,20 +8,21 @@
 %% 3. return {error, _} when synchronously sending a 'NON' request (which should be send asynchronously)
 
 %% API.
--export([open/0, open/1, open/2, close/1]).
--export([ping/2]).
+-export([open/1, open/2, open/3, close/1]).
+-export([ping/1]).
 -export([get/2, get/3, get/4, put/3, put/4, put/5, post/3, post/4, post/5, delete/2, delete/3, delete/4]).
 -export([get_async/2, get_async/3, put_async/3, put_async/4, post_async/3, post_async/4, delete_async/2, delete_async/3]).
 -export([observe/2, observe/3, observe_and_wait_response/2, observe_and_wait_response/3, observe_and_wait_response/4]).
 -export([unobserve/2, unobserve/3, unobserve_and_wait_response/2, unobserve_and_wait_response/3, unobserve_and_wait_response/4]).
 -export([cancel_request/2]).
 -export([flush/1]).
+-export([get_remote_addr/1]).
 
 -ifdef(TEST).
 -export([get_reqrefs/1, get_obsregs/1, get_blockregs/1]).
 -endif.
 
--export([start_link/2]).
+-export([start_link/3]).
 
 %% gen_server.
 -export([init/1]).
@@ -34,6 +35,8 @@
 -record(state, {
 	socket = undefined :: closed | {client_socket, pid()} | {server_socket, pid() | atom()},
 	socket_ref = undefined :: reference(),
+	host = undefined :: undefined | binary(),
+	ep_id = undefined :: tuple(),
 	requests = #{} :: #{reference() => {pid(), request()}},
 	ongoing_blocks = #{} :: #{block_key() => reference()},
 	observe_regs = #{} :: #{observe_key() => reference()},
@@ -71,25 +74,25 @@
 -type socket_id() :: pid() | atom() | tuple().
 
 %% API.
--spec open() -> {ok, pid()} | {error, term()}.
-open() ->
-	start_link([], #{}).
+-spec open(string()) -> {ok, pid()} | {error, term()}.
+open(HostString) ->
+	start_link(HostString, [], #{}).
 
--spec open([gen_udp:option()] | {socket, socket_id()}) -> {ok, pid()} | {error, term()}.
-open(SocketOpts) ->
-	start_link(SocketOpts, #{}).
+-spec open(string(), [gen_udp:option()] | {socket, socket_id()}) -> {ok, pid()} | {error, term()}.
+open(HostString, SocketOpts) ->
+	start_link(HostString, SocketOpts, #{}).
 
--spec open([gen_udp:option()] | {socket, socket_id()}, ecoap:config()) -> {ok, pid()} | {error, term()}.
-open(SocketOpts, Config) ->
-	start_link(SocketOpts, Config).
+-spec open(string(), [gen_udp:option()] | {socket, socket_id()}, ecoap:config()) -> {ok, pid()} | {error, term()}.
+open(HostString, SocketOpts, Config) ->
+	start_link(HostString, SocketOpts, Config).
 
 -spec close(pid()) -> ok.
 close(Pid) ->
 	gen_server:stop(Pid).
 
--spec ping(pid(), string()) -> ok | {error, _}.
-ping(Pid, Uri) ->
-	case gen_server:call(Pid, {ping, Uri}, infinity) of
+-spec ping(pid()) -> ok | {error, _}.
+ping(Pid) ->
+	case gen_server:call(Pid, ping, infinity) of
 		{error, 'RST'} -> ok;
 		Else -> Else
 	end.
@@ -279,9 +282,13 @@ flush_pid(Pid) ->
 		ok
 	end.
 
--spec start_link([gen_udp:option()] | {socket, pid() | atom()}, ecoap:config()) -> {ok, pid()} | {error, term()}.
-start_link(SocketOpts, Config) ->
-	gen_server:start_link(?MODULE, [SocketOpts, Config], []).
+-spec get_remote_addr(pid()) -> {ok, {binary() | undefined, tuple()}}.
+get_remote_addr(Pid) ->
+	gen_server:call(Pid, get_remote_addr).
+
+-spec start_link(string(), [gen_udp:option()] | {socket, pid() | atom()}, ecoap:config()) -> {ok, pid()} | {error, term()}.
+start_link(HostString, SocketOpts, Config) ->
+	gen_server:start_link(?MODULE, [HostString, SocketOpts, Config], []).
 
 
 -ifdef(TEST).
@@ -300,25 +307,32 @@ get_blockregs(Pid) -> gen_server:call(Pid, get_blockregs).
 
 %% gen_server.
 
-init([{socket, Socket}, _Config]) ->
-	SocketRef = erlang:monitor(process, Socket),
-	{ok, #state{socket={server_socket, Socket}, socket_ref=SocketRef}};
-init([SocketOpts, Config]) ->
-	{ok, Socket} = ecoap_udp_socket:start_link(SocketOpts, Config),
-	SocketRef = erlang:monitor(process, Socket),
-	{ok, #state{socket={client_socket, Socket}, socket_ref=SocketRef}}.
+init([HostString, {socket, Socket}, _Config]) ->
+	case ecoap_uri:decode_uri(HostString) of
+		{_Scheme, Host, EpID, _Path, _Query} ->
+			SocketRef = erlang:monitor(process, Socket),
+			{ok, #state{socket={server_socket, Socket}, socket_ref=SocketRef, host=Host, ep_id=EpID}};
+		{error, Error} ->	
+			{stop, Error}
+	end;
+init([HostString, SocketOpts, Config]) ->
+	case ecoap_uri:decode_uri(HostString) of
+		{coap, Host, EpID, _Path, _Query} ->
+			{ok, Socket} = ecoap_udp_socket:start_link(SocketOpts, Config),
+			SocketRef = erlang:monitor(process, Socket),
+			{ok, #state{socket={client_socket, Socket}, socket_ref=SocketRef, host=Host, ep_id=EpID}};
+		{error, Error} ->	
+			{stop, Error}
+	end.
 
-handle_call({ping, Uri}, From, State=#state{socket=Socket, requests=Requests}) ->
-	{_Scheme, _Host, {PeerIP, PortNo}, _Path, _Query} = ecoap_uri:decode_uri(Uri),
-	EpID = {PeerIP, PortNo},
+handle_call(ping, From, State=#state{socket=Socket, requests=Requests, ep_id=EpID}) ->
 	{ok, EndpointPid} = get_endpoint(Socket, EpID),
 	{ok, Ref} = ecoap_endpoint:ping(EndpointPid),
 	Request = #request{method=undefined, origin_ref=Ref, reply_to=From},
 	{noreply, State#state{requests=maps:put(Ref, {EndpointPid, Request}, Requests)}};
-
-handle_call({request, Sync, Method, Uri, Content, Options}, {Pid, _}=From, State=#state{socket=Socket, requests=Requests}) ->
-	{ok, EpID, _, Options2} = make_request(Uri, Options),
+handle_call({request, Sync, Method, Uri, Content, Options}, {Pid, _}=From, State=#state{socket=Socket, requests=Requests, host=Host, ep_id=EpID}) ->
 	{ok, EndpointPid} = get_endpoint(Socket, EpID),
+	Options2 = make_options(Host, EpID, Uri, Options),
 	{ok, Ref} = request_block1(EndpointPid, erlang:monitor(process, Pid), Method, Options2, Content),
 	case Sync of
 		sync ->
@@ -328,27 +342,9 @@ handle_call({request, Sync, Method, Uri, Content, Options}, {Pid, _}=From, State
 			Request = #request{method=Method, options=Options2, content=Content, origin_ref=Ref, reply_to=Pid},
 			{reply, {ok, Ref}, State#state{requests=maps:put(Ref, {EndpointPid, Request}, Requests)}}
 	end;
-
-% handle_call({observe, Uri, Options}, {Pid, _}, State=#state{socket=Socket, requests=Requests, observe_regs=ObsRegs}) ->
-% 	{ok, EpID, Path, Options2} = make_request(Uri, Options),
-% 	ObsKey = {EpID, Path, coap_message:get_option('Accept', Options2)},
-% 	{Token, Requests2, ObsRegs2} = case maps:find(ObsKey, ObsRegs) of
-% 		error -> 
-% 			{ecoap_message_token:generate_token(), Requests, ObsRegs};
-% 		{ok, {OldRef, OldToken}} ->
-% 			{OldToken, maps:remove(OldRef, Requests), maps:remove(ObsKey, ObsRegs)}
-% 	end,
-% 	{ok, EndpointPid} = get_endpoint(Socket, EpID),
-% 	{ok, Ref} = ecoap_endpoint:send(EndpointPid,  
-% 					coap_message:set_token(Token,
-% 						ecoap_request:request('CON', 'GET', coap_message:add_option('Observe', 0, Options2)))),
-% 	Request = #request{method='GET', options=Options2, origin_ref=Ref, reply_to=Pid, observe_key=ObsKey},	
-% 	Requests3 = maps:put(Ref, {EndpointPid, Request}, Requests2),
-% 	ObsRegs3 = maps:put(ObsKey, {Ref, Token}, ObsRegs2),
-% 	{reply, {ok, Ref}, State#state{requests=Requests3, observe_regs=ObsRegs3}};
-
-handle_call({observe, Uri, Options}, {Pid, _}, State=#state{socket=Socket, requests=Requests, observe_regs=ObsRegs}) ->
-	{ok, EpID, Path, Options2} = make_request(Uri, Options),
+handle_call({observe, Uri, Options}, {Pid, _}, State=#state{socket=Socket, requests=Requests, observe_regs=ObsRegs, host=Host, ep_id=EpID}) ->
+	Path = ecoap_uri:get_path(Uri),
+	Options2 = make_options(Host, EpID, Uri, Options),
 	ObsKey = {EpID, Path, coap_message:get_option('Accept', Options2)},
 	{ok, EndpointPid} = get_endpoint(Socket, EpID),
 	Ref = case maps:find(ObsKey, ObsRegs) of 
@@ -361,7 +357,6 @@ handle_call({observe, Uri, Options}, {Pid, _}, State=#state{socket=Socket, reque
 	Requests2 = maps:put(Ref, {EndpointPid, Request}, Requests),
 	ObsRegs2 = maps:put(ObsKey, Ref, ObsRegs),
 	{reply, {ok, Ref}, State#state{requests=Requests2, observe_regs=ObsRegs2}};
-
 handle_call({unobserve, Ref, ETag}, {Pid, _}, 
 	State=#state{requests=Requests, request_mapping=RequestMapping, observe_regs=ObsRegs}) ->
 	case maps:find(Ref, Requests) of
@@ -378,9 +373,10 @@ handle_call({unobserve, Ref, ETag}, {Pid, _},
 			State2 = check_and_cancel_request(maps:get(Ref, RequestMapping, undefined), State),
 			{reply, {ok, Ref},  State2#state{requests=maps:put(Ref, {EndpointPid, Request2}, Requests)}}
 	end;
-
 handle_call({cancel_request, Ref}, _From, State) ->
 	{reply, ok, check_and_cancel_request(Ref, State)};
+handle_call(get_remote_addr, _From, State=#state{host=Host, ep_id=EpID}) ->
+	{reply, {ok, Host, EpID}, State};
 
 handle_call(get_reqrefs, _From, State=#state{requests=Requests}) ->
 	{reply, Requests, State};
@@ -388,7 +384,6 @@ handle_call(get_blockregs, _From, State=#state{ongoing_blocks=OngoingBlocks}) ->
 	{reply, OngoingBlocks, State};
 handle_call(get_obsregs, _From, State=#state{observe_regs=ObsRegs}) ->
 	{reply, ObsRegs, State};
-
 handle_call(_Request, _From, State) ->
 	{reply, ignored, State}.
 
@@ -413,7 +408,6 @@ handle_info({coap_response, EpID, EndpointPid, Ref, Message}, State=#state{reque
 					handle_error(Ref, Request, {coap_response, Message}, State)
 			end
 	end;
-
 handle_info({coap_error, _EpID, EndpointPid, Ref, Error}, State=#state{requests=Requests}) ->
 	case maps:find(Ref, Requests) of
 		error -> 
@@ -421,7 +415,6 @@ handle_info({coap_error, _EpID, EndpointPid, Ref, Error}, State=#state{requests=
 		{ok, {EndpointPid, Request}} ->
 			handle_error(Ref, Request, {coap_error, Error}, State)
 	end;
-
 handle_info({coap_ack, _EpID, EndpointPid, Ref}, State=#state{requests=Requests}) ->
 	case maps:find(Ref, Requests) of
 		{ok, {EndpointPid, #request{} = Request}} ->
@@ -431,10 +424,8 @@ handle_info({coap_ack, _EpID, EndpointPid, Ref}, State=#state{requests=Requests}
 		error -> 
 			{noreply, State}
 	end;
-
 handle_info({'DOWN', Ref, process, _Pid, Reason}, State=#state{socket_ref=Ref}) ->
 	{stop, Reason, State#state{socket=closed}};
-
 handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{requests=Requests}) ->
 	case maps:find(Ref, Requests) of
 		{ok, {_, #request{origin_ref=OriginRef}}} ->
@@ -442,7 +433,6 @@ handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{requests=Request
 		error ->
 			{noreply, State}
 	end;
-
 handle_info(_Info, State) ->
 	{noreply, State}.
 
@@ -547,14 +537,13 @@ handle_error(Ref, Request, Error,
 	{noreply, State#state{requests=Requests2, ongoing_blocks=OngoingBlocks2, 
 							request_mapping=RequestMapping2, observe_regs=ObsRegs2}}.
 
-make_request(Uri, Options) ->
-	{_Scheme, Host, {PeerIP, PortNo}, Path, Query} = ecoap_uri:decode_uri(Uri),
-	EpID = {PeerIP, PortNo},
- 	Options2 = coap_message:add_option('Uri-Path', Path, 
-					coap_message:add_option('Uri-Query', Query,
-						coap_message:add_option('Uri-Host', Host, 
-							coap_message:add_option('Uri-Port', PortNo, Options)))),
- 	{ok, EpID, Path, Options2}.
+make_options(Host, {_, PortNo}, Uri, Options) ->
+	Path = ecoap_uri:get_path(Uri),
+	Query = ecoap_uri:get_query(Uri),
+	coap_message:add_option('Uri-Path', Path, 
+		coap_message:add_option('Uri-Query', Query,
+			coap_message:add_option('Uri-Host', Host, 
+				coap_message:add_option('Uri-Port', PortNo, Options)))).
 
 get_endpoint(Socket={_, SocketPid}, EpID) ->
 	{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SocketPid, EpID),

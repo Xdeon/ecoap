@@ -25,7 +25,7 @@ empty_server_test_() ->
         fun() ->
             {ok, _} = application:ensure_all_started(ecoap),
             {ok, _} = ecoap:start_udp(?MODULE, [], #{routes => []}),
-            {ok, Client} = ecoap_client:open(),
+            {ok, Client} = ecoap_client:open("coap://127.0.0.1"),
             Client
         end,
         fun(Client) ->
@@ -37,15 +37,15 @@ empty_server_test_() ->
 empty_server(Client) ->
     [
     % provoked reset
-    ?_assertEqual(ok, ecoap_client:ping(Client, "coap://127.0.0.1")),
+    ?_assertEqual(ok, ecoap_client:ping(Client)),
     % discovery
-    ?_assertEqual({ok, {error, 'NotFound'}, #coap_content{}}, ecoap_client:get(Client, "coap://127.0.0.1")),
-    ?_assertEqual({ok, {error, 'NotFound'}, #coap_content{}}, ecoap_client:get(Client, "coap://127.0.0.1/.well-known")),
-    ?_assertMatch({ok, {ok, 'Content'}, #coap_content{payload= <<>>}}, ecoap_client:get(Client, "coap://127.0.0.1/.well-known/core")),
+    ?_assertEqual({ok, {error, 'NotFound'}, #coap_content{}}, ecoap_client:get(Client, "/")),
+    ?_assertEqual({ok, {error, 'NotFound'}, #coap_content{}}, ecoap_client:get(Client, "/.well-known")),
+    ?_assertMatch({ok, {ok, 'Content'}, #coap_content{payload= <<>>}}, ecoap_client:get(Client, "/.well-known/core")),
     % other methods
-    ?_assertEqual({ok, {error, 'MethodNotAllowed'}, #coap_content{}}, ecoap_client:post(Client, "coap://127.0.0.1/.well-known/core", <<>>)),
-    ?_assertEqual({ok, {error, 'MethodNotAllowed'}, #coap_content{}}, ecoap_client:put(Client, "coap://127.0.0.1/.well-known/core", <<>>)),
-    ?_assertEqual({ok, {error, 'MethodNotAllowed'}, #coap_content{}}, ecoap_client:delete(Client, "coap://127.0.0.1/.well-known/core"))
+    ?_assertEqual({ok, {error, 'MethodNotAllowed'}, #coap_content{}}, ecoap_client:post(Client, "/.well-known/core", <<>>)),
+    ?_assertEqual({ok, {error, 'MethodNotAllowed'}, #coap_content{}}, ecoap_client:put(Client, "/.well-known/core", <<>>)),
+    ?_assertEqual({ok, {error, 'MethodNotAllowed'}, #coap_content{}}, ecoap_client:delete(Client, "/.well-known/core"))
     ].
 
 
@@ -54,7 +54,7 @@ unknown_handler_test_() ->
         fun() ->
             {ok, _} = application:ensure_all_started(ecoap),
             {ok, _} = ecoap:start_udp(?MODULE, [], #{routes => [{[<<"unknown">>], unknown_module}]}),
-            {ok, Client} = ecoap_client:open(),
+            {ok, Client} = ecoap_client:open("coap://127.0.0.1"),
             Client
         end,
         fun(Client) ->
@@ -65,8 +65,8 @@ unknown_handler_test_() ->
 
 unknown_handler(Client) ->
     [
-    ?_assertMatch({ok, {ok, 'Content'}, #coap_content{payload= <<"</unknown>">>}}, ecoap_client:get(Client, "coap://127.0.0.1/.well-known/core")),
-    ?_assertEqual({ok, {error,'MethodNotAllowed'}, #coap_content{}}, ecoap_client:get(Client, "coap://127.0.0.1/unknown"))
+    ?_assertMatch({ok, {ok, 'Content'}, #coap_content{payload= <<"</unknown>">>}}, ecoap_client:get(Client, "/.well-known/core")),
+    ?_assertEqual({ok, {error,'MethodNotAllowed'}, #coap_content{}}, ecoap_client:get(Client, "/unknown"))
     ].
 
 % end of file

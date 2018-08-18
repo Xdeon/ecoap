@@ -51,7 +51,7 @@ observe_test_() ->
             {atomic, ok} = mnesia:create_table(resources, []),
             {ok, _} = application:ensure_all_started(ecoap),
             {ok, _} = ecoap:start_udp(?MODULE, [], #{routes => [{[<<"text">>], ?MODULE}]}),
-            {ok, Client} = ecoap_client:open(),
+            {ok, Client} = ecoap_client:open("coap://127.0.0.1"),
             Client
         end,
         fun(Client) ->
@@ -64,11 +64,11 @@ observe_test_() ->
 observe_test(Client) ->
     [
     ?_assertEqual({ok, {error, 'NotFound'}, #coap_content{}},
-        ecoap_client:observe_and_wait_response(Client, "coap://127.0.0.1/text")),
+        ecoap_client:observe_and_wait_response(Client, "/text")),
     ?_assertEqual({ok, {ok, 'Created'}, #coap_content{}},
     	begin 
     		#coap_content{payload=Payload, options=Options} = test_utils:text_resource([<<"1">>], 2000),
-        	ecoap_client:put(Client, "coap://127.0.0.1/text", Payload, Options)
+        	ecoap_client:put(Client, "/text", Payload, Options)
         end),
     ?_assertEqual(
     	{
@@ -78,7 +78,7 @@ observe_test(Client) ->
     	}, 
     	begin 
     		#coap_content{payload=Payload, options=Options} = test_utils:text_resource([<<"2">>], 3000),
-    		observe_and_modify(Client, "coap://127.0.0.1/text", Payload, Options)
+    		observe_and_modify(Client, "/text", Payload, Options)
     	end)
     ].
 
