@@ -31,6 +31,7 @@
 -define(OPTION_PROXY_SCHEME, 39).
 -define(OPTION_SIZE1, 60).
 -define(OPTION_SIZE2, 28).
+-define(OPTION_NO_RESPONSES, 258). % RFC 7967
 
 -define(DEFAULT_COAP_PORT, 5683).
 -define(DEFAULT_COAPS_PORT, 5684).
@@ -427,6 +428,8 @@ decode_option({?OPTION_OBSERVE, OptVal}) -> {'Observe', binary:decode_unsigned(O
 decode_option({?OPTION_BLOCK2, OptVal}) -> {'Block2', decode_block(OptVal)};
 decode_option({?OPTION_BLOCK1, OptVal}) -> {'Block1', decode_block(OptVal)};
 decode_option({?OPTION_SIZE2, OptVal}) -> {'Size2', binary:decode_unsigned(OptVal)};
+% RFC 7967
+decode_option({?OPTION_NO_RESPONSES, OptVal}) -> {'No-Responses', binary:decode_unsigned(OptVal)};
 % unknown option
 decode_option({OptNum, OptVal}) -> {OptNum, OptVal}.
 
@@ -539,6 +542,8 @@ encode_option({'Observe', OptVal}) -> {?OPTION_OBSERVE, binary:encode_unsigned(O
 encode_option({'Block2', OptVal}) -> {?OPTION_BLOCK2, encode_block(OptVal)};
 encode_option({'Block1', OptVal}) -> {?OPTION_BLOCK1, encode_block(OptVal)};
 encode_option({'Size2', OptVal}) -> {?OPTION_SIZE2, binary:encode_unsigned(OptVal)};
+% RFC 7967
+encode_option({'No-Responses', OptVal}) -> {?OPTION_NO_RESPONSES, binary:encode_unsigned(OptVal)};
 % unknown option
 encode_option({OptNum, OptVal}) when is_integer(OptNum) ->
     {OptNum, OptVal}.
@@ -640,7 +645,7 @@ case7_test_()->
     [
     test_codec(#coap_message{type='RST', id=0}),
     test_codec(#coap_message{type='CON', code='GET', id=100, options=#{'Block1' => {0,true,128}, 'Observe' => 1}}),
-    test_codec(#coap_message{type='NON', code='PUT', id=200, token= <<"token">>, options=#{'Uri-Path' => [<<".well-known">>, <<"core">>]}}),
+    test_codec(#coap_message{type='NON', code='PUT', id=200, token= <<"token">>, options=#{'Uri-Path' => [<<".well-known">>, <<"core">>], 'No-Responses' => 26}}),
     test_codec(#coap_message{type='NON', code={ok, 'Content'}, id=300, token= <<"token">>, 
         options=#{'Content-Format' => <<"application/link-format">>, 'Uri-Path' => [<<".well-known">>, <<"core">>]}, payload= <<"<url>">>})
     ].
