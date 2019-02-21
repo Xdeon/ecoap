@@ -93,6 +93,7 @@ in_non({in, BinMessage}, _, Exchange) ->
         _ ->
             % shall we send reset?
             % ok
+            logger:log(warning, "~p received corrupted message ~p~n", [self(), BinMessage]),
             {[], Exchange#exchange{stage=got_non}}
     end.
 
@@ -103,6 +104,7 @@ got_non({in, _Message}, _, Exchange) ->
 % --- outgoing NON
 out_non({out, Message}, _, Exchange) ->
     %io:fwrite("~p send outgoing non msg ~p~n", [self(), Message]),
+    logger:log(debug, "~p send outgoing non msg ~p~n", [self(), Message]),
     BinMessage = coap_message:encode(Message),
     {[{send, BinMessage}], Exchange#exchange{stage=sent_non}}.
 
@@ -114,6 +116,7 @@ sent_non({in, BinMessage}, _, Exchange) ->
         {ok, #coap_message{}} ->
             {[], Exchange#exchange{stage=sent_non}};
         _ ->
+            logger:log(warning, "~p received corrupted message ~p~n", [self(), BinMessage]),
             {[], Exchange#exchange{stage=sent_non}}
     end.
             
@@ -133,6 +136,7 @@ in_con({in, BinMessage}, TransArgs, Exchange) ->
             {Actions, NewExchange} = go_await_aack(Message, TransArgs, Exchange),
             {[{handle_response, Message} | Actions], NewExchange};
         _ ->
+            logger:log(warning, "~p received corrupted message ~p~n", [self(), BinMessage]),
             go_pack_sent(ecoap_request:rst(coap_message:get_id(BinMessage)), Exchange)
     end.
 
@@ -146,7 +150,8 @@ await_aack({in, _BinMessage}, _, Exchange) ->
     {[], Exchange#exchange{stage=await_aack}};
 
 await_aack({timeout, await_aack}, _, Exchange=#exchange{msgbin=BinAck}) ->
-    io:fwrite("~p <- ack [application didn't respond]~n", [self()]),
+    % io:fwrite("~p <- ack [application didn't respond]~n", [self()]),
+    logger:log(debug, "~p <- ack [application didn't respond]~n", [self()]),
     {[{send, BinAck}], Exchange#exchange{stage=pack_sent}};
 
 await_aack({out, Ack}, _, Exchange) ->
@@ -160,6 +165,7 @@ await_aack({out, Ack}, _, Exchange) ->
 
 go_pack_sent(Ack, Exchange) ->
 	%io:fwrite("~p send ack/rst msg ~p~n", [self(), Ack]),
+    logger:log(debug, "~p send ack/rst msg ~p~n", [self(), Ack]),
     BinAck = coap_message:encode(Ack),
     {[{send, BinAck}], Exchange#exchange{stage=pack_sent, msgbin=BinAck}}.
 
@@ -190,6 +196,7 @@ pack_sent({timeout, await_aack}, _, Exchange) ->
 % --- outgoing CON->ACK|RST
 out_con({out, Message}, TransArgs, Exchange) ->
     %io:fwrite("~p send outgoing con msg ~p~n", [self(), Message]),
+    logger:log(debug, "~p send outgoing con msg ~p~n", [self(), Message]),
     BinMessage = coap_message:encode(Message),
     % _ = rand:seed(exs1024),
     Timeout = ?ACK_TIMEOUT(TransArgs)+rand:uniform(?ACK_RANDOM_FACTOR(TransArgs)),
@@ -211,12 +218,14 @@ await_pack({in, BinAck}, _, Exchange) ->
             {[cancel_timer, {handle_response, Message}], Exchange#exchange{msgbin= <<>>, stage=aack_sent}};
         _ ->
             % shall we inform the receiver the error?
+            logger:log(warning, "~p received corrupted message ~p~n", [self(), BinAck]),
             {[], Exchange#exchange{stage=await_pack}}
     end;
 
 await_pack({timeout, await_pack}, TransArgs, Exchange=#exchange{msgbin=BinMessage, retry_time=Timeout, retry_count=Count}) when Count < ?MAX_RETRANSMIT(TransArgs) ->
     % BinMessage = coap_message:encode(Message),
     %io:fwrite("resend msg for ~p time~n", [Count]),
+    logger:log(debug, "resend msg for ~p time~n", [Count]),
     Timeout2 = Timeout*2,
     {[{send, BinMessage}, {start_timer, Timeout2}], Exchange#exchange{retry_time=Timeout2, retry_count=Count+1, stage=await_pack}};
 

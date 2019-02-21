@@ -205,7 +205,8 @@ init([ID={_, Uri, Query}, Config]) ->
 
 
 handle_call(_Request, _From, State) ->
-    error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
+    % error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
+    logger:log(error, "unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
     {noreply, State}.
 
 
@@ -216,7 +217,8 @@ handle_cast(shutdown, State) ->
     try_cancel_observe_and_terminate(State);
 
 handle_cast(_Msg, State) ->
-    error_logger:error_msg("unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
+    % error_logger:error_msg("unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
+    logger:log(error, "unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
     {noreply, State}.
 
 % TODO:

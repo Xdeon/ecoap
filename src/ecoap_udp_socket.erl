@@ -91,8 +91,10 @@ send(Socket, {PeerIP, PeerPortNo}, Datagram) ->
 init([SocketOpts, Config]) ->
 	% process_flag(trap_exit, true),
 	{ok, Socket} = gen_udp:open(0, merge_opts(?DEFAULT_SOCK_OPTS, SocketOpts)),
-	error_logger:info_msg("socket setting: ~p~n", [inet:getopts(Socket, [recbuf, sndbuf, buffer])]),
-	error_logger:info_msg("coap listen on *:~p~n", [inet:port(Socket)]),
+	% error_logger:info_msg("socket setting: ~p~n", [inet:getopts(Socket, [recbuf, sndbuf, buffer])]),
+	% error_logger:info_msg("coap listen on *:~p~n", [inet:port(Socket)]),
+	logger:log(info, "socket setting: ~p~n", [inet:getopts(Socket, [recbuf, sndbuf, buffer])]),
+	logger:log(info, "coap listen on *:~p~n", [inet:port(Socket)]),
 	{ok, #state{sock=Socket, config=ecoap_config:merge_config(Config)}};
 init([SupPid, SocketOpts, Config]) ->
 	{ok, State} = init([SocketOpts, Config]),
@@ -137,11 +139,13 @@ handle_call(get_all_endpoints, _From, State) ->
 handle_call(get_endpoint_count, _From, State=#state{endpoint_count=Count}) ->
 	{reply, Count, State};
 handle_call(_Request, _From, State) ->
-	error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
+	% error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
+	logger:log(error, "unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
 	{noreply, State}.
 
 handle_cast(_Msg, State) ->
-	error_logger:error_msg("unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
+	% error_logger:error_msg("unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
+	logger:log(error, "unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
 	{noreply, State}.
 
 handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, 
@@ -183,7 +187,8 @@ handle_info({udp_passive, Socket}, State=#state{sock=Socket}) ->
 	{noreply, State};
 	
 handle_info(_Info, State) ->
-    error_logger:error_msg("unexpected info ~p received by ~p as ~p~n", [_Info, self(), ?MODULE]),
+    % error_logger:error_msg("unexpected info ~p received by ~p as ~p~n", [_Info, self(), ?MODULE]),
+    logger:log(error, "unexpected info ~p received by ~p as ~p~n", [_Info, self(), ?MODULE]),
 	{noreply, State}.
 
 terminate(_Reason, #state{sock=Socket}) ->

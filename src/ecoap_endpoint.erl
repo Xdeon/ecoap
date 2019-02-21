@@ -129,7 +129,8 @@ handle_continue({init, SupPid}, State) ->
     {noreply, State#state{handler_sup=HdlSupPid}}.
 
 handle_call(_Request, _From, State) ->
-    error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
+    % error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
+    logger:log(error, "unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
 	{noreply, State}.
 
 % outgoing CON(0) or NON(1) request
@@ -150,7 +151,8 @@ handle_cast({cancel_request, Receiver}, State=#state{receivers=Receivers}) ->
             {noreply, State}
     end;
 handle_cast(_Msg, State) ->
-    error_logger:error_msg("unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
+    % error_logger:error_msg("unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
+    logger:log(error, "unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
 	{noreply, State}.
 
 %% CoAP Message Format
@@ -285,7 +287,8 @@ handle_info({'EXIT', Pid, _Reason}, State=#state{receivers=Receivers}) ->
     {noreply, State2};
     
 handle_info(_Info, State) ->
-    error_logger:error_msg("unexpected info ~p received by ~p as ~p~n", [_Info, self(), ?MODULE]),
+    % error_logger:error_msg("unexpected info ~p received by ~p as ~p~n", [_Info, self(), ?MODULE]),
+    logger:log(error, "unexpected info ~p received by ~p as ~p~n", [_Info, self(), ?MODULE]),
 	{noreply, State}.
 
 terminate(_Reason, _State) ->
