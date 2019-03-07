@@ -14,13 +14,17 @@ decode(Binary) when is_binary(Binary) ->
     decode(binary_to_list(Binary));
 decode(String) ->
     % the parser is auto-generated using leex and yecc
-    case catch core_link_scanner:string(String) of
+    try core_link_scanner:string(String) of
         {ok, TokenList, _Line} ->
-            case catch core_link_parser:parse(TokenList) of
+            try core_link_parser:parse(TokenList) of
                 {ok, Res} -> Res;
-                Err -> {error, Err}
+                Other -> Other
+            catch C:R -> {error, {C, R}}
             end;
-        Err -> {error, Err}
+        Other -> 
+            Other
+    catch C:R -> 
+        {error, {C, R}}
     end.
 
 -spec encode([coap_uri_param()]) -> binary().

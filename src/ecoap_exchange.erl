@@ -85,12 +85,12 @@ idle(Msg={out, #coap_message{type='CON'}}, TransArgs, Exchange) ->
 
 % --- incoming NON
 in_non({in, BinMessage}, _, Exchange) ->
-    case catch {ok, coap_message:decode(BinMessage)} of
-        {ok, #coap_message{code=Method}=Message} when is_atom(Method) ->
+    try coap_message:decode(BinMessage) of
+        #coap_message{code=Method}=Message when is_atom(Method) ->
             {[{handle_request, Message}], Exchange#exchange{stage=got_non}};
-        {ok, #coap_message{}=Message} ->
-            {[{handle_respone, Message}], Exchange#exchange{stage=got_non}};
-        _ ->
+        #coap_message{}=Message ->
+            {[{handle_respone, Message}], Exchange#exchange{stage=got_non}}
+    catch _C:_R ->
             % shall we send reset?
             % ok
             logger:log(warning, "~p received corrupted message ~p~n", [self(), BinMessage]),
@@ -110,12 +110,12 @@ out_non({out, Message}, _, Exchange) ->
 
 % we may get reset
 sent_non({in, BinMessage}, _, Exchange) ->
-    case catch {ok, coap_message:decode(BinMessage)} of
-        {ok, #coap_message{type='RST'}=Message} ->
+    try coap_message:decode(BinMessage) of
+        #coap_message{type='RST'}=Message ->
             {[{handle_error, Message, 'RST'}], Exchange#exchange{stage=got_rst}};
-        {ok, #coap_message{}} ->
-            {[], Exchange#exchange{stage=sent_non}};
-        _ ->
+        #coap_message{} ->
+            {[], Exchange#exchange{stage=sent_non}}
+    catch _C:_R ->
             logger:log(warning, "~p received corrupted message ~p~n", [self(), BinMessage]),
             {[], Exchange#exchange{stage=sent_non}}
     end.
@@ -125,7 +125,7 @@ got_rst({in, _BinMessage}, _, Exchange)->
 
 % --- incoming CON->ACK|RST
 in_con({in, BinMessage}, TransArgs, Exchange) ->
-    case catch {ok, coap_message:decode(BinMessage)} of
+    try {ok, coap_message:decode(BinMessage)} of
         {ok, #coap_message{code=undefined}=Message} ->
             % provoked reset
             go_pack_sent(ecoap_request:rst(Message), Exchange);
@@ -134,8 +134,8 @@ in_con({in, BinMessage}, TransArgs, Exchange) ->
             {[{handle_request, Message} | Actions], NewExchange};
         {ok, #coap_message{}=Message} ->
             {Actions, NewExchange} = go_await_aack(Message, TransArgs, Exchange),
-            {[{handle_response, Message} | Actions], NewExchange};
-        _ ->
+            {[{handle_response, Message} | Actions], NewExchange}
+    catch _C:_R ->
             logger:log(warning, "~p received corrupted message ~p~n", [self(), BinMessage]),
             go_pack_sent(ecoap_request:rst(coap_message:get_id(BinMessage)), Exchange)
     end.
@@ -204,7 +204,7 @@ out_con({out, Message}, TransArgs, Exchange) ->
 
 % peer ack
 await_pack({in, BinAck}, _, Exchange) ->
-    case catch {ok, coap_message:decode(BinAck)} of
+    try {ok, coap_message:decode(BinAck)} of
         {ok, #coap_message{type='ACK', code=undefined}=Message} ->
             % this is an empty ack for separate response or observe notification
             % handle_ack(Message, TransArgs, Exchange),
@@ -215,8 +215,8 @@ await_pack({in, BinAck}, _, Exchange) ->
         {ok, #coap_message{type='RST', code=undefined}=Message} ->
             {[cancel_timer, {handle_error, Message, 'RST'}], Exchange#exchange{msgbin= <<>>, stage=aack_sent}};
         {ok, #coap_message{}=Message} ->
-            {[cancel_timer, {handle_response, Message}], Exchange#exchange{msgbin= <<>>, stage=aack_sent}};
-        _ ->
+            {[cancel_timer, {handle_response, Message}], Exchange#exchange{msgbin= <<>>, stage=aack_sent}}
+    catch _C:_R ->
             % shall we inform the receiver the error?
             logger:log(warning, "~p received corrupted message ~p~n", [self(), BinAck]),
             {[], Exchange#exchange{stage=await_pack}}

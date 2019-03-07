@@ -319,9 +319,7 @@ code_change(_OldVsn, State, _Extra) ->
 
 handle(EpID, Request, State=#state{id=ID, cache_timeout=TimeOut, endpoint_pid=EndpointPid}) ->
     Block1 = coap_message:get_option('Block1', Request),
-    case catch assemble_payload(Request, Block1, State) of
-        {error, Code} ->
-            return_response(Request, {error, Code}, State);
+    try assemble_payload(Request, Block1, State) of
         {'Continue', State2} ->
             % io:format("Has Block1~n"),
             ecoap_endpoint:register_handler(EndpointPid, ID, self()),
@@ -330,9 +328,12 @@ handle(EpID, Request, State=#state{id=ID, cache_timeout=TimeOut, endpoint_pid=En
                     ecoap_request:response({ok, 'Continue'}, Request))),
             set_timeout(TimeOut, State2);
         {ok, Payload, State2} ->
-            process_request(EpID, Request#coap_message{payload=Payload}, State2)
+            process_request(EpID, Request#coap_message{payload=Payload}, State2);
+        {error, Code} ->
+            return_response(Request, {error, Code}, State)
+    catch throw:{error, Code} ->
+        return_response(Request, {error, Code}, State)
     end.
-
 
 assemble_payload(#coap_message{payload=Payload}, undefined, State) ->
     {ok, Payload, State};
@@ -513,7 +514,6 @@ cancel_observe_and_send_response(Request, Response, State) ->
 
 
 cancel_observe_and_send_response(Ref, Request, Response, State=#state{module=Module, obstate=ObState}) ->
-    io:format("cancel_observe_and_send_response called~n"),
     ok = coap_unobserve(Module, ObState),
     State2 = cancel_observer(State),
     case Response of

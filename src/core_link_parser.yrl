@@ -29,9 +29,8 @@ strval({_, _, Val}) -> list_to_binary(Val).
 strval(title, {_, _, Val}) -> 
 	list_to_binary(Val);
 strval(sz, {_, _, Val}) -> 
-	case catch {ok, list_to_integer(Val)} of
-		{ok, Integer} -> Integer;
-		{'EXIT', _} -> list_to_binary(Val)
+	try list_to_integer(Val)
+	catch error:badarg -> list_to_binary(Val)
 	end;
 strval(ct, {_, _, Val}) -> 
 	maybe_multiple_strvals(Val, fun list_to_integer/1);
