@@ -92,15 +92,16 @@ convert_attrval(AttrVal) -> AttrVal.
 
 attribute_query_test_() ->
     Link = [{absolute, [<<"sensor">>], [{title, <<"Sensor Index">>}]},
-           {absolute, [<<"sensors">>, <<"temp">>], [{rt, <<"temperature-c">>}, {'if', <<"sensor">>}, {foo, true}, {bar, [<<"one">>, <<"two">>]}]},
+           {absolute, [<<"sensors">>, <<"temp">>], [{rt, <<"temperature-c">>}, {'if', <<"sensor">>}, {foo, true}, {bar, [<<"one">>, <<"two">>]}, {sz, 1280}]},
            {absolute, [<<"sensors">>, <<"light">>], [{rt, [<<"light-lux">>, <<"core.sen-light">>]}, {'if', <<"sensor">>}, {foo, true}]}],
-    Sensors = <<"</sensors/temp>;rt=\"temperature-c\";if=\"sensor\";foo;bar=\"one two\"">>,
+    Sensors = <<"</sensors/temp>;rt=\"temperature-c\";if=\"sensor\";foo;bar=\"one two\";sz=1280">>,
     [?_assertEqual(Sensors, core_link:encode(filter(Link, make_query("bar=one&if=sensor")))),
     ?_assertEqual(Sensors, core_link:encode(filter(Link, make_query("bar=one&foo")))),
     ?_assertEqual(Sensors, core_link:encode(filter(Link, make_query("if=sensor&bar=one")))),
     ?_assertEqual(Sensors, core_link:encode(filter(Link, make_query("foo&bar=one")))),
     ?_assertEqual(Sensors, core_link:encode(filter(Link, make_query("bar=one&bar=two")))),
     ?_assertEqual(Sensors, core_link:encode(filter(Link, make_query("bar=one*")))),
+    ?_assertEqual(Sensors, core_link:encode(filter(Link, make_query("bar=one&sz=1280")))),
     ?_assertEqual(<<>>, core_link:encode(filter(Link, make_query("bar=one&bar=three")))),
     % test for not qualified query
     ?_assertEqual(core_link:encode(Link), core_link:encode(filter(Link, make_query("bar&")))),

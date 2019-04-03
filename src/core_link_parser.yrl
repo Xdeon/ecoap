@@ -17,8 +17,8 @@ PARAMS -> ';' PARAM PARAMS: ['$2'|'$3'].
 PARAMS -> '$empty' : [].
 
 PARAM -> segment : {atomval('$1'), true}.
-PARAM -> segment '=' segment : {atomval('$1'), strval(atomval('$1'), '$3')}.
-PARAM -> segment '=' string : {atomval('$1'), strval(atomval('$1'), '$3')}.
+PARAM -> segment '=' segment : {atomval('$1'), strval('$1', '$3')}.
+PARAM -> segment '=' string : {atomval('$1'), strval('$1', '$3')}.
 
 Erlang code.
 
@@ -26,13 +26,14 @@ atomval({_, _, Val}) -> list_to_atom(Val).
 
 strval({_, _, Val}) -> list_to_binary(Val).
 
-strval(title, {_, _, Val}) -> 
+strval({_, _, "title"}, {_, _, Val}) -> 
 	list_to_binary(Val);
-strval(sz, {_, _, Val}) -> 
-	try list_to_integer(Val)
-	catch error:badarg -> list_to_binary(Val)
-	end;
-strval(ct, {_, _, Val}) -> 
+strval({_, _, "sz"}, {_, _, Val}) -> 
+%	try list_to_integer(Val)
+%	catch error:badarg -> list_to_binary(Val)
+%	end;
+	list_to_integer(Val);
+strval({_, _, "ct"}, {_, _, Val}) -> 
 	maybe_multiple_strvals(Val, fun list_to_integer/1);
 strval(_, {_, _, Val}) -> 
 	maybe_multiple_strvals(Val, fun list_to_binary/1).
