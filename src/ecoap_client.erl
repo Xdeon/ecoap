@@ -26,6 +26,7 @@
 
 %% gen_server.
 -export([init/1]).
+-export([handle_continue/2]).
 -export([handle_call/3]).
 -export([handle_cast/2]).
 -export([handle_info/2]).
@@ -33,10 +34,10 @@
 -export([code_change/3]).
 
 -record(state, {
-	socket = undefined :: closed | {client_socket, pid()} | {server_socket, pid() | atom()},
-	socket_ref = undefined :: reference(),
+	socket = closed :: closed | {client_socket, pid()} | {server_socket, pid() | atom()},
+	socket_ref = undefined :: undefined | reference(),
 	host = undefined :: undefined | binary(),
-	ep_id = undefined :: tuple(),
+	ep_id = undefined :: undefined | tuple(),
 	requests = #{} :: #{reference() => {pid(), request()}},
 	ongoing_blocks = #{} :: #{block_key() => reference()},
 	observe_regs = #{} :: #{observe_key() => reference()},
@@ -308,22 +309,39 @@ get_blockregs(Pid) -> gen_server:call(Pid, get_blockregs).
 %% gen_server.
 
 init([HostString, {socket, Socket}, _Config]) ->
-	case ecoap_uri:decode_uri(HostString) of
-		{_Scheme, Host, EpID, _Path, _Query} ->
-			SocketRef = erlang:monitor(process, Socket),
-			{ok, #state{socket={server_socket, Socket}, socket_ref=SocketRef, host=Host, ep_id=EpID}};
-		{error, Error} ->	
-			{stop, Error}
-	end;
+	SocketRef = erlang:monitor(process, Socket),
+	{ok, #state{socket={server_socket, Socket}, socket_ref=SocketRef}, {continue, {resolve_host, HostString}}};
 init([HostString, SocketOpts, Config]) ->
-	case ecoap_uri:decode_uri(HostString) of
-		{coap, Host, EpID, _Path, _Query} ->
+	{ok, #state{}, {continue, {resolve_host, HostString, SocketOpts, Config}}}.
+
+% Notice that for any other reason than normal, shutdown, or {shutdown,Term}, 
+% the gen_server process is assumed to terminate because of an error and an error report is issued using logger(3).
+handle_continue({resolve_host, HostString}, State) ->
+	{_, Host, EpID} = ecoap_uri:get_peer_addr(HostString),
+	{noreply, State#state{host=Host, ep_id=EpID}};
+handle_continue({resolve_host, HostString, SocketOpts, Config}, State) ->
+	case ecoap_uri:get_peer_addr(HostString) of
+		{coap, Host, EpID} ->
 			{ok, Socket} = ecoap_udp_socket:start_link(SocketOpts, Config),
 			SocketRef = erlang:monitor(process, Socket),
-			{ok, #state{socket={client_socket, Socket}, socket_ref=SocketRef, host=Host, ep_id=EpID}};
-		{error, Error} ->	
-			{stop, Error}
+			{noreply, State#state{socket={client_socket, Socket}, socket_ref=SocketRef, host=Host, ep_id=EpID}};
+		{error, Error} ->
+			{stop, {shutdown, Error}, State}
 	end.
+
+% init([HostString, {socket, Socket}, _Config]) ->
+% 	{_, Host, EpID} = ecoap_uri:get_peer_addr(HostString),
+% 	SocketRef = erlang:monitor(process, Socket),
+% 	{ok, #state{socket={server_socket, Socket}, socket_ref=SocketRef, host=Host, ep_id=EpID}};
+% init([HostString, SocketOpts, Config]) ->
+% 	case ecoap_uri:get_peer_addr(HostString) of
+% 		{coap, Host, EpID} ->
+% 			{ok, Socket} = ecoap_udp_socket:start_link(SocketOpts, Config),
+% 			SocketRef = erlang:monitor(process, Socket),
+% 			{ok, #state{socket={client_socket, Socket}, socket_ref=SocketRef, host=Host, ep_id=EpID}};
+% 		{error, Error} ->
+% 			{stop, {shutdown, Error}}
+% 	end.
 
 handle_call(ping, From, State=#state{socket=Socket, requests=Requests, ep_id=EpID}) ->
 	{ok, EndpointPid} = get_endpoint(Socket, EpID),

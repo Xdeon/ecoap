@@ -1,10 +1,10 @@
 -module(ecoap_uri).
 
--export([decode_uri/1, encode_uri/1, get_path/1, get_query/1]).
+-export([decode_uri/1, encode_uri/1, get_path/1, get_query/1, get_host/1, get_peer_addr/1]).
 
 -include("ecoap.hrl").
 
--type uri() :: string().
+-type uri() :: iodata().
 -type scheme() :: atom().
 -type host() :: binary().
 -type path() :: [binary()].
@@ -37,51 +37,64 @@
 %             end
 %     end.
 
+-spec decode_uri(Uri) -> {Scheme, Host, PeerAddress, Path, Query} | {error, Error} when
+    Uri :: uri(),
+    Scheme :: scheme(),
+    Host :: host() | undefined, 
+    PeerAddress :: {inet:ip_address(), inet:port_number()},
+    Path :: path(),
+    Query :: query(),
+    Error :: term().
 decode_uri(Uri) when is_list(Uri) ->
     decode_uri(list_to_binary(Uri));
 decode_uri(Uri) ->
-    {ok, {Scheme, Host, Port, Path, Query}} = parse_uri(Uri),
+    case get_peer_addr(Uri) of
+        {error, Error} ->
+            {error, Error};
+        {Scheme, Host, PeerAddr} ->
+            {Scheme, Host, PeerAddr, get_path(Uri), get_query(Uri)}
+    end.    
+
+get_peer_addr(Uri) when is_list(Uri) ->
+    get_peer_addr(list_to_binary(Uri));
+get_peer_addr(Uri) ->
+    {Scheme, Host, Port} = get_host(Uri),
     HostString = binary_to_list(Host),
     case inet:parse_address(HostString) of
         {ok, PeerIP} -> 
-            {Scheme, undefined, {PeerIP, Port}, split_path(Path), split_query2(Query)};
+            {Scheme, undefined, {PeerIP, Port}};
         {error, einval} -> 
             case inet:getaddr(HostString, inet) of
                 {ok, PeerIP} ->
-                    {Scheme, Host, {PeerIP, Port}, split_path(Path), split_query2(Query)};
+                    {Scheme, Host, {PeerIP, Port}};
                 {error, Error} ->
                     {error, Error}
             end
-    end.
+    end. 
+
+get_host(Uri) when is_list(Uri) ->
+    get_host(list_to_binary(Uri));
+get_host(Uri) ->
+    ParsedUri = parse_uri(Uri),
+    Scheme = scheme_to_atom(maps:get(scheme, ParsedUri, '')),
+    Host = maps:get(host, ParsedUri, undefined),
+    Port = maps:get(port, ParsedUri, default_port(Scheme)),
+    {Scheme, Host, Port}.
 
 get_path(Uri) when is_list(Uri) ->
     get_path(list_to_binary(Uri));
-get_path(<<"/", _/binary>>=Uri) ->
-    case uri_string:parse(uri_string:normalize(Uri)) of
-        {error, Reason, _} -> {error, Reason};
-        ParsedUri -> split_path(maps:get(path, ParsedUri, <<>>))
-    end;
-get_path(Uri) -> 
-    {error, {bad_uri, Uri}}.
+get_path(Uri) ->
+    split_path(maps:get(path, parse_uri(Uri), <<>>)).
 
 get_query(Uri) when is_list(Uri) ->
     get_query(list_to_binary(Uri));
 get_query(Uri) ->
-    case uri_string:parse(uri_string:normalize(Uri)) of
-        {error, Reason, _} -> {error, Reason};
-        ParsedUri -> split_query2(maps:get(query, ParsedUri, <<>>))
-    end.
+    split_query2(maps:get(query, parse_uri(Uri), <<>>)).
 
 parse_uri(Uri) ->
     case uri_string:parse(uri_string:normalize(Uri)) of 
-        {error, Reason, _} -> {error, Reason};
-        ParsedUri ->    
-            Scheme = scheme_to_atom(maps:get(scheme, ParsedUri, '')),
-            Host = maps:get(host, ParsedUri, undefined),
-            Port = maps:get(port, ParsedUri, default_port(Scheme)),
-            Path = maps:get(path, ParsedUri, <<>>),
-            Query = maps:get(query, ParsedUri, <<>>),
-            {ok, {Scheme, Host, Port, Path, Query}}
+        {error, _, _} = Error -> throw(Error);
+        ParsedUri -> ParsedUri
     end.
 
 scheme_to_atom(<<"coap">>) ->
