@@ -23,6 +23,8 @@ Rules.
 
 Erlang code.
 
+%% Has been fixed in latest Erlang version
+
 %% Eliminate a dialyzer warning like below:
 %% leexinc.hrl:268: Function yyrev/2 will never be called
--dialyzer({nowarn_function, yyrev/2}).
+%% -dialyzer({nowarn_function, yyrev/2}).
