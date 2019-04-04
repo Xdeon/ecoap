@@ -104,6 +104,30 @@
     Reason :: reason().
 -optional_callbacks([coap_put/4]).  
 
+% PATCH handler
+-callback coap_patch(EpID, Prefix, Suffix, Request) -> 
+    ok | {ok, Content} | {error, Error} | {error, Error, Reason} when
+    EpID :: ecoap_endpoint:ecoap_endpoint_id(),
+    Prefix :: uri(),
+    Suffix :: uri(),
+    Request :: coap_message:coap_message(),
+    Content :: coap_content:coap_content(),
+    Error :: coap_message:error_code(),
+    Reason :: reason().
+-optional_callbacks([coap_patch/4]).
+
+% iPATCH handler
+-callback coap_ipatch(EpID, Prefix, Suffix, Request) -> 
+    ok | {ok, Content} | {error, Error} | {error, Error, Reason} when
+    EpID :: ecoap_endpoint:ecoap_endpoint_id(),
+    Prefix :: uri(),
+    Suffix :: uri(),
+    Request :: coap_message:coap_message(),
+    Content :: coap_content:coap_content(),
+    Error :: coap_message:error_code(),
+    Reason :: reason().
+-optional_callbacks([coap_ipatch/4]).  
+
 % DELETE handler
 -callback coap_delete(EpID, Prefix, Suffix, Request) -> 
     ok | {ok, Content} | {error, Error} | {error, Error, Reason} when
