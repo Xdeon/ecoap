@@ -10,8 +10,24 @@
 %% API.
 -export([open/1, open/2, open/3, close/1]).
 -export([ping/1]).
--export([get/2, get/3, get/4, put/3, put/4, put/5, post/3, post/4, post/5, delete/2, delete/3, delete/4]).
--export([get_async/2, get_async/3, put_async/3, put_async/4, post_async/3, post_async/4, delete_async/2, delete_async/3]).
+-export([
+	get/2, get/3, get/4, 
+	put/3, put/4, put/5, 
+	post/3, post/4, post/5, 
+	delete/2, delete/3, delete/4, 
+	fetch/4, fetch/5,
+	patch/4, patch/5,
+	ipatch/4, ipatch/5
+	]).
+-export([
+	get_async/2, get_async/3, 
+	put_async/3, put_async/4, 
+	post_async/3, post_async/4, 
+	delete_async/2, delete_async/3, 
+	fetch_async/4,
+	patch_async/4, 
+	ipatch_async/4
+	]).
 -export([observe/2, observe/3, observe_and_wait_response/2, observe_and_wait_response/3, observe_and_wait_response/4]).
 -export([unobserve/2, unobserve/3, unobserve_and_wait_response/2, unobserve_and_wait_response/3, unobserve_and_wait_response/4]).
 -export([cancel_request/2]).
@@ -75,15 +91,15 @@
 -type socket_id() :: pid() | atom() | tuple().
 
 %% API.
--spec open(string()) -> {ok, pid()} | {error, term()}.
+-spec open(iodata()) -> {ok, pid()} | {error, term()}.
 open(HostString) ->
 	start_link(HostString, [], #{}).
 
--spec open(string(), [gen_udp:option()] | {socket, socket_id()}) -> {ok, pid()} | {error, term()}.
+-spec open(iodata(), [gen_udp:option()] | {socket, socket_id()}) -> {ok, pid()} | {error, term()}.
 open(HostString, SocketOpts) ->
 	start_link(HostString, SocketOpts, #{}).
 
--spec open(string(), [gen_udp:option()] | {socket, socket_id()}, ecoap:config()) -> {ok, pid()} | {error, term()}.
+-spec open(iodata(), [gen_udp:option()] | {socket, socket_id()}, ecoap:config()) -> {ok, pid()} | {error, term()}.
 open(HostString, SocketOpts, Config) ->
 	start_link(HostString, SocketOpts, Config).
 
@@ -98,91 +114,127 @@ ping(Pid) ->
 		Else -> Else
 	end.
 
--spec get(pid(), string()) -> response().
+-spec get(pid(), iodata()) -> response().
 get(Pid, Uri) ->
 	request(Pid, 'GET', Uri, <<>>, #{}, infinity).
 
--spec get(pid(), string(), coap_message:optionset()) -> response().
+-spec get(pid(), iodata(), coap_message:optionset()) -> response().
 get(Pid, Uri, Options) ->
 	request(Pid, 'GET', Uri, <<>>, Options, infinity).
 
--spec get(pid(), string(), coap_message:optionset(), non_neg_integer() | infinity) -> response().
+-spec get(pid(), iodata(), coap_message:optionset(), non_neg_integer() | infinity) -> response().
 get(Pid, Uri, Options, TimeOut) ->
 	request(Pid, 'GET', Uri, <<>>, Options, TimeOut).
 
--spec get_async(pid(), string()) -> {ok, reference()}.
+-spec get_async(pid(), iodata()) -> {ok, reference()}.
 get_async(Pid, Uri) ->
 	request_async(Pid, 'GET', Uri, <<>>, #{}).
 
--spec get_async(pid(), string(), coap_message:optionset()) -> {ok, reference()}.
+-spec get_async(pid(), iodata(), coap_message:optionset()) -> {ok, reference()}.
 get_async(Pid, Uri, Options) ->
 	request_async(Pid, 'GET', Uri, <<>>, Options).
 
--spec put(pid(), string(), binary()) -> response().
+-spec put(pid(), iodata(), binary()) -> response().
 put(Pid, Uri, Content) ->
 	request(Pid, 'PUT', Uri, Content, #{}, infinity).
 
--spec put(pid(), string(), binary(), coap_message:optionset()) -> response().
+-spec put(pid(), iodata(), binary(), coap_message:optionset()) -> response().
 put(Pid, Uri, Content, Options) ->
 	request(Pid, 'PUT', Uri, Content, Options, infinity).
 
--spec put(pid(), string(), binary(), coap_message:optionset(), non_neg_integer() | infinity) -> response().
+-spec put(pid(), iodata(), binary(), coap_message:optionset(), non_neg_integer() | infinity) -> response().
 put(Pid, Uri, Content, Options, TimeOut) ->
 	request(Pid, 'PUT', Uri, Content, Options, TimeOut).
 
--spec put_async(pid(), string(), binary()) -> {ok, reference()}.
+-spec put_async(pid(), iodata(), binary()) -> {ok, reference()}.
 put_async(Pid, Uri, Content) ->
 	request_async(Pid, 'PUT', Uri, Content, #{}).
 
--spec put_async(pid(), string(), binary(), coap_message:optionset()) -> {ok, reference()}.
+-spec put_async(pid(), iodata(), binary(), coap_message:optionset()) -> {ok, reference()}.
 put_async(Pid, Uri, Content, Options) ->
 	request_async(Pid, 'PUT', Uri, Content, Options).
 
--spec post(pid(), string(), binary()) -> response().
+-spec post(pid(), iodata(), binary()) -> response().
 post(Pid, Uri, Content) ->
 	request(Pid, 'POST', Uri, Content, #{}, infinity).
 
--spec post(pid(), string(), binary(), coap_message:optionset()) -> response().
+-spec post(pid(), iodata(), binary(), coap_message:optionset()) -> response().
 post(Pid, Uri, Content, Options) ->
 	request(Pid, 'POST', Uri, Content, Options, infinity).
 
--spec post(pid(), string(), binary(), coap_message:optionset(), non_neg_integer() | infinity) -> response().
+-spec post(pid(), iodata(), binary(), coap_message:optionset(), non_neg_integer() | infinity) -> response().
 post(Pid, Uri, Content, Options, TimeOut) ->
 	request(Pid, 'POST', Uri, Content, Options, TimeOut).
 
--spec post_async(pid(), string(), binary()) -> {ok, reference()}.
+-spec post_async(pid(), iodata(), binary()) -> {ok, reference()}.
 post_async(Pid, Uri, Content) ->
 	request_async(Pid, 'POST', Uri, Content, #{}).
 
--spec post_async(pid(), string(), binary(), coap_message:optionset()) -> {ok, reference()}.
+-spec post_async(pid(), iodata(), binary(), coap_message:optionset()) -> {ok, reference()}.
 post_async(Pid, Uri, Content, Options) ->
 	request_async(Pid, 'POST', Uri, Content, Options).
 
--spec delete(pid(), string()) -> response().
+-spec delete(pid(), iodata()) -> response().
 delete(Pid, Uri) ->
 	request(Pid, 'DELETE', Uri, <<>>, #{}, infinity).
 
--spec delete(pid(), string(), coap_message:optionset()) -> response().
+-spec delete(pid(), iodata(), coap_message:optionset()) -> response().
 delete(Pid, Uri, Options) ->
 	request(Pid, 'DELETE', Uri, <<>>, Options, infinity).
 
--spec delete(pid(), string(), coap_message:optionset(), non_neg_integer() | infinity) -> response().
+-spec delete(pid(), iodata(), coap_message:optionset(), non_neg_integer() | infinity) -> response().
 delete(Pid, Uri, Options, TimeOut) ->
 	request(Pid, 'DELETE', Uri, <<>>, Options, TimeOut).
 
--spec delete_async(pid(), string()) -> {ok, reference()}.
+-spec delete_async(pid(), iodata()) -> {ok, reference()}.
 delete_async(Pid, Uri) ->
 	request_async(Pid, 'DELETE', Uri, <<>>, #{}).
 
--spec delete_async(pid(), string(), coap_message:optionset()) -> {ok, reference()}.
+-spec delete_async(pid(), iodata(), coap_message:optionset()) -> {ok, reference()}.
 delete_async(Pid, Uri, Options) ->
 	request_async(Pid, 'DELETE', Uri, <<>>, Options).
 
--spec request(pid(), coap_message:coap_method(), string(), binary(), coap_message:optionset(), non_neg_integer() | infinity) -> response().
+-spec fetch(pid(), iodata(), binary(), coap_message:optionset()) -> response().
+fetch(Pid, Uri, Content, Options) ->
+	request(Pid, 'FETCH', Uri, Content, Options, infinity).
+
+-spec fetch(pid(), iodata(), binary(), coap_message:optionset(), non_neg_integer() | infinity) -> response().
+fetch(Pid, Uri, Content, Options, TimeOut) ->
+	request(Pid, 'FETCH', Uri, Content, Options, TimeOut).
+
+-spec fetch_async(pid(), iodata(), binary(), coap_message:optionset()) -> {ok, reference()}.
+fetch_async(Pid, Uri, Content, Options) ->
+	request_async(Pid, 'FETCH', Uri, Content, Options).
+
+-spec patch(pid(), iodata(), binary(), coap_message:optionset()) -> response().
+patch(Pid, Uri, Content, Options) ->
+	request(Pid, 'PATCH', Uri, Content, Options, infinity).
+
+-spec patch(pid(), iodata(), binary(), coap_message:optionset(), non_neg_integer() | infinity) -> response().
+patch(Pid, Uri, Content, Options, TimeOut) ->
+	request(Pid, 'PATCH', Uri, Content, Options, TimeOut).
+
+-spec patch_async(pid(), iodata(), binary(), coap_message:optionset()) -> {ok, reference()}.
+patch_async(Pid, Uri, Content, Options) ->
+	request_async(Pid, 'PATCH', Uri, Content, Options).
+
+-spec ipatch(pid(), iodata(), binary(), coap_message:optionset()) -> response().
+ipatch(Pid, Uri, Content, Options) ->
+	request(Pid, 'iPATCH', Uri, Content, Options, infinity).
+
+-spec ipatch(pid(), iodata(), binary(), coap_message:optionset(), non_neg_integer() | infinity) -> response().
+ipatch(Pid, Uri, Content, Options, TimeOut) ->
+	request(Pid, 'iPATCH', Uri, Content, Options, TimeOut).
+
+-spec ipatch_async(pid(), iodata(), binary(), coap_message:optionset()) -> {ok, reference()}.
+ipatch_async(Pid, Uri, Content, Options) ->
+	request_async(Pid, 'iPATCH', Uri, Content, Options).
+
+-spec request(pid(), coap_message:coap_method(), iodata(), binary(), coap_message:optionset(), non_neg_integer() | infinity) -> response().
 request(Pid, Method, Uri, Content, Options, TimeOut) ->
 	gen_server:call(Pid, {request, sync, Method, Uri, Content, Options}, TimeOut).
 
--spec request_async(pid(), coap_message:coap_method(), string(), binary(), coap_message:optionset()) -> {ok, reference()}.
+-spec request_async(pid(), coap_message:coap_method(), iodata(), binary(), coap_message:optionset()) -> {ok, reference()}.
 request_async(Pid, Method, Uri, Content, Options) ->
 	gen_server:call(Pid, {request, async, Method, Uri, Content, Options}).
 
@@ -190,23 +242,23 @@ request_async(Pid, Method, Uri, Content, Options) ->
 cancel_request(Pid, Ref) ->
 	gen_server:call(Pid, {cancel_request, Ref}).
 
--spec observe(pid(), string()) -> {ok, reference()}.
+-spec observe(pid(), iodata()) -> {ok, reference()}.
 observe(Pid, Uri) ->
 	observe(Pid, Uri, #{}).
 
--spec observe(pid(), string(), coap_message:optionset()) -> {ok, reference()}.
+-spec observe(pid(), iodata(), coap_message:optionset()) -> {ok, reference()}.
 observe(Pid, Uri, Options) ->
 	gen_server:call(Pid, {observe, Uri, Options}).
 
--spec observe_and_wait_response(pid(), string()) -> observe_response() | response().
+-spec observe_and_wait_response(pid(), iodata()) -> observe_response() | response().
 observe_and_wait_response(Pid, Uri) ->
 	observe_and_wait_response(Pid, Uri, #{}, infinity).
 
--spec observe_and_wait_response(pid(), string(), coap_message:optionset()) -> observe_response() | response().
+-spec observe_and_wait_response(pid(), iodata(), coap_message:optionset()) -> observe_response() | response().
 observe_and_wait_response(Pid, Uri, Options) ->
 	observe_and_wait_response(Pid, Uri, Options, infinity).
 
--spec observe_and_wait_response(pid(), string(), coap_message:optionset(), non_neg_integer() | infinity) -> observe_response() | response().
+-spec observe_and_wait_response(pid(), iodata(), coap_message:optionset(), non_neg_integer() | infinity) -> observe_response() | response().
 observe_and_wait_response(Pid, Uri, Options, TimeOut) ->
 	{ok, Ref} = observe(Pid, Uri, Options),
 	MonitorRef = erlang:monitor(process, Pid),
@@ -287,7 +339,7 @@ flush_pid(Pid) ->
 get_remote_addr(Pid) ->
 	gen_server:call(Pid, get_remote_addr).
 
--spec start_link(string(), [gen_udp:option()] | {socket, pid() | atom()}, ecoap:config()) -> {ok, pid()} | {error, term()}.
+-spec start_link(iodata(), [gen_udp:option()] | {socket, pid() | atom()}, ecoap:config()) -> {ok, pid()} | {error, term()}.
 start_link(HostString, SocketOpts, Config) ->
 	gen_server:start_link(?MODULE, [HostString, SocketOpts, Config], []).
 

@@ -47,7 +47,7 @@
 
 -type coap_type() :: 'CON' | 'NON' | 'ACK' | 'RST'.
 
--type coap_method() :: 'GET' | 'POST' | 'PUT' | 'DELETE'.
+-type coap_method() :: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'FETCH' | 'PATCH' | 'iPATCH'.
 
 -type success_code() :: 'Created' | 'Deleted' | 'Valid' | 'Changed' | 'Content' | 'Continue'.
 
@@ -67,7 +67,9 @@
                     | 'BadGateway' 
                     | 'ServiceUnavailable' 
                     | 'GatewayTimeout' 
-                    | 'ProxyingNotSupported'.
+                    | 'ProxyingNotSupported'
+                    | 'Conflict'
+                    | 'UnprocessableEntity'.
 
 -type coap_success() :: {ok, success_code()}. 
 

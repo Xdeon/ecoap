@@ -65,6 +65,9 @@ decode_code({0, 01}) -> 'GET';
 decode_code({0, 02}) -> 'POST';
 decode_code({0, 03}) -> 'PUT';
 decode_code({0, 04}) -> 'DELETE';
+decode_code({0, 05}) -> 'FETCH';
+decode_code({0, 06}) -> 'PATCH';
+decode_code({0, 07}) -> 'iPATCH';
 % success is a tuple {ok, ...}
 decode_code({2, 01}) -> {ok, 'Created'};
 decode_code({2, 02}) -> {ok, 'Deleted'};
@@ -81,9 +84,11 @@ decode_code({4, 04}) -> {error, 'NotFound'};
 decode_code({4, 05}) -> {error, 'MethodNotAllowed'};
 decode_code({4, 06}) -> {error, 'NotAcceptable'};
 decode_code({4, 08}) -> {error, 'RequestEntityIncomplete'}; % block
+decode_code({4, 09}) -> {error, 'Conflict'};
 decode_code({4, 12}) -> {error, 'PreconditionFailed'};
 decode_code({4, 13}) -> {error, 'RequestEntityTooLarge'};
 decode_code({4, 15}) -> {error, 'UnsupportedContentFormat'};
+decode_code({4, 22}) -> {error, 'UnprocessableEntity'};
 decode_code({5, 00}) -> {error, 'InternalServerError'};
 decode_code({5, 01}) -> {error, 'NotImplemented'};
 decode_code({5, 02}) -> {error, 'BadGateway'};
@@ -91,11 +96,15 @@ decode_code({5, 03}) -> {error, 'ServiceUnavailable'};
 decode_code({5, 04}) -> {error, 'GatewayTimeout'};
 decode_code({5, 05}) -> {error, 'ProxyingNotSupported'}.
 
+
 -spec encode_code(coap_message:coap_code()) -> coap_code_raw().
 encode_code('GET') -> {0, 01};
 encode_code('POST') -> {0, 02};
 encode_code('PUT') -> {0, 03};
 encode_code('DELETE') -> {0, 04};
+encode_code('FETCH') -> {0, 05};
+encode_code('PATCH') -> {0, 06};
+encode_code('iPATCH') -> {0, 07};
 encode_code({ok, 'Created'}) -> {2, 01};
 encode_code({ok, 'Deleted'}) -> {2, 02};
 encode_code({ok, 'Valid'}) -> {2, 03};
@@ -110,9 +119,11 @@ encode_code({error, 'NotFound'}) -> {4, 04};
 encode_code({error, 'MethodNotAllowed'}) -> {4, 05};
 encode_code({error, 'NotAcceptable'}) -> {4, 06};
 encode_code({error, 'RequestEntityIncomplete'}) -> {4, 08};
+encode_code({error, 'Conflict'}) -> {4, 09};
 encode_code({error, 'PreconditionFailed'}) -> {4, 12};
 encode_code({error, 'RequestEntityTooLarge'}) -> {4, 13};
 encode_code({error, 'UnsupportedContentFormat'}) -> {4, 15};
+encode_code({error, 'UnprocessableEntity'}) -> {4, 22};
 encode_code({error, 'InternalServerError'}) -> {5, 00};
 encode_code({error, 'NotImplemented'}) -> {5, 01};
 encode_code({error, 'BadGateway'}) -> {5, 02};
@@ -167,6 +178,9 @@ code() ->
 	    {{0, 02}, 'POST'},
 	    {{0, 03}, 'PUT'},
 	    {{0, 04}, 'DELETE'},
+	    {{0, 05}, 'FETCH'},
+	    {{0, 06}, 'PATCH'},
+	    {{0, 07}, 'iPATCH'},
 	    % success is a tuple {ok, ...}
 	    {{2, 01}, {ok, 'Created'}},
 	    {{2, 02}, {ok, 'Deleted'}},
@@ -183,9 +197,11 @@ code() ->
 	    {{4, 05}, {error, 'MethodNotAllowed'}},
 	    {{4, 06}, {error, 'NotAcceptable'}},
 	    {{4, 08}, {error, 'RequestEntityIncomplete'}}, % block
+	    {{4, 09}, {error, 'Conflict'}},
 	    {{4, 12}, {error, 'PreconditionFailed'}},
 	    {{4, 13}, {error, 'RequestEntityTooLarge'}},
 	    {{4, 15}, {error, 'UnsupportedContentFormat'}},
+	    {{4, 22}, {error, 'UnprocessableEntity'}},
 	    {{5, 00}, {error, 'InternalServerError'}},
 	    {{5, 01}, {error, 'NotImplemented'}},
 	    {{5, 02}, {error, 'BadGateway'}},

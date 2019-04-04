@@ -67,6 +67,18 @@
     Reason :: reason().
 -optional_callbacks([coap_get/5]). 
 
+% FETCH handler
+-callback coap_fetch(EpID, Prefix, Suffix, Request) -> 
+    {ok, Content} | {error, Error} | {error, Error, Reason} when
+    EpID :: ecoap_endpoint:ecoap_endpoint_id(),
+    Prefix :: uri(),
+    Suffix :: uri(),
+    Request :: coap_message:coap_message(),
+    Content :: coap_content:coap_content(),
+    Error :: coap_message:error_code(),
+    Reason :: reason().
+-optional_callbacks([coap_fetch/4]). 
+
 % POST handler
 -callback coap_post(EpID, Prefix, Suffix, Request) -> 
     {ok, Code, Content} | {error, Error} | {error, Error, Reason} when
@@ -82,22 +94,24 @@
 
 % PUT handler
 -callback coap_put(EpID, Prefix, Suffix, Request) -> 
-    ok | {error, Error} | {error, Error, Reason} when
+    ok | {ok, Content} | {error, Error} | {error, Error, Reason} when
     EpID :: ecoap_endpoint:ecoap_endpoint_id(),
     Prefix :: uri(),
     Suffix :: uri(),
     Request :: coap_message:coap_message(),
+    Content :: coap_content:coap_content(),
     Error :: coap_message:error_code(),
     Reason :: reason().
 -optional_callbacks([coap_put/4]).  
 
 % DELETE handler
 -callback coap_delete(EpID, Prefix, Suffix, Request) -> 
-    ok | {error, Error} | {error, Error, Reason} when
+    ok | {ok, Content} | {error, Error} | {error, Error, Reason} when
     EpID :: ecoap_endpoint:ecoap_endpoint_id(),
     Prefix :: uri(),
     Suffix :: uri(),
     Request :: coap_message:coap_message(),
+    Content :: coap_content:coap_content(),
     Error :: coap_message:error_code(),
     Reason :: reason().
 -optional_callbacks([coap_delete/4]).   
@@ -213,11 +227,9 @@ handle_call(_Request, _From, State) ->
 handle_cast(shutdown, State=#state{observer=undefined}) ->
     {stop, normal, State};
 
-handle_cast(shutdown, State) ->
-    try cancel_observe_and_terminate(State)
-    catch C:R:S ->
-        error_terminate(C, R, S)
-    end;
+handle_cast(shutdown, State=#state{module=Module, obstate=ObState}) ->
+    ok = coap_unobserve(Module, ObState),
+    {stop, normal, cancel_observer(State)};
 
 handle_cast(_Msg, State) ->
     % error_logger:error_msg("unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
@@ -247,17 +259,12 @@ handle_info({coap_request, EpID, _EndpointPid, _Receiver=undefined, Request}, St
     handle(EpID, Request, State);
 
 handle_info({coap_ack, _EpID, _EndpointPid, Ref}, State=#state{module=Module, obstate=ObState}) ->
-    try {ok, ObState2} = coap_ack(Module, Ref, ObState),
-        {noreply, State#state{obstate=ObState2}}
-    catch C:R:S -> 
-        error_terminate(C, R, S)
-    end;
+    {ok, ObState2} = coap_ack(Module, Ref, ObState),
+    {noreply, State#state{obstate=ObState2}};
 
-handle_info({coap_error, _EpID, _EndpointPid, _Ref, _Error}, State) ->
-    try cancel_observe_and_terminate(State)
-    catch C:R:S ->
-        error_terminate(C, R, S)
-    end;
+handle_info({coap_error, _EpID, _EndpointPid, _Ref, _Error}, State=#state{module=Module, obstate=ObState}) ->
+    ok = coap_unobserve(Module, ObState),
+    {stop, normal, cancel_observer(State)};
 
 handle_info({timeout, TRef, cache_expired}, State=#state{observer=undefined, timer=TRef}) ->
     {stop, normal, State};
@@ -283,13 +290,16 @@ handle_info(Info, State=#state{module=Module, observer=Observer, obstate=ObState
     end catch C:R:S ->
         % send message directly without calling another user-defined callback (coap_unobserve) if this is a crash
         % because we do not want to be override by another possible crash
-        send_server_error(Observer, cancel_observer(State)),
+        send_server_error(Observer, State),
         error_terminate(C, R, S)
     end.
 
 
 handle_notify(Ref, {error, Code}, ObState2, Observer, State) ->
-    cancel_observe_and_send_response(Ref, Observer, {error, Code}, State#state{obstate=ObState2});
+    handle_notify(Ref, {error, Code, <<>>}, ObState2, Observer, State);
+
+handle_notify(Ref, {error, Code, Reason}, ObState2, Observer, State) ->
+    cancel_observe_and_send_response(Ref, Observer, {error, Code, Reason}, State#state{obstate=ObState2});
 
 handle_notify(Ref, Content, ObState2, Observer, State) ->
     return_resource(Ref, Observer, {ok, 'Content'}, Content, State#state{obstate=ObState2}).
@@ -439,19 +449,17 @@ if_none_match(Request, _Content) ->
     not coap_message:has_option('If-None-Match', Request).
 
 
-handle_method(_EpID, Request=#coap_message{code='GET'}, {error, Code}, State) ->
-    return_response(Request, {error, Code}, State);
+handle_method(_EpID, Request=#coap_message{code=Code}, {error, Error}, State) when Code =:= 'GET'; Code =:= 'FETCH' ->
+    return_response(Request, {error, Error}, State);
 
-handle_method(EpID, Request=#coap_message{code='GET'}, Content, State) ->
-    case coap_message:get_option('Observe', Request) of
-        0 ->
-            handle_observe(EpID, Request, Content, State);
-        1 ->
-            handle_unobserve(EpID, Request, Content, State);
-        undefined ->
-            return_resource(Request, Content, State);
-        _Else ->
-            return_response(Request, {error, 'BadOption'}, State)
+handle_method(EpID, Request=#coap_message{code=Code}, Content, State) when Code =:= 'GET'; Code =:= 'FETCH' ->
+    case go_get_or_fetch(EpID, Request, Content, State) of
+        {ok, Content2} ->
+            check_observe(EpID, Request, Content2, State);
+        {error, Error} ->
+            return_response(Request, {error, Error}, State);
+        {error, Error, Reason} ->
+            return_response([], Request, {error, Error}, Reason, State)
     end;
 
 handle_method(EpID, Request=#coap_message{code='POST'}, _Content, State) ->
@@ -463,8 +471,34 @@ handle_method(EpID, Request=#coap_message{code='PUT'}, Content, State) ->
 handle_method(EpID, Request=#coap_message{code='DELETE'}, _Content, State) ->
     handle_delete(EpID, Request, State);
 
+handle_method(EpID, Request=#coap_message{code='PATCH'}, Content, State) ->
+    handle_patch(EpID, Request, Content, State);
+
+handle_method(EpID, Request=#coap_message{code='iPATCH'}, Content, State) ->
+    handle_ipatch(EpID, Request, Content, State);
+
 handle_method(_EpID, Request, _Content, State) ->
     return_response(Request, {error, 'MethodNotAllowed'}, State).
+
+
+go_get_or_fetch(_EpID, #coap_message{code='GET'}, Content, _State) ->
+    {ok, Content};
+
+go_get_or_fetch(EpID, Request=#coap_message{code='FETCH'}, _Content, #state{module=Module, prefix=Prefix, suffix=Suffix}) ->
+    coap_fetch(Module, EpID, Prefix, Suffix, Request).
+
+
+check_observe(EpID, Request, Content, State) ->
+    case coap_message:get_option('Observe', Request) of
+        0 ->
+            handle_observe(EpID, Request, Content, State);
+        1 ->
+            handle_unobserve(EpID, Request, Content, State);
+        undefined ->
+            return_resource(Request, Content, State);
+        _Else ->
+            return_response(Request, {error, 'BadOption'}, State)
+    end.
 
 % TODO: when there is a cluster of servers, it is likely a load balancer that does not use sticky mode
 % dispatches observe requests from a single client to different server instances, which creates duplicate 
@@ -504,28 +538,20 @@ handle_unobserve(_EpID, Request, Content, State) ->
     return_resource(Request, Content, State).
 
 
-cancel_observe_and_terminate(State=#state{module=Module, obstate=ObState}) ->
-    ok = coap_unobserve(Module, ObState),
-    {stop, normal, cancel_observer(State)}.
-
-
 cancel_observe_and_send_response(Request, Response, State) ->
     cancel_observe_and_send_response([], Request, Response, State).
 
 
 cancel_observe_and_send_response(Ref, Request, Response, State=#state{module=Module, obstate=ObState}) ->
-    ok = coap_unobserve(Module, ObState),
     State2 = cancel_observer(State),
+    ok = coap_unobserve(Module, ObState),
     case Response of
-        {error, Code} ->
-            return_response(Ref, Request, {error, Code}, <<>>, State2);
+        {error, Code, Reason} ->
+            return_response(Ref, Request, {error, Code}, Reason, State2);
         #coap_content{} ->
             return_resource(Ref, Request, {ok, 'Content'}, Response, State2)
     end.
 
-
-cancel_observer(State=#state{observer=undefined}) ->
-    State;
 
 cancel_observer(State=#state{uri=Uri}) ->
     ok = pg2:leave({coap_observer, Uri}, self()),
@@ -552,6 +578,34 @@ handle_put(EpID, Request, Content, State=#state{prefix=Prefix, suffix=Suffix, mo
     case coap_put(Module, EpID, Prefix, Suffix, Request) of
         ok ->
             return_response(Request, created_or_changed(Content), State);
+        {ok, Content} ->
+            return_resource([], Request, created_or_changed(Content), Content, State);
+        {error, Error} ->
+            return_response(Request, {error, Error}, State);
+        {error, Error, Reason} ->
+            return_response([], Request, {error, Error}, Reason, State)
+    end.
+
+
+handle_patch(EpID, Request, Content, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
+    case coap_patch(Module, EpID, Prefix, Suffix, Request) of
+        ok ->
+            return_response(Request, created_or_changed(Content), State);
+        {ok, Content} ->
+            return_resource([], Request, created_or_changed(Content), Content, State);
+        {error, Error} ->
+            return_response(Request, {error, Error}, State);
+        {error, Error, Reason} ->
+            return_response([], Request, {error, Error}, Reason, State)
+    end.
+
+
+handle_ipatch(EpID, Request, Content, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
+    case coap_ipatch(Module, EpID, Prefix, Suffix, Request) of
+        ok ->
+            return_response(Request, created_or_changed(Content), State);
+        {ok, Content} ->
+            return_resource([], Request, created_or_changed(Content), Content, State);
         {error, Error} ->
             return_response(Request, {error, Error}, State);
         {error, Error, Reason} ->
@@ -570,6 +624,8 @@ handle_delete(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=M
     case coap_delete(Module, EpID, Prefix, Suffix, Request) of
         ok ->
             return_response(Request, {ok, 'Deleted'}, State);
+        {ok, Content} ->
+            return_resource([], Request, created_or_changed(Content), Content, State);
         {error, Error} ->
             return_response(Request, {error, Error}, State);
         {error, Error, Reason} ->
@@ -658,13 +714,20 @@ next_seq(Seq) ->
 get_etag(Options) ->
     case coap_message:get_option('ETag', Options) of
         [ETag] -> ETag;
-        _ -> undefined
+        undefined -> undefined
     end.
 
 
 coap_get(Module, EpID, Prefix, Suffix, Query, Request) ->
     case erlang:function_exported(Module, coap_get, 5) of
         true -> Module:coap_get(EpID, Prefix, Suffix, Query, Request);
+        false -> {error, 'MethodNotAllowed'}
+    end.
+
+
+coap_fetch(Module, EpID, Prefix, Suffix, Request) ->
+    case erlang:function_exported(Module, coap_fetch, 4) of
+        true -> Module:coap_fetch(EpID, Prefix, Suffix, Request);
         false -> {error, 'MethodNotAllowed'}
     end.
 
@@ -679,6 +742,18 @@ coap_post(Module, EpID, Prefix, Suffix, Request) ->
 coap_put(Module, EpID, Prefix, Suffix, Request) ->
     case erlang:function_exported(Module, coap_put, 4) of
         true -> Module:coap_put(EpID, Prefix, Suffix, Request);
+        false -> {error, 'MethodNotAllowed'}
+    end.
+
+coap_patch(Module, EpID, Prefix, Suffix, Request) ->
+    case erlang:function_exported(Module, coap_patch, 4) of
+        true -> Module:coap_patch(EpID, Prefix, Suffix, Request);
+        false -> {error, 'MethodNotAllowed'}
+    end.
+
+coap_ipatch(Module, EpID, Prefix, Suffix, Request) ->
+    case erlang:function_exported(Module, coap_ipatch, 4) of
+        true -> Module:coap_ipatch(EpID, Prefix, Suffix, Request);
         false -> {error, 'MethodNotAllowed'}
     end.
 
@@ -726,10 +801,12 @@ send_server_error(Request, State) ->
     send_server_error([], Request, State).
 
 
-send_server_error(Ref, Request, State=#state{endpoint_pid=EndpointPid}) ->
-    _ = cancel_observer(State),
+send_server_error(Ref, Request, State=#state{endpoint_pid=EndpointPid, observer=Observer}) ->
     {ok, _} = ecoap_endpoint:send_response(EndpointPid, Ref, ecoap_request:response({error, 'InternalServerError'}, <<>>, Request)),
-    ok.
+    case Observer of
+        undefined -> ok;
+        _ -> _ = cancel_observer(State), ok
+    end.
 
 
 error_terminate(Class, {case_clause, BadReply}, Stacktrace) ->
