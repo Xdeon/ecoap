@@ -25,13 +25,32 @@
 -define(OPTION_URI_QUERY, 15).
 -define(OPTION_ACCEPT, 17).
 -define(OPTION_LOCATION_QUERY, 20).
--define(OPTION_BLOCK2, 23). % draft-ietf-core-block-17
+-define(OPTION_BLOCK2, 23). % RFC 7959
 -define(OPTION_BLOCK1, 27).
 -define(OPTION_PROXY_URI, 35).
 -define(OPTION_PROXY_SCHEME, 39).
 -define(OPTION_SIZE1, 60).
 -define(OPTION_SIZE2, 28).
 -define(OPTION_NO_RESPONSES, 258). % RFC 7967
+
+-define(OPTION_IF_MATCH_LENGTH, 8).
+-define(OPTION_URI_HOST_LENGTH, 255).
+-define(OPTION_ETAG_LENGTH, 8).
+-define(OPTION_IF_NONE_MATCH_LENGTH, 0).
+-define(OPTION_URI_PORT_LENGTH, 2).
+-define(OPTION_LOCATION_PATH_LENGTH, 255).
+-define(OPTION_URI_PATH_LENGTH, 255).
+-define(OPTION_CONTENT_FORMAT_LENGTH, 2).
+-define(OPTION_MAX_AGE_LENGTH, 4).
+-define(OPTION_URI_QUERY_LENGTH, 255).
+-define(OPTION_ACCEPT_LENGTH, 2).
+-define(OPTION_LOCATION_QUERY_LENGTH, 255).
+-define(OPTION_BLOCK2_LENGTH, 3). 
+-define(OPTION_BLOCK1_LENGTH, 3).
+-define(OPTION_PROXY_URI_LENGTH, 1034).
+-define(OPTION_PROXY_SCHEME_LENGTH, 255).
+-define(OPTION_SIZE1_LENGTH, 4).
+-define(OPTION_SIZE2_LENGTH, 4).
 
 -define(DEFAULT_COAP_PORT, 5683).
 -define(DEFAULT_COAPS_PORT, 5684).
@@ -114,14 +133,16 @@
 
 % utility functions
 
--spec get_type(coap_message()) -> coap_type().
-get_type(#coap_message{type=Type}) -> Type.
+-spec get_type(coap_message() | binary()) -> coap_type().
+get_type(#coap_message{type=Type}) -> Type;
+get_type(<<_:2, Type:2, _Tail/binary>>) -> coap_iana:decode_type(Type).
 
 -spec set_type(coap_type(), coap_message()) -> coap_message().
 set_type(Type, Msg) -> Msg#coap_message{type=Type}.
 
--spec get_code(coap_message()) -> undefined | coap_code().
-get_code(#coap_message{code=Code}) -> Code.
+-spec get_code(coap_message() | binary()) -> undefined | coap_code().
+get_code(#coap_message{code=Code}) -> Code;
+get_code(<<_:8, Class:3, DetailedCode:5, _Tail/binary>>) -> coap_iana:decode_code({Class, DetailedCode}).
 
 -spec set_code(coap_code(), coap_message()) -> coap_message().
 set_code(Code, Msg) -> Msg#coap_message{code=Code}.
@@ -134,8 +155,9 @@ get_id(<<_:16, MsgId:16, _Tail/binary>>) -> MsgId.
 -spec set_id(msg_id(), coap_message()) -> coap_message().
 set_id(MsgId, Msg) -> Msg#coap_message{id=MsgId}.
 
--spec get_token(coap_message()) -> binary().
-get_token(#coap_message{token=Token}) -> Token.
+-spec get_token(coap_message() | binary()) -> binary().
+get_token(#coap_message{token=Token}) -> Token;
+get_token(<<_:4, TKL:4, _:24, Token:TKL/binary, _Tail/binary>>) -> Token.
 
 -spec set_token(binary(), coap_message()) -> coap_message().
 set_token(Token, Msg) -> Msg#coap_message{token=Token}.
@@ -388,9 +410,9 @@ append_option({SameOptId, OptVal2}, [{SameOptId, OptVal1} | OptionList]) ->
         false ->
             % each supernumerary option occurrence that appears subsequently in the message will be treated as unrecognized option
             % elective option -> ignored
-            % critical option -> bad_option error
+            % critical option -> non_repeatbale_option error
             case is_critical_option(SameOptId) of
-                true -> throw({bad_option, {SameOptId, OptVal2}});
+                true -> throw({error, {non_repeatbale_option, {SameOptId, OptVal2}}});
                 false -> [{SameOptId, OptVal1} | OptionList]
             end
     end;
@@ -448,7 +470,7 @@ decode_block1(Num, M, SizEx) ->
 %%--------------------------------------------------------------------
 
 % empty message
--spec encode(coap_message()) -> binary().
+-spec encode(coap_message()) -> binary() | no_return().
 encode(#coap_message{type=Type, code=undefined, id=MsgId}) ->
     <<?VERSION:2, (coap_iana:encode_type(Type)):2, 0:4, 0:3, 0:5, MsgId:16>>;
 encode(#coap_message{type=Type, code=Code, id=MsgId, token=Token, options=Options, payload=Payload}) ->
@@ -475,7 +497,7 @@ encode_options([{OptId, OptVal} | OptionList], Acc) when is_list(OptVal) ->
         true ->
             encode_options(OptionList, split_and_encode_option({OptId, OptVal}, Acc));
         false ->
-            throw({bad_option, {OptId, OptVal}})
+            throw({error, {non_repeatbale_option, {OptId, OptVal}}})
     end;
 encode_options([{OptId, OptVal} | OptionList], Acc) ->
     encode_options(OptionList, [encode_option({OptId, OptVal}) | Acc]);
@@ -663,8 +685,8 @@ case9_test_() ->
 case10_test() ->
     Raw = <<64,1,0,0,55,97,98,99,46,99,111,109,7,100,101,102,46,99,111,109>>,
     [
-    test_encode_error(#coap_message{type='CON', code='GET', id=0, options=#{'Max-Age' => [60, 90, 120]}}, {bad_option, {'Max-Age', [60, 90, 120]}}),
-    test_decode_error(Raw, {bad_option, {'Uri-Host', <<"def.com">>}})
+    test_encode_error(#coap_message{type='CON', code='GET', id=0, options=#{'Max-Age' => [60, 90, 120]}}, {non_repeatbale_option, {'Max-Age', [60, 90, 120]}}),
+    test_decode_error(Raw, {non_repeatbale_option, {'Uri-Host', <<"def.com">>}})
     ].
 
 test_codec(Message) ->
@@ -681,11 +703,11 @@ test_codec(Raw, Msg) ->
     ].
 
 test_encode_error(Message, Error) ->
-    Result = try coap_message:encode(Message) catch throw:Reason -> Reason end,
+    Result = try coap_message:encode(Message) catch throw:{error, Reason} -> Reason end,
     ?_assertEqual(Error, Result).
 
 test_decode_error(Raw, Error) ->
-    Result = try coap_message:decode(Raw) catch throw:Reason -> Reason end,
+    Result = try coap_message:decode(Raw) catch throw:{error, Reason} -> Reason end,
     ?_assertEqual(Error, Result).
 
 -endif.

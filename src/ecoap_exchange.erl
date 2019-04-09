@@ -130,20 +130,21 @@ got_rst({in, _BinMessage}, _, Exchange)->
 
 % --- incoming CON->ACK|RST
 in_con({in, BinMessage}, TransArgs, Exchange) ->
-    try {ok, coap_message:decode(BinMessage)} of
-        {ok, #coap_message{code=undefined}=Message} ->
+    try coap_message:decode(BinMessage) of
+        #coap_message{code=undefined}=Message ->
             % provoked reset
             logger:log(debug, "~p received ping msg ~p~n", [self(), Message]),
             go_pack_sent(ecoap_request:rst(Message), Exchange);
-        {ok, #coap_message{code=Method}=Message} when is_atom(Method) ->
+        #coap_message{code=Method}=Message when is_atom(Method) ->
             logger:log(debug, "~p received CON request ~p~n", [self(), Message]),
             {Actions, NewExchange} = go_await_aack(Message, TransArgs, Exchange),
             {[{handle_request, Message} | Actions], NewExchange};
-        {ok, #coap_message{}=Message} ->
+        #coap_message{}=Message ->
             logger:log(debug, "~p received CON response ~p~n", [self(), Message]),
             {Actions, NewExchange} = go_await_aack(Message, TransArgs, Exchange),
             {[{handle_response, Message} | Actions], NewExchange}
-    catch _C:_R ->
+    catch 
+        _C:_R ->
             logger:log(warning, "~p received corrupted msg ~p~n", [self(), BinMessage]),
             go_pack_sent(ecoap_request:rst(coap_message:get_id(BinMessage)), Exchange)
     end.
@@ -206,7 +207,7 @@ pack_sent({timeout, await_aack}, _, Exchange) ->
 % --- outgoing CON->ACK|RST
 out_con({out, Message}, TransArgs, Exchange) ->
     %io:fwrite("~p send outgoing con msg ~p~n", [self(), Message]),
-    logger:log(debug, "~p send outgoing CON message ~p~n", [self(), Message]),
+    logger:log(debug, "~p send outgoing CON msg ~p~n", [self(), Message]),
     BinMessage = coap_message:encode(Message),
     % _ = rand:seed(exs1024),
     Timeout = ?ACK_TIMEOUT(TransArgs)+rand:uniform(?ACK_RANDOM_FACTOR(TransArgs)),
@@ -214,8 +215,8 @@ out_con({out, Message}, TransArgs, Exchange) ->
 
 % peer ack
 await_pack({in, BinAck}, _, Exchange) ->
-    try {ok, coap_message:decode(BinAck)} of
-        {ok, #coap_message{type='ACK', code=undefined}=Message} ->
+    try coap_message:decode(BinAck) of
+        #coap_message{type='ACK', code=undefined}=Message ->
             % this is an empty ack for separate response or observe notification
             % handle_ack(Message, TransArgs, Exchange),
             % since we can confirm when an outgoing confirmable message
@@ -223,11 +224,11 @@ await_pack({in, BinAck}, _, Exchange) ->
             % which won't be used again from this moment
             logger:log(debug, "~p received empty ACK msg ~p~n", [self(), Message]),
             {[cancel_timer, {handle_ack, Message}], Exchange#exchange{msgbin= <<>>, stage=aack_sent}};
-        {ok, #coap_message{type='RST', code=undefined}=Message} ->
+        #coap_message{type='RST', code=undefined}=Message ->
             logger:log(debug, "~p received RST msg ~p~n", [self(), Message]),
             {[cancel_timer, {handle_error, Message, 'RST'}], Exchange#exchange{msgbin= <<>>, stage=aack_sent}};
-        {ok, #coap_message{}=Message} ->
-            logger:log(debug, "~p received irrelevant msg ~p~n", [self(), Message]),
+        #coap_message{type='ACK'}=Message ->
+            logger:log(debug, "~p received ACK response ~p~n", [self(), Message]),
             {[cancel_timer, {handle_response, Message}], Exchange#exchange{msgbin= <<>>, stage=aack_sent}}
     catch _C:_R ->
             % shall we inform the receiver the error?
