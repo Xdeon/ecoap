@@ -18,7 +18,8 @@
 
 
 -record(data, {
-	socket = undefined :: ssl:sslsocket(),
+	lsocket = undefined :: undefined | ssl:sslsocket(),
+	socket = undefined :: undefined | ssl:sslsocket(),
 	server_name = undefined :: atom(),
 	ep_id = undefined :: undefined | ecoap_endpoint:ecoap_endpoint_id(),
 	endpoint_pid = undefined :: undefined | pid(),
@@ -64,7 +65,7 @@ callback_mode() ->
 
 init([accept, Name, ListenSocket, ProtoConfig0, TimeOut]) ->
 	ProtoConfig = ecoap_config:merge_protocol_config(ProtoConfig0),
-	StateData = #data{protocol_config=ProtoConfig, server_name=Name, socket=ListenSocket, timeout=TimeOut},
+	StateData = #data{protocol_config=ProtoConfig, server_name=Name, lsocket=ListenSocket, timeout=TimeOut},
 	{ok, accept, StateData, [{next_event, internal, accept}]};
 init([connect, EpID={PeerIP, PeerPortNo}, TransOpts0, ProtoConfig0, TimeOut]) ->
 	TransOpts = ecoap_config:merge_sock_opts(default_dtls_transopts(), TransOpts0),
@@ -79,7 +80,7 @@ init([connect, EpID={PeerIP, PeerPortNo}, TransOpts0, ProtoConfig0, TimeOut]) ->
 			{stop, Reason}
 	end.
 
-accept(_, accept, StateData=#data{server_name=Name, socket=ListenSocket}) ->
+accept(_, accept, StateData=#data{server_name=Name, lsocket=ListenSocket}) ->
 	case ssl:transport_accept(ListenSocket) of
 		{ok, CSocket} -> 
 		    {ok, _} = ecoap_dtls_listener_sup:start_listener(Name),
@@ -154,8 +155,10 @@ handle_event(EventType, EventData, StateName, StateData) ->
 	logger:log(error, "~p recvd unexpected event ~p in state ~p as ~p~n", [self(), {EventType, EventData}, StateName, ?MODULE]),
 	{next_state, StateName, StateData}.
 
-terminate(_Reason, _StateName, _StateData) ->
-	ok.
+terminate(_Reason, _StateName, #data{socket=undefined}) ->
+	ok;
+terminate(_Reason, _StateName, #data{socket=Socket}) ->
+	ssl:close(Socket).
 
 code_change(_OldVsn, StateName, StateData, _Extra) ->
 	{ok, StateName, StateData}.
@@ -170,9 +173,9 @@ do_handshake(CSocket, StateData=#data{timeout=TimeOut}) ->
 			ok = ssl:setopts(Socket, [{active, ?ACTIVE_PACKETS}]),
 			{next_state, connected, StateData#data{socket=Socket, ep_id=EpID}};
 		{error, {tls_alert, _}} ->
-			{stop, normal};
+			{stop, normal, StateData#data{socket=CSocket}};
 		{error, Reason} when Reason =:= timeout; Reason =:= closed ->
-			{stop, normal};
+			{stop, normal, StateData#data{socket=CSocket}};
 		{error, Reason} ->
-			{stop, Reason}
+			{stop, Reason, StateData#data{socket=CSocket}}
 	end.

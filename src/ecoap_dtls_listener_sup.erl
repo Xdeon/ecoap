@@ -4,8 +4,14 @@
 -export([start_link/3]).
 -export([init/1]).
 -export([start_listener/1]).
+-export([count_acceptors/1]).
 
 -include("ecoap.hrl").
+
+%% TODO: consider acceptor & supervisor pair or acceptor as supervisor pattern
+%% check issue and discussion from Cowboy repo
+%% Problem: 1. add complexity for supervision tree
+%%			2. if acceptor itself is a supervisor that starts connection process, then how to deal with blocking (during accepting)
 
 start_link(_ServerSupPid, Name, Config) ->
 	supervisor:start_link({local, Name}, ?MODULE, [Name, Config]).
@@ -39,3 +45,6 @@ start_listeners(Name, NumAcceptors) ->
 
 start_listener(Name) ->
 	supervisor:start_child(Name, []).
+
+count_acceptors(Name) ->
+    proplists:get_value(active, supervisor:count_children(Name), 0).

@@ -44,9 +44,6 @@ merge_protocol_config(CustomConfig) ->
     	maps:update_with(exchange_lifetime,  fun native_time/1, 
     		maps:merge(default_protocol_config(), CustomConfig))).
 
-
-
-
 -spec handler_config(protocol_config()) -> handler_config().
 handler_config(Config) ->
 	maps:with([endpoint_pid, exchange_lifetime, max_body_size, max_block_size], Config).
