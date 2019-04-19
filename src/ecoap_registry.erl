@@ -15,6 +15,9 @@
 -record(state, {
 }).
 
+-type route_rule() :: {[binary()], module()}.
+-export_type([route_rule/0]).
+
 -define(HANDLER_TAB, ?MODULE).
 
 %% API.
@@ -23,7 +26,7 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
--spec register_handler([{[binary()], module()}]) -> ok.
+-spec register_handler([route_rule()]) -> ok.
 register_handler(Regs) when is_list(Regs) -> 
     gen_server:call(?MODULE, {register, process_regs(Regs)}).
 
@@ -36,7 +39,7 @@ get_links() ->
     lists:usort(get_links(ets:tab2list(?HANDLER_TAB))).
     % lists:usort(get_links(?HANDLER_TAB)).
 
--spec match_handler([binary()]) -> {{[binary()], module()}, [binary()]} | undefined.
+-spec match_handler([binary()]) -> {route_rule(), [binary()]} | undefined.
 match_handler(Uri) -> match_handler(Uri, ?HANDLER_TAB).
 
 -spec clear_registry() -> true.

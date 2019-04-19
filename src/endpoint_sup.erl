@@ -9,14 +9,18 @@
 
 start_link(Args) ->
     {ok, SupPid} = supervisor:start_link(?MODULE, []),
-    {ok, EpPid} = supervisor:start_child(SupPid,
-        #{id => ecoap_endpoint,
-          start => {ecoap_endpoint, start_link, [SupPid|Args]},
-          restart => temporary, 
-          shutdown => 5000, 
-          type => worker, 
-          modules => [ecoap_endpoint]}),
-    {ok, SupPid, EpPid}.
+    Procs = #{id => ecoap_endpoint,
+    	start => {ecoap_endpoint, start_link, [SupPid|Args]},
+		restart => temporary, 
+		shutdown => 5000, 
+		type => worker, 
+		modules => [ecoap_endpoint]},
+    case supervisor:start_child(SupPid, Procs) of
+        {ok, EpPid} ->
+            {ok, SupPid, EpPid};
+        Error ->
+            Error
+    end.
 
 init([]) ->
     % crash of any worker will terminate the supervisor 
@@ -25,8 +29,8 @@ init([]) ->
 start_handler_sup(SupPid) ->
     supervisor:start_child(SupPid, 
         #{id => ecoap_handler_sup,
-          start => {ecoap_handler_sup, start_link, []},
-          restart => permanent, 
-          shutdown => infinity, 
-          type => supervisor, 
-          modules => [ecoap_handler_sup]}).
+		start => {ecoap_handler_sup, start_link, []},
+		restart => permanent, 
+		shutdown => infinity, 
+		type => supervisor, 
+		modules => [ecoap_handler_sup]}).

@@ -17,12 +17,12 @@
     retry_count = undefined :: undefined | non_neg_integer()
     }).
 
--define(ACK_TIMEOUT(Config), map_get(ack_timeout, Config)).
--define(ACK_RANDOM_FACTOR(Config), map_get(ack_random_factor, Config)).
--define(MAX_RETRANSMIT(Config), map_get(max_retransmit, Config)).
--define(PROCESSING_DELAY(Config), map_get(processing_delay, Config)). 
--define(EXCHANGE_LIFETIME(Config), map_get(exchange_lifetime, Config)).
--define(NON_LIFETIME(Config), map_get(non_lifetime, Config)).
+-define(ACK_TIMEOUT(ProtoConfig), map_get(ack_timeout, ProtoConfig)).
+-define(ACK_RANDOM_FACTOR(ProtoConfig), map_get(ack_random_factor, ProtoConfig)).
+-define(MAX_RETRANSMIT(ProtoConfig), map_get(max_retransmit, ProtoConfig)).
+-define(PROCESSING_DELAY(ProtoConfig), map_get(processing_delay, ProtoConfig)). 
+-define(EXCHANGE_LIFETIME(ProtoConfig), map_get(exchange_lifetime, ProtoConfig)).
+-define(NON_LIFETIME(ProtoConfig), map_get(non_lifetime, ProtoConfig)).
 
 -type exchange() :: #exchange{}.
 
@@ -37,16 +37,16 @@ init(TrId, Receiver) ->
     #exchange{timestamp=erlang:monotonic_time(), stage=idle, trid=TrId, receiver=Receiver}.
 
 % process incoming message
-received(BinMessage, TransArgs, Exchange=#exchange{stage=Stage}) ->
-    ?MODULE:Stage({in, BinMessage}, TransArgs, Exchange).
+received(BinMessage, ProtoConfig, Exchange=#exchange{stage=Stage}) ->
+    ?MODULE:Stage({in, BinMessage}, ProtoConfig, Exchange).
 
 % process outgoing message
-send(Message, TransArgs, Exchange=#exchange{stage=Stage}) ->
-    ?MODULE:Stage({out, Message}, TransArgs, Exchange).
+send(Message, ProtoConfig, Exchange=#exchange{stage=Stage}) ->
+    ?MODULE:Stage({out, Message}, ProtoConfig, Exchange).
 
 % process timeout
-timeout(Event, TransArgs, Exchange=#exchange{stage=Stage}) ->
-    ?MODULE:Stage({timeout, Event}, TransArgs, Exchange).
+timeout(Event, ProtoConfig, Exchange=#exchange{stage=Stage}) ->
+    ?MODULE:Stage({timeout, Event}, ProtoConfig, Exchange).
 
 % cancel msg
 cancel_msg(Exchange) ->
@@ -71,17 +71,17 @@ in_transit(_Exchange) ->
     false.
 
 % ->NON
-idle(Msg={in, <<1:2, 1:2, _:12, _Tail/bytes>>}, TransArgs, Exchange) ->
-    in_non(Msg, TransArgs, Exchange#exchange{expire_time=?NON_LIFETIME(TransArgs)});
+idle(Msg={in, <<1:2, 1:2, _:12, _Tail/bytes>>}, ProtoConfig, Exchange) ->
+    in_non(Msg, ProtoConfig, Exchange#exchange{expire_time=?NON_LIFETIME(ProtoConfig)});
 % ->CON
-idle(Msg={in, <<1:2, 0:2, _:12, _Tail/bytes>>}, TransArgs, Exchange) ->
-    in_con(Msg, TransArgs, Exchange#exchange{expire_time=?EXCHANGE_LIFETIME(TransArgs)});
+idle(Msg={in, <<1:2, 0:2, _:12, _Tail/bytes>>}, ProtoConfig, Exchange) ->
+    in_con(Msg, ProtoConfig, Exchange#exchange{expire_time=?EXCHANGE_LIFETIME(ProtoConfig)});
 % NON-> 
-idle(Msg={out, #coap_message{type='NON'}}, TransArgs, Exchange) ->
-    out_non(Msg, TransArgs, Exchange#exchange{expire_time=?NON_LIFETIME(TransArgs)});
+idle(Msg={out, #coap_message{type='NON'}}, ProtoConfig, Exchange) ->
+    out_non(Msg, ProtoConfig, Exchange#exchange{expire_time=?NON_LIFETIME(ProtoConfig)});
 % CON->
-idle(Msg={out, #coap_message{type='CON'}}, TransArgs, Exchange) ->
-    out_con(Msg, TransArgs, Exchange#exchange{expire_time=?EXCHANGE_LIFETIME(TransArgs)}).
+idle(Msg={out, #coap_message{type='CON'}}, ProtoConfig, Exchange) ->
+    out_con(Msg, ProtoConfig, Exchange#exchange{expire_time=?EXCHANGE_LIFETIME(ProtoConfig)}).
 
 % --- incoming NON
 in_non({in, BinMessage}, _, Exchange) ->
@@ -129,7 +129,7 @@ got_rst({in, _BinMessage}, _, Exchange)->
     {[], Exchange#exchange{stage=got_rst}}.
 
 % --- incoming CON->ACK|RST
-in_con({in, BinMessage}, TransArgs, Exchange) ->
+in_con({in, BinMessage}, ProtoConfig, Exchange) ->
     try coap_message:decode(BinMessage) of
         #coap_message{code=undefined}=Message ->
             % provoked reset
@@ -137,11 +137,11 @@ in_con({in, BinMessage}, TransArgs, Exchange) ->
             go_pack_sent(ecoap_request:rst(Message), Exchange);
         #coap_message{code=Method}=Message when is_atom(Method) ->
             logger:log(debug, "~p received CON request ~p~n", [self(), Message]),
-            {Actions, NewExchange} = go_await_aack(Message, TransArgs, Exchange),
+            {Actions, NewExchange} = go_await_aack(Message, ProtoConfig, Exchange),
             {[{handle_request, Message} | Actions], NewExchange};
         #coap_message{}=Message ->
             logger:log(debug, "~p received CON response ~p~n", [self(), Message]),
-            {Actions, NewExchange} = go_await_aack(Message, TransArgs, Exchange),
+            {Actions, NewExchange} = go_await_aack(Message, ProtoConfig, Exchange),
             {[{handle_response, Message} | Actions], NewExchange}
     catch 
         _C:_R ->
@@ -149,10 +149,10 @@ in_con({in, BinMessage}, TransArgs, Exchange) ->
             go_pack_sent(ecoap_request:rst(coap_message:get_id(BinMessage)), Exchange)
     end.
 
-go_await_aack(Message, TransArgs, Exchange) ->
+go_await_aack(Message, ProtoConfig, Exchange) ->
     % we may need to ack the message
     BinAck = coap_message:encode(ecoap_request:ack(Message)),
-    {[{start_timer, ?PROCESSING_DELAY(TransArgs)}], Exchange#exchange{stage=await_aack, msgbin=BinAck}}.
+    {[{start_timer, ?PROCESSING_DELAY(ProtoConfig)}], Exchange#exchange{stage=await_aack, msgbin=BinAck}}.
 
 await_aack({in, _BinMessage}, _, Exchange) ->
     % ignore retransmission
@@ -205,12 +205,12 @@ pack_sent({timeout, await_aack}, _, Exchange) ->
 % TODO: CON->CON does not cancel retransmission of the request
 
 % --- outgoing CON->ACK|RST
-out_con({out, Message}, TransArgs, Exchange) ->
+out_con({out, Message}, ProtoConfig, Exchange) ->
     %io:fwrite("~p send outgoing con msg ~p~n", [self(), Message]),
     logger:log(debug, "~p send outgoing CON msg ~p~n", [self(), Message]),
     BinMessage = coap_message:encode(Message),
     % _ = rand:seed(exs1024),
-    Timeout = ?ACK_TIMEOUT(TransArgs)+rand:uniform(?ACK_RANDOM_FACTOR(TransArgs)),
+    Timeout = ?ACK_TIMEOUT(ProtoConfig)+rand:uniform(?ACK_RANDOM_FACTOR(ProtoConfig)),
     {[{send, BinMessage}, {start_timer, Timeout}], Exchange#exchange{msgbin=BinMessage, retry_count=0, retry_time=Timeout, stage=await_pack}}.
 
 % peer ack
@@ -218,7 +218,7 @@ await_pack({in, BinAck}, _, Exchange) ->
     try coap_message:decode(BinAck) of
         #coap_message{type='ACK', code=undefined}=Message ->
             % this is an empty ack for separate response or observe notification
-            % handle_ack(Message, TransArgs, Exchange),
+            % handle_ack(Message, ProtoConfig, Exchange),
             % since we can confirm when an outgoing confirmable message
             % has been acknowledged or reset, we can safely clean the msgbin 
             % which won't be used again from this moment
@@ -236,7 +236,7 @@ await_pack({in, BinAck}, _, Exchange) ->
             {[], Exchange#exchange{stage=await_pack}}
     end;
 
-await_pack({timeout, await_pack}, TransArgs, Exchange=#exchange{msgbin=BinMessage, retry_time=Timeout, retry_count=Count}) when Count < ?MAX_RETRANSMIT(TransArgs) ->
+await_pack({timeout, await_pack}, ProtoConfig, Exchange=#exchange{msgbin=BinMessage, retry_time=Timeout, retry_count=Count}) when Count < ?MAX_RETRANSMIT(ProtoConfig) ->
     % BinMessage = coap_message:encode(Message),
     %io:fwrite("resend msg for ~p time~n", [Count]),
     logger:log(debug, "~p resend CON msg for ~p time~n", [self(), Count]),

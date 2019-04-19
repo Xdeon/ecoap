@@ -189,9 +189,9 @@
 
 %% API.
 
--spec start_link(handler_id(), ecoap:config()) -> {ok, pid()} | {error, term()}.
-start_link(ID, Config) ->
-    gen_server:start_link(?MODULE, [ID, Config], []).
+-spec start_link(handler_id(), ecoap_config:handler_config()) -> {ok, pid()} | {error, term()}.
+start_link(ID, HandlerConfig) ->
+    gen_server:start_link(?MODULE, [ID, HandlerConfig], []).
 
 
 -spec close(pid()) -> ok.
@@ -227,8 +227,8 @@ handler_id(Message=#coap_message{code=Method}) ->
 
 %% gen_server.
 
-init([ID={_, Uri, Query}, Config]) ->
-    #{endpoint_pid:=EndpointPid, exchange_lifetime:=Timeout, max_body_size:=MaxBodySize, max_block_size:=MaxBlockSize} = Config,
+init([ID={_, Uri, Query}, HandlerConfig]) ->
+    #{endpoint_pid:=EndpointPid, exchange_lifetime:=Timeout, max_body_size:=MaxBodySize, max_block_size:=MaxBlockSize} = HandlerConfig,
     % ok = ecoap_endpoint:monitor_handler(EndpointPid, self()),
     State = #state{insegs={orddict:new(), undefined},
                     endpoint_pid=EndpointPid, 

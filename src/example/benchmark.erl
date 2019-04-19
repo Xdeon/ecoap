@@ -14,8 +14,19 @@ start() ->
             {[<<"helloWorld">>], ?MODULE},
             {[<<"shutdown">>], ?MODULE}
     ],
-    ecoap:start_udp(benchmark_server, [{recbuf, 1048576}, {sndbuf, 1048576}], #{routes => Routes, exchange_lifetime=>1500}).
-    
+    {ok, _} = ecoap:start_udp(benchmark_udp, 
+        #{
+            routes => Routes, 
+            protocol_config => #{exchange_lifetime => 1500},
+            transport_opts => [{recbuf, 1048576}, {sndbuf, 1048576}]
+        }),
+    {ok, _} = ecoap:start_dtls(benchmark_dtls, 
+        #{
+            routes => Routes,
+            % protocol_config => #{exchange_lifetime => 1500},
+            transport_opts => [{recbuf, 1048576}, {sndbuf, 1048576}, {keyfile, "./cert/server.key"}, {certfile, "./cert/server.crt"}]
+        }).
+
 stop() ->
     application:stop(ecoap).
 

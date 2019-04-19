@@ -78,11 +78,13 @@ process_content_type(Value) when is_integer(Value) ->
 process_content_type(Values) when is_list(Values) ->
     ["\"", mapjoin(fun process_content_type/1, " ", Values), "\""].
 
-mapjoin(_, _, []) -> [];
-mapjoin(Fun, Sep, [H | T]) -> [Fun(H) | join_prepend(Fun, Sep, T)].
+mapjoin(Fun, Sep, List) ->
+    lists:join(Sep, lists:map(Fun, List)).
+% mapjoin(_, _, []) -> [];
+% mapjoin(Fun, Sep, [H | T]) -> [Fun(H) | join_prepend(Fun, Sep, T)].
 
-join_prepend(_, _, []) -> [];
-join_prepend(Fun, Sep, [H | T]) -> [Sep, Fun(H) | join_prepend(Fun, Sep, T)].
+% join_prepend(_, _, []) -> [];
+% join_prepend(Fun, Sep, [H | T]) -> [Sep, Fun(H) | join_prepend(Fun, Sep, T)].
 
 -ifdef(TEST).
 

@@ -8,7 +8,7 @@
 %% 3. return {error, _} when synchronously sending a 'NON' request (which should be send asynchronously)
 
 %% API.
--export([open/1, open/2, open/3, close/1]).
+-export([open/1, open/2, close/1]).
 -export([ping/1]).
 -export([
 	get/2, get/3, get/4, 
@@ -38,7 +38,7 @@
 -export([get_reqrefs/1, get_obsregs/1, get_blockregs/1]).
 -endif.
 
--export([start_link/3]).
+-export([start_link/2]).
 
 %% gen_server.
 -export([init/1]).
@@ -50,7 +50,8 @@
 -export([code_change/3]).
 
 -record(state, {
-	socket = closed :: closed | {client_socket, pid()} | {server_socket, pid() | atom()},
+	client_opts = #{} :: client_opts(),
+	socket = closed :: closed | {internal_socket | external_socket, module(), socket_id()},
 	socket_ref = undefined :: undefined | reference(),
 	host = undefined :: undefined | binary(),
 	ep_id = undefined :: undefined | tuple(),
@@ -70,7 +71,7 @@
 	observe_seq = undefined :: undefined | non_neg_integer(),
 	fragment = <<>> :: binary(), 
 	reply_to = undefined :: pid() | {pid(), _}
-	}).
+}).
 
 -type request() :: #request{}.
 
@@ -90,22 +91,47 @@
 % socket_id() refers to the id of the socket holder, can be pid/registered name/remote
 -type socket_id() :: pid() | atom() | tuple().
 
+-type client_opts() :: #{
+	protocol_config => map(),
+	connect_timeout => timeout(),
+	transport_opts => [gen_udp:option()] | [ssl:connect_option()],
+	external_socket => {module(), socket_id()}
+}.
+
+-export_type([client_opts/0]).
+
 %% API.
 -spec open(iodata()) -> {ok, pid()} | {error, term()}.
 open(HostString) ->
-	start_link(HostString, [], #{}).
+	open(HostString, #{}).
 
--spec open(iodata(), [gen_udp:option()] | {socket, socket_id()}) -> {ok, pid()} | {error, term()}.
-open(HostString, SocketOpts) ->
-	start_link(HostString, SocketOpts, #{}).
-
--spec open(iodata(), [gen_udp:option()] | {socket, socket_id()}, ecoap:config()) -> {ok, pid()} | {error, term()}.
-open(HostString, SocketOpts, Config) ->
-	start_link(HostString, SocketOpts, Config).
+-spec open(iodata(), client_opts()) -> {ok, pid()} | {error, term()}.
+open(HostString, ClientOpts) ->
+	case check_options(ClientOpts) of
+		ok -> start_link(HostString, ClientOpts);
+		CheckError -> CheckError
+	end.
 
 -spec close(pid()) -> ok.
 close(Pid) ->
 	gen_server:stop(Pid).
+
+check_options([]) ->
+	ok;
+check_options(ClientOpts) when is_map(ClientOpts) ->
+	check_options(maps:to_list(ClientOpts));
+check_options([{connect_timeout, infinity}|Opts]) ->
+	check_options(Opts);
+check_options([{connect_timeout, TimeOut}|Opts]) when is_integer(TimeOut) ->
+	check_options(Opts);
+check_options([{transport_opts, TransOpts}|Opts]) when is_list(TransOpts) ->
+	check_options(Opts);
+check_options([{protocol_config, Config}|Opts]) when is_map(Config) ->
+	check_options(Opts);
+check_options([{external_socket, Module, Socket}|Opts]) when is_atom(Module) andalso (is_pid(Socket) orelse is_atom(Socket) orelse is_tuple(Socket)) ->
+	check_options(Opts);
+check_options([Opt|_]) ->
+	{error, {client_options, Opt}}.
 
 -spec ping(pid()) -> ok | {error, _}.
 ping(Pid) ->
@@ -339,9 +365,9 @@ flush_pid(Pid) ->
 get_remote_addr(Pid) ->
 	gen_server:call(Pid, get_remote_addr).
 
--spec start_link(iodata(), [gen_udp:option()] | {socket, pid() | atom()}, ecoap:config()) -> {ok, pid()} | {error, term()}.
-start_link(HostString, SocketOpts, Config) ->
-	gen_server:start_link(?MODULE, [HostString, SocketOpts, Config], []).
+-spec start_link(iodata(), client_opts()) -> {ok, pid()} | {error, term()}.
+start_link(HostString, ClientOpts) ->
+	gen_server:start_link(?MODULE, [HostString, ClientOpts], []).
 
 
 -ifdef(TEST).
@@ -360,35 +386,47 @@ get_blockregs(Pid) -> gen_server:call(Pid, get_blockregs).
 
 %% gen_server.
 
-init([HostString, {socket, Socket}, _Config]) ->
+init([HostString, ClientOpts=#{external_socket:={Transport, Socket}}]) ->
 	SocketRef = erlang:monitor(process, Socket),
-	{ok, #state{socket={server_socket, Socket}, socket_ref=SocketRef}, {continue, {resolve_host, HostString}}};
-init([HostString, SocketOpts, Config]) ->
-	{ok, #state{}, {continue, {resolve_host, HostString, SocketOpts, Config}}}.
+	{ok, #state{client_opts=ClientOpts, socket={external_socket, Transport, Socket}, socket_ref=SocketRef}, {continue, {resolve_host, HostString}}};
+init([HostString, ClientOpts]) ->
+	{ok, #state{client_opts=ClientOpts}, {continue, {resolve_host, HostString}}}.
 
 % Notice that for any other reason than normal, shutdown, or {shutdown,Term}, 
 % the gen_server process is assumed to terminate because of an error and an error report is issued using logger(3).
-handle_continue({resolve_host, HostString}, State) ->
+handle_continue({resolve_host, HostString}, State=#state{socket={external_socket, _, _}}) ->
 	{_, Host, EpID} = ecoap_uri:get_peer_addr(HostString),
 	{noreply, State#state{host=Host, ep_id=EpID}};
-handle_continue({resolve_host, HostString, SocketOpts, Config}, State) ->
-	case ecoap_uri:get_peer_addr(HostString) of
+handle_continue({resolve_host, HostString}, State) ->
+	case ecoap_uri:get_peer_addr(HostString) of 
 		{coap, Host, EpID} ->
-			{ok, Socket} = ecoap_udp_socket:start_link(SocketOpts, Config),
+			start_connection(ecoap_udp_socket, State#state{host=Host, ep_id=EpID});
+		{coaps, Host, EpID} ->
+			start_connection(ecoap_dtls_socket, State#state{host=Host, ep_id=EpID});
+		Other -> 
+			{stop, {shutdown, Other}, State}
+	end.
+
+start_connection(Transport, State=#state{ep_id=EpID, client_opts=ClientOpts}) ->
+	TransOpts = maps:get(transport_opts, ClientOpts, []),
+	TimeOut = maps:get(connect_timeout, ClientOpts, 5000),
+	ProtoConfig = maps:get(protocol_config, ClientOpts, #{}),
+	case Transport:connect(EpID, TransOpts, ProtoConfig, TimeOut) of
+		{ok, Socket} -> 
 			SocketRef = erlang:monitor(process, Socket),
-			{noreply, State#state{socket={client_socket, Socket}, socket_ref=SocketRef, host=Host, ep_id=EpID}};
-		{error, Error} ->
-			{stop, {shutdown, Error}, State}
+			{noreply, State#state{socket={internal_socket, Transport, Socket}, socket_ref=SocketRef}};
+		Other ->
+			{stop, {shutdown, Other}, State}
 	end.
 
 % init([HostString, {socket, Socket}, _Config]) ->
 % 	{_, Host, EpID} = ecoap_uri:get_peer_addr(HostString),
 % 	SocketRef = erlang:monitor(process, Socket),
 % 	{ok, #state{socket={server_socket, Socket}, socket_ref=SocketRef, host=Host, ep_id=EpID}};
-% init([HostString, SocketOpts, Config]) ->
+% init([HostString, TransOpts, Config]) ->
 % 	case ecoap_uri:get_peer_addr(HostString) of
 % 		{coap, Host, EpID} ->
-% 			{ok, Socket} = ecoap_udp_socket:start_link(SocketOpts, Config),
+% 			{ok, Socket} = ecoap_udp_socket:start_link(TransOpts, Config),
 % 			SocketRef = erlang:monitor(process, Socket),
 % 			{ok, #state{socket={client_socket, Socket}, socket_ref=SocketRef, host=Host, ep_id=EpID}};
 % 		{error, Error} ->
@@ -506,8 +544,8 @@ handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{requests=Request
 handle_info(_Info, State) ->
 	{noreply, State}.
 
-terminate(_Reason, #state{socket={client_socket, Socket}}) ->
-	ecoap_udp_socket:close(Socket);
+terminate(_Reason, #state{socket={internal_socket, Transport, Socket}}) ->
+	Transport:close(Socket);
 terminate(_Reason, _State) ->
 	ok.
 
@@ -615,8 +653,8 @@ make_options(Host, {_, PortNo}, Uri, Options) ->
 			coap_message:add_option('Uri-Host', Host, 
 				coap_message:add_option('Uri-Port', PortNo, Options)))).
 
-get_endpoint(Socket={_, SocketPid}, EpID) ->
-	{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SocketPid, EpID),
+get_endpoint(Socket={_, Transport, SocketPid}, EpID) ->
+	{ok, EndpointPid} = Transport:get_endpoint(SocketPid, EpID),
 	try link(EndpointPid) of
 		true -> {ok, EndpointPid}
 	catch error:noproc -> 

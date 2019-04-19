@@ -100,20 +100,12 @@ parse_uri(Uri) ->
 scheme_to_atom(<<"coap">>) ->
     coap;
 scheme_to_atom(<<"coaps">>) ->
-    coaps;
-scheme_to_atom('') ->
-    throw({error, no_scheme});
-scheme_to_atom(Scheme) ->
-    throw({error, {bad_scheme, Scheme}}).
+    coaps.
 
 atom_to_scheme(coap) ->
     <<"coap">>;
 atom_to_scheme(coaps) ->
-    <<"coaps">>;
-atom_to_scheme(Scheme) when is_atom(Scheme) ->
-    throw({error, {bad_scheme, Scheme}});
-atom_to_scheme(_) ->
-    throw({error, scheme_must_be_atom}).
+    <<"coaps">>.
 
 default_port(coap) -> ?DEFAULT_COAP_PORT;
 default_port(coaps) -> ?DEFAULT_COAPS_PORT.
