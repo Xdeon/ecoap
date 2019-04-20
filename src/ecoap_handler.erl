@@ -29,8 +29,8 @@
     timer = undefined :: undefined | reference(),
     uri = undefined :: uri(),
     prefix = undefined :: undefined | uri(), 
-    suffix = undefined :: undefined | uri(),
-    query = undefined :: query()}).
+    suffix = undefined :: undefined | uri()}).
+    % query = undefined :: query()}).
 
 -type method() :: atom().
 -type uri() :: ecoap_uri:path().
@@ -48,6 +48,10 @@
 
 -export_type([uri/0, query/0, reason/0, handler_id/0]).
 
+%% TODO: consider method to specify type of sperate response
+%% e.g. CON -> Empty ACK -> CON -> Empty ACK, or
+%% CON -> Empty ACK -> NON
+
 % called when a client asks for .well-known/core resources
 -callback coap_discover(Prefix) -> [Uri] when
     Prefix :: uri(),
@@ -55,17 +59,17 @@
 -optional_callbacks([coap_discover/1]). 
 
 % GET handler
--callback coap_get(EpID, Prefix, Suffix, Query, Request) -> 
+-callback coap_get(EpID, Prefix, Suffix, Request) -> 
     {ok, Content} | {error, Error} | {error, Error, Reason} when
     EpID :: ecoap_endpoint:ecoap_endpoint_id(),
     Prefix :: uri(),
     Suffix :: uri(),
-    Query :: 'query'(),
+    % Query :: 'query'(),
     Request :: coap_message:coap_message(),
     Content :: coap_content:coap_content(),
     Error :: coap_message:error_code(),
     Reason :: reason().
--optional_callbacks([coap_get/5]). 
+-optional_callbacks([coap_get/4]). 
 
 % FETCH handler
 -callback coap_fetch(EpID, Prefix, Suffix, Request) -> 
@@ -161,7 +165,7 @@
 % handler for messages sent to the coap_handler process
 % could be used to generate notifications
 % notifications sent by calling ecoap_handler:notify/2 arrives as {coap_notify, Msg} 
-% where on can check Content-Format of notifications according to original observe request ObsReq, send the msg or return {error, 'NotAcceptable'}
+% where one can check Content-Format of notifications according to original observe request ObsReq, send the msg or return {error, 'NotAcceptable'}
 % the function can also be used to generate tags which correlate outgoing CON notifications with incoming ACKs
 -callback handle_info(Info, ObsReq, ObState) -> 
     {notify, Content, NewObState} |
@@ -211,8 +215,8 @@ notify(Uri, Info) ->
 
 -spec handler_id(coap_message:coap_message()) -> handler_id().
 handler_id(Message=#coap_message{code=Method}) ->
-    Uri = coap_message:get_option('Uri-Path', Message, []),
-    Query = coap_message:get_option('Uri-Query', Message, []),
+    Uri = ecoap_request:get_path(Message),
+    Query = ecoap_request:get_query(Message),
     % According to RFC7641, a client should always use the same token in observe re-register requests
     % But this can not be met when the client crashed after starting observing 
     % and has no clue of what the former token is
@@ -227,7 +231,7 @@ handler_id(Message=#coap_message{code=Method}) ->
 
 %% gen_server.
 
-init([ID={_, Uri, Query}, HandlerConfig]) ->
+init([ID={_, Uri, _}, HandlerConfig]) ->
     #{endpoint_pid:=EndpointPid, exchange_lifetime:=Timeout, max_body_size:=MaxBodySize, max_block_size:=MaxBlockSize} = HandlerConfig,
     % ok = ecoap_endpoint:monitor_handler(EndpointPid, self()),
     State = #state{insegs={orddict:new(), undefined},
@@ -235,7 +239,7 @@ init([ID={_, Uri, Query}, HandlerConfig]) ->
                     cache_timeout=Timeout, 
                     max_body_size=MaxBodySize, 
                     max_block_size=MaxBlockSize,
-                    query=Query,
+                    % query=Query,
                     uri=Uri,
                     id=ID,
                     obseq=0},
@@ -432,8 +436,8 @@ try_check_resource(EpID, Request, State) ->
     end.
 
 
-check_resource(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, query=Query, module=Module}) ->
-    case coap_get(Module, EpID, Prefix, Suffix, Query, Request) of
+check_resource(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
+    case coap_get(Module, EpID, Prefix, Suffix, Request) of
         {ok, Content} ->
             check_preconditions(EpID, Request, Content, State);
         {error, 'NotFound'} = Result ->
@@ -742,9 +746,9 @@ get_etag(Options) ->
     end.
 
 
-coap_get(Module, EpID, Prefix, Suffix, Query, Request) ->
-    case erlang:function_exported(Module, coap_get, 5) of
-        true -> Module:coap_get(EpID, Prefix, Suffix, Query, Request);
+coap_get(Module, EpID, Prefix, Suffix, Request) ->
+    case erlang:function_exported(Module, coap_get, 4) of
+        true -> Module:coap_get(EpID, Prefix, Suffix, Request);
         false -> {error, 'MethodNotAllowed'}
     end.
 

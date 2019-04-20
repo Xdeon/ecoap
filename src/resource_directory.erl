@@ -1,6 +1,6 @@
 -module(resource_directory).
 
--export([coap_discover/1, coap_get/5]).
+-export([coap_discover/1, coap_get/4]).
 
 -behaviour(ecoap_handler).
 
@@ -8,11 +8,12 @@ coap_discover(_Prefix) ->
     % [{absolute, Prefix, []}].
     [].
 
-coap_get(_EpID, _Prefix, [], Query, _Request) ->
+coap_get(_EpID, _Prefix, [], Request) ->
+    Query = ecoap_request:get_query(Request),
     Links = core_link:encode(filter(ecoap_registry:get_links(), Query)),
     Options = #{'ETag' => [binary:part(crypto:hash(sha, Links), {0,4})], 'Content-Format' => <<"application/link-format">>},
     {ok, coap_content:new(Links, Options)};
-coap_get(_EpID, _Prefix, _Else, _Query, _Request) ->
+coap_get(_EpID, _Prefix, _Suffix, _Request) ->
     {error, 'NotFound'}.
 
 % uri-query processing

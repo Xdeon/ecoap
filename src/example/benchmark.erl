@@ -1,5 +1,5 @@
 -module(benchmark).
--export([coap_discover/1, coap_get/5, coap_post/4]).
+-export([coap_discover/1, coap_get/4, coap_post/4]).
 -export([start/0, stop/0]).
 -export([fib/1]).
 
@@ -34,10 +34,11 @@ stop() ->
 coap_discover(Prefix) ->
     [{absolute, Prefix, []}].
 
-coap_get(_EpID, [<<"benchmark">>], _Suffix, _Query, _Request) ->
+coap_get(_EpID, [<<"benchmark">>], _Suffix, _Request) ->
     {ok, coap_content:new(<<"hello world">>)};
 
-coap_get(_EpID, [<<"fibonacci">>], _Suffix, Query, _Request) ->
+coap_get(_EpID, [<<"fibonacci">>], _Suffix, Request) ->
+    Query = ecoap_request:get_query(Request),
     Num = lists:foldl(fun(Q, Acc) -> 
             case uri_string:dissect_query(Q) of
                 [{<<"n">>, N}] -> binary_to_integer(N);
@@ -47,13 +48,13 @@ coap_get(_EpID, [<<"fibonacci">>], _Suffix, Query, _Request) ->
     Payload = <<"fibonacci(", (integer_to_binary(Num))/binary, ") = ", (integer_to_binary(fib((Num))))/binary>>,
     {ok, coap_content:new(Payload, #{'Content-Format' => <<"text/plain">>})};
 
-coap_get(_EpID, [<<"helloWorld">>], _Suffix, _Query, _Request) ->
+coap_get(_EpID, [<<"helloWorld">>], _Suffix, _Request) ->
     {ok, coap_content:new(<<"Hello World">>, #{'Content-Format' => <<"text/plain">>})};
 
-coap_get(_EpID, [<<"shutdown">>], _Suffix, _Query, _Request) ->
+coap_get(_EpID, [<<"shutdown">>], _Suffix, _Request) ->
     {ok, coap_content:new(<<"Send a POST request to this resource to shutdown the server">>)};
 
-coap_get(_EpID, _Prefix, _Suffix, _Query, _Request) ->
+coap_get(_EpID, _Prefix, _Suffix, _Request) ->
     {error, 'NotFound'}.
 
 coap_post(_EpID, [<<"shutdown">>], _Suffix, _Request) ->

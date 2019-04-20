@@ -1,7 +1,7 @@
 -module(server_observe_test).
 -behaviour(ecoap_handler).
 
--export([coap_discover/1, coap_get/5, coap_post/4, coap_put/4, coap_delete/4, 
+-export([coap_discover/1, coap_get/4, coap_post/4, coap_put/4, coap_delete/4, 
         coap_observe/4, coap_unobserve/1, handle_info/3, coap_ack/2]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -11,7 +11,7 @@
 coap_discover(Prefix) ->
     [{absolute, Prefix++Name, []} || Name <- mnesia:dirty_all_keys(resources)].
 
-coap_get(_EpID, _Prefix, Name, _Query, _Request) ->
+coap_get(_EpID, _Prefix, Name, _Request) ->
     case mnesia:dirty_read(resources, Name) of
         [{resources, Name, Content}] -> {ok, Content};
         [] -> {error, 'NotFound'}

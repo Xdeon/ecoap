@@ -1,7 +1,7 @@
 -module(empty_server_test).
 -behaviour(ecoap_handler).
 
--export([coap_discover/1, coap_get/5, coap_post/4, coap_put/4, coap_delete/4, 
+-export([coap_discover/1, coap_get/4, coap_post/4, coap_put/4, coap_delete/4, 
         coap_observe/4, coap_unobserve/1, handle_info/3, coap_ack/2]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -9,7 +9,7 @@
 
 coap_discover(_Prefix) -> [].
 
-coap_get(_EpID, _Prefix, _Suffix, _Query, _Request) -> {error, 'MethodNotAllowed'}.
+coap_get(_EpID, _Prefix, _Suffix, _Request) -> {error, 'MethodNotAllowed'}.
 coap_post(_EpID, _Prefix, _Suffix, _Request) -> {error, 'MethodNotAllowed'}.
 coap_put(_EpID, _Prefix, _Suffix, _Request) -> {error, 'MethodNotAllowed'}.
 coap_delete(_EpID, _Prefix, _Suffix, _Request) -> {error, 'MethodNotAllowed'}.

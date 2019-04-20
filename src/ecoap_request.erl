@@ -1,5 +1,5 @@
 -module(ecoap_request).
--export([ping_msg/0, get_query/1, requires_ack/1]).
+-export([ping_msg/0, get_path/1, get_query/1, get_accept/1, requires_ack/1]).
 -export([request/2, request/3, request/4]).
 -export([response/2, response/3]).
 -export([ack/1, rst/1]).
@@ -14,9 +14,17 @@ ping_msg() ->
     % id set to 0 and will be overwritten afterwards
     #coap_message{type='CON', id=0}.
 
+-spec get_path(coap_message:coap_message()) -> [binary()].
+get_path(Request=#coap_message{}) ->
+    coap_message:get_option('Uri-Path', Request, []).
+
 -spec get_query(coap_message:coap_message()) -> [binary()].
 get_query(Request=#coap_message{}) ->
     coap_message:get_option('Uri-Query', Request, []).
+
+-spec get_accept(coap_message:coap_message()) -> undefined | integer() | binary().
+get_accept(Request=#coap_message{}) ->
+    coap_message:get_option('Accept', Request).
 
 -spec requires_ack(coap_message:coap_message()) -> boolean().
 requires_ack(#coap_message{type='CON'}) -> true;

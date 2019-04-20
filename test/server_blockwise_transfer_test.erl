@@ -1,7 +1,7 @@
 -module(server_blockwise_transfer_test).
 -behaviour(ecoap_handler).
 
--export([coap_discover/1, coap_get/5, coap_post/4, coap_put/4]).
+-export([coap_discover/1, coap_get/4, coap_post/4, coap_put/4]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("src/coap_content.hrl").
@@ -10,9 +10,9 @@ coap_discover(Prefix) ->
     [{absolute, Prefix, []}].
 
 % resource generator
-coap_get(_EpID, [<<"text">>], [Size], _Query, _Request) ->
+coap_get(_EpID, [<<"text">>], [Size], _Request) ->
     {ok, test_utils:text_resource(binary_to_integer(Size))};
-coap_get(_EpID, [<<"reflect">>], [], _Query, _Request) ->
+coap_get(_EpID, [<<"reflect">>], [], _Request) ->
     {error, 'NotFound'}.
 
 coap_post(_EpID, _Prefix, [], Request) ->
