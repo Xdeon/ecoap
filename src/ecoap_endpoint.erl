@@ -298,7 +298,7 @@ code_change(_OldVsn, State, _Extra) ->
 
 %% Internal
 
-% TODO: 
+%% TODO: 
 % RFC 7252 4.7
 % In order not to cause congestion, clients (including proxies) MUST
 % strictly limit the number of simultaneous outstanding interactions
@@ -348,8 +348,8 @@ make_message(TrId, Message, Receiver, State=#state{protocol_config=ProtoConfig})
     update_state(State, TrId,
         ecoap_exchange:send(Message, ProtoConfig, init_exchange(TrId, Receiver))).
 
-% TODO: decide whether to send a CON notification considering other notifications may be in transit
-%       and how to keep the retransimit counter for a newer notification when the former one timed out
+%% TODO: decide whether to send a CON notification considering other notifications may be in transit
+%%       and how to keep the retransimit counter for a newer notification when the former one timed out
 make_new_response(Message, Receiver, State=#state{trans=Trans, protocol_config=ProtoConfig}) ->
     % io:format("The response: ~p~n", [Message]),
     TrId = {in, coap_message:get_id(Message)},

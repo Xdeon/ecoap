@@ -215,8 +215,8 @@ notify(Uri, Info) ->
 
 -spec handler_id(coap_message:coap_message()) -> handler_id().
 handler_id(Message=#coap_message{code=Method}) ->
-    Uri = ecoap_request:get_path(Message),
-    Query = ecoap_request:get_query(Message),
+    Uri = ecoap_request:path(Message),
+    Query = ecoap_request:query(Message),
     % According to RFC7641, a client should always use the same token in observe re-register requests
     % But this can not be met when the client crashed after starting observing 
     % and has no clue of what the former token is
@@ -264,7 +264,7 @@ handle_cast(_Msg, State) ->
     logger:log(error, "unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
     {noreply, State}.
 
-% TODO:
+%% TODO:
 % we can add another callback here which will be called before the request gets processed
 % it can be used to invoke customized request handling logic
 % question: do we need it?

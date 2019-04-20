@@ -13,6 +13,14 @@
 %% Problem: 1. add complexity for supervision tree
 %%			2. if acceptor itself is a supervisor that starts connection process, then how to deal with blocking (during accepting)
 
+%% TODO: with OTP 21 erts 10.3.2, after stop an application that holds a DTLS listen socket, the socket remains in closed state
+%% and can not be open again
+%% How to reproduce: 
+%% 1. call ecoap:start_dtls/2, 2. call ecoap:stop_dtls/1, 3. call ecoap:start_dtls/2 with same params as in 1.
+%% Observation: 
+%% 1. DTLS listen port still observable using inet:i() after stop ecoap
+%% 2. corresponding process still observable in ssl application 
+
 start_link(_ServerSupPid, Name, Config) ->
 	supervisor:start_link({local, Name}, ?MODULE, [Name, Config]).
 

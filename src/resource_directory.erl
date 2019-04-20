@@ -9,7 +9,7 @@ coap_discover(_Prefix) ->
     [].
 
 coap_get(_EpID, _Prefix, [], Request) ->
-    Query = ecoap_request:get_query(Request),
+    Query = ecoap_request:query(Request),
     Links = core_link:encode(filter(ecoap_registry:get_links(), Query)),
     Options = #{'ETag' => [binary:part(crypto:hash(sha, Links), {0,4})], 'Content-Format' => <<"application/link-format">>},
     {ok, coap_content:new(Links, Options)};

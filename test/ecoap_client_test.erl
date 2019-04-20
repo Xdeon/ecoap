@@ -119,4 +119,4 @@ error_while_observe_block({Server, Client}) ->
         ?_assertEqual(#{}, ObsRegs)
     ].
 
-% TODO: more observe tests
+%% TODO: more observe tests

@@ -202,7 +202,7 @@ pack_sent({timeout, await_aack}, _, Exchange) ->
 % to a Confirmable request, or a Confirmable response in reply to a
 % Non-confirmable request.
 
-% TODO: CON->CON does not cancel retransmission of the request
+%% TODO: CON->CON does not cancel retransmission of the request
 
 % --- outgoing CON->ACK|RST
 out_con({out, Message}, ProtoConfig, Exchange) ->

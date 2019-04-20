@@ -24,8 +24,8 @@ coap_discover(Prefix) ->
     [{absolute, Prefix++Name, []} || Name <- mnesia:dirty_all_keys(resources)].
 
 coap_get(_EpID, Prefix, Name, Request) ->
-    Accept = ecoap_request:get_accept(Request),
-    Query = ecoap_request:get_query(Request),
+    Accept = ecoap_request:accept(Request),
+    Query = ecoap_request:query(Request),
     io:format("get ~p ~p ~p accept ~p~n", [Prefix, Name, Query, Accept]),
     case mnesia:dirty_read(resources, Name) of
         [{resources, Name, Content}] -> {ok, Content};

@@ -139,7 +139,7 @@ connected(info, {ssl_error, Socket, Reason}, StateData=#data{socket=Socket}) ->
 connected(info, {'DOWN', Ref, process, _Pid, _Reason}, StateData=#data{endpoint_ref=Ref, endpoint_sup_pid=EpSupPid}) ->
 	case is_pid(EpSupPid) of
 		true -> 
-			% TODO: whether to terminate after endpoint process goes downn as a server? if not, when to?
+			%% TODO: whether to terminate after endpoint process goes downn as a server? if not, when to?
 			% server
 			% gen_server:stop(EpSupPid),
 			{stop, normal, StateData};

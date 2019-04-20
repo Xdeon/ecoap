@@ -422,7 +422,7 @@ append_option({OptId2, OptVal2}, OptionList) ->
         false -> [{OptId2, OptVal2} | OptionList]
     end.
 
-% TODO: Shall we follow the specification strictly and react to unrecognized options (including repeated non-repeatable ones)?
+%% TODO: Shall we follow the specification strictly and react to unrecognized options (including repeated non-repeatable ones)?
 
 % RFC 7252
 -spec decode_option({non_neg_integer(), _}) -> {coap_option()|non_neg_integer(), _}.

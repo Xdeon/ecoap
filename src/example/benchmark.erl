@@ -38,7 +38,8 @@ coap_get(_EpID, [<<"benchmark">>], _Suffix, _Request) ->
     {ok, coap_content:new(<<"hello world">>)};
 
 coap_get(_EpID, [<<"fibonacci">>], _Suffix, Request) ->
-    Query = ecoap_request:get_query(Request),
+    Query = ecoap_request:query(Request),
+    % could use cow_lib to parse query 
     Num = lists:foldl(fun(Q, Acc) -> 
             case uri_string:dissect_query(Q) of
                 [{<<"n">>, N}] -> binary_to_integer(N);
