@@ -10,6 +10,7 @@ LINKLIST -> LINK ',' LINKLIST : ['$1'|'$3'].
 LINK -> '<' '/' URI '>' PARAMS : {absolute, '$3', '$5'}.
 LINK -> '<' URI '>' PARAMS : {rootless, '$2', '$4'}.
 
+URI -> '$empty' : [].
 URI  -> segment : [strval('$1')].
 URI  -> segment '/' URI : [strval('$1')|'$3'].
 
