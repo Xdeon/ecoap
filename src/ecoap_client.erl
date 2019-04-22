@@ -437,14 +437,20 @@ get_blockregs(Pid) -> gen_server:call(Pid, get_blockregs).
 % 	end.
 
 init([Host, Port, ClientOpts=#{external_socket:={Transport0, Socket}}]) ->
-	SocketRef = erlang:monitor(process, Socket),
 	Transport = select_transport(Transport0),
-	{ok, #state{client_opts=ClientOpts, socket={external_socket, Transport, Socket}, 
-		socket_ref=SocketRef}, {continue, {connect, Transport, Host, Port}}};
+	{ok, #state{client_opts=ClientOpts, socket={external_socket, Transport, Socket}}, {continue, {resolve, Host, Port}}};
 init([Host, Port, ClientOpts]) ->
 	Transport = select_transport(maps:get(transport, ClientOpts, default_transport(Port))),
 	{ok, #state{client_opts=ClientOpts}, {continue, {connect, Transport, Host, Port}}}.
 
+handle_continue({resolve, Host0, Port}, State=#state{socket={_, _, Socket}}) ->
+	case get_peer_addr(Host0) of
+		{ok, IP, Host} ->
+			SocketRef = erlang:monitor(process, Socket),
+			{noreply, State#state{host=Host, ep_id={IP, Port}, socket_ref=SocketRef}};
+		Other ->
+			{stop, {shutdown, Other}, State}
+	end;
 handle_continue({connect, Transport, Host0, Port}, State) ->
 	case get_peer_addr(Host0) of
 		{ok, IP, Host} ->
