@@ -5,6 +5,7 @@
 -export([init/1]).
 -export([start_server/3, stop_server/1]).
 
+-spec start_link() -> supervisor:startlink_ret().
 start_link() ->
 	supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
@@ -18,6 +19,7 @@ init([]) ->
 			   modules => [ecoap_registry]}],
     {ok, {#{strategy => one_for_one, intensity => 3, period => 10}, Procs}}.
 
+-spec start_server(supervisor:mfargs(), atom(), worker | supervisor) -> supervisor:startchild_ret().
 start_server(SocketMFA, Name, Type) ->
 	Procs = #{id => {ecoap_server_sup, Name}, 
 				  start => {ecoap_server_sup, start_link, [SocketMFA, Name, Type]},
@@ -32,7 +34,12 @@ start_server(SocketMFA, Name, Type) ->
 	% end.
 	supervisor:start_child(?MODULE, Procs).
 	
+-spec stop_server(atom()) -> ok | {error, term()}.
 stop_server(Name) -> 
-	_ = supervisor:terminate_child(?MODULE, {ecoap_server_sup, Name}),
-	_ = supervisor:delete_child(?MODULE, {ecoap_server_sup, Name}),
-	ok.
+	case supervisor:terminate_child(?MODULE, {ecoap_server_sup, Name}) of
+		ok ->
+			_ = supervisor:delete_child(?MODULE, {ecoap_server_sup, Name}),
+			ok;
+		{error, Reason} ->
+			{error, Reason}
+	end.

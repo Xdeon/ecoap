@@ -13,7 +13,7 @@
 
 -export_type([config/0]).
 
--spec start_udp(atom(), config()) -> {ok, pid()} | {error, {already_started, pid()}} | {error, term()}.
+-spec start_udp(atom(), config()) -> supervisor:startchild_ret().
 start_udp(Name, Config) ->
 	TransOpts0 = maps:get(transport_opts, Config, []),
 	TransOpts = [{port, ?DEFAULT_COAP_PORT}|TransOpts0],
@@ -22,16 +22,16 @@ start_udp(Name, Config) ->
 	ok = ecoap_registry:register_handler(Routes),
 	ecoap_sup:start_server({ecoap_udp_socket, start_link, [Name, TransOpts, ProtoConfig]}, Name, worker).
 
--spec start_dtls(atom(), config()) -> {ok, pid()} | {error, {already_started, pid()}} | {error, term()}.
+-spec start_dtls(atom(), config()) -> supervisor:startchild_ret().
 start_dtls(Name, Config) ->
 	Routes = maps:get(routes, Config, []),
 	ok = ecoap_registry:register_handler(Routes),
 	ecoap_sup:start_server({ecoap_dtls_listener_sup, start_link, [Name, Config]}, Name, supervisor).
 
--spec stop_udp(atom()) -> ok.
+-spec stop_udp(atom()) -> ok | {error, term()}.
 stop_udp(Name) ->
     ecoap_sup:stop_server(Name).
 
--spec stop_dtls(atom()) -> ok.
+-spec stop_dtls(atom()) -> ok | {error, term()}.
 stop_dtls(Name) ->
 	ecoap_sup:stop_server(Name).

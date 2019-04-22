@@ -6,7 +6,7 @@
 -export([find_ecoap_server/2]).
 -export([start_endpoint_sup_sup/1]).
 
--spec start_link(mfa(), atom(), worker | supervisor) -> {ok, pid()} | {error, term()}.
+-spec start_link(supervisor:mfargs(), atom(), worker | supervisor) -> {ok, pid()} | {error, term()}.
 start_link(SocketMFA, Name, Type) ->
 	supervisor:start_link(?MODULE, [SocketMFA, Name, Type]).
 
