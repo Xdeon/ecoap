@@ -128,7 +128,7 @@ check_options([{transport_opts, TransOpts}|Opts]) when is_list(TransOpts) ->
 	check_options(Opts);
 check_options([{protocol_config, Config}|Opts]) when is_map(Config) ->
 	check_options(Opts);
-check_options([{external_socket, Module, Socket}|Opts]) when is_atom(Module) andalso (is_pid(Socket) orelse is_atom(Socket) orelse is_tuple(Socket)) ->
+check_options([{external_socket, {Module, Socket}}|Opts]) when is_atom(Module) andalso (is_pid(Socket) orelse is_atom(Socket) orelse is_tuple(Socket)) ->
 	check_options(Opts);
 check_options([Opt|_]) ->
 	{error, {client_options, Opt}}.
