@@ -457,6 +457,9 @@ execute([{send, BinMessage}|Rest], Exchange, State=#state{sock=Socket, transport
     execute(Rest, Exchange, State).
 
 
+handle_request(Message, State=#state{handler_sup=undefined}) ->
+    logger:log(warning, "unexpected coap request ~p received by ~p as ~p used by coap client~n", [Message, self(), ?MODULE]),
+    State;
 handle_request(Message, State=#state{ep_id=EpID, protocol_config=ProtoConfig, handler_sup=HdlSupPid}) ->
     %io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
     HandlerID = ecoap_handler:handler_id(Message),
