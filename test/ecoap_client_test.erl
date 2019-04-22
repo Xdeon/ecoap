@@ -7,7 +7,7 @@
 basic_test_() ->
     [{setup,
         fun() ->
-            {ok, Pid} = ecoap_client:open("coap://coap.me:5683"),
+            {ok, Pid} = ecoap_client:open("coap.me", 5683),
             Pid
         end,
         fun(Pid) ->
@@ -16,7 +16,7 @@ basic_test_() ->
         fun basic_sync/1},
     {setup,
         fun() ->
-            {ok, Pid} = ecoap_client:open("coap://coap.me:5683"),
+            {ok, Pid} = ecoap_client:open("coap.me", 5683),
             Pid
         end,
         fun(Pid) ->
@@ -63,7 +63,7 @@ blockwise_test_() ->
     [
     {setup, 
         fun() -> 
-            {ok, Pid} = ecoap_client:open("coap://californium.eclipse.org:5683"),
+            {ok, Pid} = ecoap_client:open("californium.eclipse.org", 5683),
             Pid
         end,
         fun(Pid) ->
@@ -73,7 +73,7 @@ blockwise_test_() ->
     {setup,
         fun() ->
             {ok, Server} = server_stub:start_link(5683),
-            {ok, Client} = ecoap_client:open("coap://127.0.0.1:5683"),
+            {ok, Client} = ecoap_client:open("127.0.0.1", 5683),
             {Server, Client}
         end,
         fun({Server, Client}) ->

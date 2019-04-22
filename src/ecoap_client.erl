@@ -8,7 +8,7 @@
 %% 3. return {error, _} when synchronously sending a 'NON' request (which should be send asynchronously)
 
 %% API.
--export([open/1, open/2, close/1]).
+-export([open/2, open/3, close/1]).
 -export([ping/1]).
 -export([
 	get/2, get/3, get/4, 
@@ -38,7 +38,7 @@
 -export([get_reqrefs/1, get_obsregs/1, get_blockregs/1]).
 -endif.
 
--export([start_link/2]).
+-export([start_link/3]).
 
 %% gen_server.
 -export([init/1]).
@@ -94,23 +94,43 @@
 -type client_opts() :: #{
 	protocol_config => map(),
 	connect_timeout => timeout(),
+	protocol => coap | coaps,
+	transport => udp | dtls,
 	transport_opts => [gen_udp:option()] | [ssl:connect_option()],
-	external_socket => {module(), socket_id()}
+	external_socket => {udp | dtls, socket_id()}
 }.
 
 -export_type([client_opts/0]).
 
-%% API.
--spec open(iodata()) -> {ok, pid()} | {error, term()}.
-open(HostString) ->
-	open(HostString, #{}).
+%% TODO:
+%% 1. what about open(Host, Port, Opts) e.g. open({127,0,0,1}, 5683, #{external_socket => ...}) DONE!
+%% 2. when server and client share socket, consider how to relate newly spawned client process to existing socket process
+%% 3. do not realize 2 using explicit args cuz they are not always available, we may use EpID as a ref?
+%%    say, instead of being {PeerIP, Port}, let it be something like {{Transport, SocketPid}, {PeerIP, Port}}?
+%% 4. make pure client ignore incoming request!! DONE !
 
--spec open(iodata(), client_opts()) -> {ok, pid()} | {error, term()}.
-open(HostString, ClientOpts) ->
+%% API.
+-spec open(inet:hostname() | inet:ip_address(), inet:port_number()) -> {ok, pid()} | {error, term()}.
+open(Host, Port) ->
+	open(Host, Port, #{}).
+
+-spec open(inet:hostname() | inet:ip_address(), inet:port_number(), client_opts()) -> {ok, pid()} | {error, term()}.
+open(Host, Port, ClientOpts) ->
 	case check_options(ClientOpts) of
-		ok -> start_link(HostString, ClientOpts);
+		ok -> start_link(Host, Port, ClientOpts);
 		CheckError -> CheckError
 	end.
+
+% -spec open(iodata()) -> {ok, pid()} | {error, term()}.
+% open(HostString) ->
+% 	open(HostString, #{}).
+
+% -spec open(iodata(), client_opts()) -> {ok, pid()} | {error, term()}.
+% open(HostString, ClientOpts) ->
+% 	case check_options(ClientOpts) of
+% 		ok -> start_link(HostString, ClientOpts);
+% 		CheckError -> CheckError
+% 	end.
 
 -spec close(pid()) -> ok.
 close(Pid) ->
@@ -124,11 +144,17 @@ check_options([{connect_timeout, infinity}|Opts]) ->
 	check_options(Opts);
 check_options([{connect_timeout, TimeOut}|Opts]) when is_integer(TimeOut) ->
 	check_options(Opts);
+check_options([{protocol, Protocol}|Opts]) when Protocol =:= coap; Protocol =:= coaps ->
+	check_options(Opts);
+check_options([{transport, Transport}|Opts]) when Transport =:= udp; Transport =:= dtls ->
+	check_options(Opts);
 check_options([{transport_opts, TransOpts}|Opts]) when is_list(TransOpts) ->
 	check_options(Opts);
 check_options([{protocol_config, Config}|Opts]) when is_map(Config) ->
 	check_options(Opts);
-check_options([{external_socket, {Module, Socket}}|Opts]) when is_atom(Module) andalso (is_pid(Socket) orelse is_atom(Socket) orelse is_tuple(Socket)) ->
+check_options([{external_socket, {Transport, Socket}}|Opts]) 
+	when (Transport =:= udp orelse Transport =:= dtls) 
+	andalso (is_pid(Socket) orelse is_atom(Socket) orelse is_tuple(Socket)) ->
 	check_options(Opts);
 check_options([Opt|_]) ->
 	{error, {client_options, Opt}}.
@@ -365,9 +391,12 @@ flush_pid(Pid) ->
 get_remote_addr(Pid) ->
 	gen_server:call(Pid, get_remote_addr).
 
--spec start_link(iodata(), client_opts()) -> {ok, pid()} | {error, term()}.
-start_link(HostString, ClientOpts) ->
-	gen_server:start_link(?MODULE, [HostString, ClientOpts], []).
+% -spec start_link(iodata(), client_opts()) -> {ok, pid()} | {error, term()}.
+% start_link(HostString, ClientOpts) ->
+	% gen_server:start_link(?MODULE, [HostString, ClientOpts], []).
+
+start_link(Host, Port, ClientOpts) ->
+	gen_server:start_link(?MODULE, [Host, Port, ClientOpts], []).
 
 
 -ifdef(TEST).
@@ -386,26 +415,64 @@ get_blockregs(Pid) -> gen_server:call(Pid, get_blockregs).
 
 %% gen_server.
 
-init([HostString, ClientOpts=#{external_socket:={Transport, Socket}}]) ->
-	SocketRef = erlang:monitor(process, Socket),
-	{ok, #state{client_opts=ClientOpts, socket={external_socket, Transport, Socket}, socket_ref=SocketRef}, {continue, {resolve_host, HostString}}};
-init([HostString, ClientOpts]) ->
-	{ok, #state{client_opts=ClientOpts}, {continue, {resolve_host, HostString}}}.
+% init([HostString, ClientOpts=#{external_socket:={Transport, Socket}}]) ->
+% 	SocketRef = erlang:monitor(process, Socket),
+% 	{ok, #state{client_opts=ClientOpts, socket={external_socket, Transport, Socket}, socket_ref=SocketRef}, {continue, {resolve_host, HostString}}};
+% init([HostString, ClientOpts]) ->
+% 	{ok, #state{client_opts=ClientOpts}, {continue, {resolve_host, HostString}}}.
 
-% Notice that for any other reason than normal, shutdown, or {shutdown,Term}, 
-% the gen_server process is assumed to terminate because of an error and an error report is issued using logger(3).
-handle_continue({resolve_host, HostString}, State=#state{socket={external_socket, _, _}}) ->
-	{_, Host, EpID} = ecoap_uri:get_peer_addr(HostString),
-	{noreply, State#state{host=Host, ep_id=EpID}};
-handle_continue({resolve_host, HostString}, State) ->
-	case ecoap_uri:get_peer_addr(HostString) of 
-		{coap, Host, EpID} ->
-			start_connection(ecoap_udp_socket, State#state{host=Host, ep_id=EpID});
-		{coaps, Host, EpID} ->
-			start_connection(ecoap_dtls_socket, State#state{host=Host, ep_id=EpID});
-		Other -> 
+% % Notice that for any other reason than normal, shutdown, or {shutdown,Term}, 
+% % the gen_server process is assumed to terminate because of an error and an error report is issued using logger(3).
+% handle_continue({resolve_host, HostString}, State=#state{socket={external_socket, _, _}}) ->
+% 	{_, Host, EpID} = ecoap_uri:get_peer_addr(HostString),
+% 	{noreply, State#state{host=Host, ep_id=EpID}};
+% handle_continue({resolve_host, HostString}, State) ->
+% 	case ecoap_uri:get_peer_addr(HostString) of 
+% 		{coap, Host, EpID} ->
+% 			start_connection(ecoap_udp_socket, State#state{host=Host, ep_id=EpID});
+% 		{coaps, Host, EpID} ->
+% 			start_connection(ecoap_dtls_socket, State#state{host=Host, ep_id=EpID});
+% 		Other -> 
+% 			{stop, {shutdown, Other}, State}
+% 	end.
+
+init([Host, Port, ClientOpts=#{external_socket:={Transport0, Socket}}]) ->
+	SocketRef = erlang:monitor(process, Socket),
+	Transport = select_transport(Transport0),
+	{ok, #state{client_opts=ClientOpts, socket={external_socket, Transport, Socket}, 
+		socket_ref=SocketRef}, {continue, {connect, Transport, Host, Port}}};
+init([Host, Port, ClientOpts]) ->
+	Transport = select_transport(maps:get(transport, ClientOpts, default_transport(Port))),
+	{ok, #state{client_opts=ClientOpts}, {continue, {connect, Transport, Host, Port}}}.
+
+handle_continue({connect, Transport, Host0, Port}, State) ->
+	case get_peer_addr(Host0) of
+		{ok, IP, Host} ->
+			start_connection(Transport, State#state{host=Host, ep_id={IP, Port}});
+		Other ->	
 			{stop, {shutdown, Other}, State}
 	end.
+
+get_peer_addr(Host) when is_list(Host) -> 
+	case inet:parse_address(Host) of
+		{ok, IP} -> 
+			{ok, IP, undefined};
+		{error, einval} -> 
+			case inet:getaddr(Host, inet) of
+				{ok, IP} -> 
+					{ok, IP, list_to_binary(Host)};
+				{error, Error} ->
+					{error, Error}
+			end
+	end;
+get_peer_addr(Host) when is_tuple(Host) -> 
+	{ok, Host, undefined}.
+
+select_transport(udp) -> ecoap_udp_socket;
+select_transport(dtls) -> ecoap_dtls_socket.
+
+default_transport(5684) -> dtls;
+default_transport(_) -> udp.
 
 start_connection(Transport, State=#state{ep_id=EpID, client_opts=ClientOpts}) ->
 	TransOpts = maps:get(transport_opts, ClientOpts, []),

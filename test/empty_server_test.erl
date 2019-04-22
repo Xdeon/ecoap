@@ -25,7 +25,7 @@ empty_server_test_() ->
         fun() ->
             {ok, _} = application:ensure_all_started(ecoap),
             {ok, _} = ecoap:start_udp(?MODULE, #{routes => []}),
-            {ok, Client} = ecoap_client:open("coap://127.0.0.1"),
+            {ok, Client} = ecoap_client:open("127.0.0.1", 5683),
             Client
         end,
         fun(Client) ->
@@ -54,7 +54,7 @@ unknown_handler_test_() ->
         fun() ->
             {ok, _} = application:ensure_all_started(ecoap),
             {ok, _} = ecoap:start_udp(?MODULE, #{routes => [{[<<"unknown">>], unknown_module}]}),
-            {ok, Client} = ecoap_client:open("coap://127.0.0.1"),
+            {ok, Client} = ecoap_client:open("127.0.0.1", 5683),
             Client
         end,
         fun(Client) ->
