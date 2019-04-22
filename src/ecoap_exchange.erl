@@ -257,7 +257,7 @@ aack_sent({timeout, await_pack}, _TransArgs, Exchange) ->
     {[], Exchange#exchange{stage=aack_sent}}.
 
 cancelled({_, _}, _, Exchange) ->
-    Exchange.
+    {[], Exchange}.
 
 check_next_state(#exchange{expire_time=0, stage=Stage}) when Stage =/= await_aack, Stage =/= await_pack -> undefined;
 check_next_state(Exchange) -> Exchange.
