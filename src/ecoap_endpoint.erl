@@ -170,6 +170,15 @@ handle_cast(_Msg, State) ->
 %%
 %%
 % incoming CON(0) or NON(1) request
+% pure client would reply with reset
+handle_info({datagram, <<?VERSION:2, 0:1, _:1, _TKL:4, 0:3, _CodeDetail:5, MsgId:16, _/bytes>>},
+    State=#state{handler_sup=undefined, sock=Socket, transport=Transport, ep_id=EpID}) ->
+    logger:log(info, "unexpected request received by ~p as ~p used as client, sending RST~n", [self(), ?MODULE]),
+    BinRST = coap_message:encode(ecoap_request:rst(MsgId)),
+    Transport:send(Socket, EpID, BinRST),
+    {noreply, State};
+% incoming CON(0) or NON(1) request
+% server/client sharing socket with server would handle it
 handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, _TKL:4, 0:3, _CodeDetail:5, MsgId:16, _/bytes>>}, 
     State=#state{protocol_config=ProtoConfig}) ->
 	TrId = {in, MsgId},
@@ -191,8 +200,8 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgI
                         ecoap_exchange:received(BinMessage, ProtoConfig, init_exchange(TrId, Receiver)));
                 error ->
                     % token was not recognized
+                    % logger:log(info, "separate response with unrecognized token received by ~p as ~p, sending RST~n", [self(), ?MODULE]),
                     BinRST = coap_message:encode(ecoap_request:rst(MsgId)),
-                    %io:fwrite("<- reset~n"),
                     Transport:send(Socket, EpID, BinRST),
                     {noreply, State}
             end
@@ -215,7 +224,7 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 2:2, TKL:4, _Code:8, MsgId:16,
                 true ->
                     update_state(State, TrId, ecoap_exchange:received(BinMessage, ProtoConfig, TrState));
                 false ->
-                    % io:fwrite("unrecognized token~n"),
+                    % logger:log(info, "ACK response with unrecognized token received by ~p as ~p~n", [self(), ?MODULE]),
                     {noreply, State}
             end;
         error ->
@@ -224,7 +233,6 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 2:2, TKL:4, _Code:8, MsgId:16,
     end;
 % silently ignore other versions
 handle_info({datagram, <<Ver:2, _/bytes>>}, State) when Ver /= ?VERSION ->
-    % %io:format("unknown CoAP version~n"),
     {noreply, State};
 
 handle_info(start_scan, State) ->
@@ -457,9 +465,6 @@ execute([{send, BinMessage}|Rest], Exchange, State=#state{sock=Socket, transport
     execute(Rest, Exchange, State).
 
 
-handle_request(Message, State=#state{handler_sup=undefined}) ->
-    logger:log(warning, "unexpected coap request ~p received by ~p as ~p used by coap client~n", [Message, self(), ?MODULE]),
-    State;
 handle_request(Message, State=#state{ep_id=EpID, protocol_config=ProtoConfig, handler_sup=HdlSupPid}) ->
     %io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
     HandlerID = ecoap_handler:handler_id(Message),
@@ -540,10 +545,8 @@ do_cancel_msg(TrId, State=#state{trans=Trans}) ->
 purge_state(State=#state{tokens=Tokens, trans=Trans, rescnt=Count, timer=Timer}) ->
     case {maps:size(Tokens) + maps:size(Trans) + Count, endpoint_timer:is_kicked(Timer)} of
         {0, false} -> 
-            % io:format("All trans expired~n"),
             {stop, normal, State};
         _ -> 
             Timer2 = endpoint_timer:restart_timer(Timer),
-            % io:format("Ongoing trans exist~n"),
             {noreply, State#state{timer=Timer2}}
     end.

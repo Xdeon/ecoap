@@ -94,7 +94,6 @@ in_non({in, BinMessage}, _, Exchange) ->
             {[{handle_respone, Message}], Exchange#exchange{stage=got_non}}
     catch _C:_R ->
             % shall we send reset?
-            % ok
             logger:log(warning, "~p received corrupted msg ~p~n", [self(), BinMessage]),
             {[], Exchange#exchange{stage=got_non}}
     end.
@@ -105,7 +104,6 @@ got_non({in, _Message}, _, Exchange) ->
 
 % --- outgoing NON
 out_non({out, Message}, _, Exchange) ->
-    %io:fwrite("~p send outgoing non msg ~p~n", [self(), Message]),
     logger:log(debug, "~p send outgoing NON msg ~p~n", [self(), Message]),
     BinMessage = coap_message:encode(Message),
     {[{send, BinMessage}], Exchange#exchange{stage=sent_non}}.
@@ -160,7 +158,6 @@ await_aack({in, _BinMessage}, _, Exchange) ->
     {[], Exchange#exchange{stage=await_aack}};
 
 await_aack({timeout, await_aack}, _, Exchange=#exchange{msgbin=BinAck}) ->
-    % io:fwrite("~p <- ack [application didn't respond]~n", [self()]),
     logger:log(debug, "~p <- ack [application didn't respond]~n", [self()]),
     {[{send, BinAck}], Exchange#exchange{stage=pack_sent}};
 
@@ -174,7 +171,6 @@ await_aack({out, Ack}, _, Exchange) ->
     {[cancel_timer | Actions], NewExchange}.
 
 go_pack_sent(Ack, Exchange) ->
-	%io:fwrite("~p send ack/rst msg ~p~n", [self(), Ack]),
     logger:log(debug, "~p send ACK/RST msg ~p~n", [self(), Ack]),
     BinAck = coap_message:encode(Ack),
     {[{send, BinAck}], Exchange#exchange{stage=pack_sent, msgbin=BinAck}}.
@@ -238,7 +234,6 @@ await_pack({in, BinAck}, _, Exchange) ->
 
 await_pack({timeout, await_pack}, ProtoConfig, Exchange=#exchange{msgbin=BinMessage, retry_time=Timeout, retry_count=Count}) when Count < ?MAX_RETRANSMIT(ProtoConfig) ->
     % BinMessage = coap_message:encode(Message),
-    %io:fwrite("resend msg for ~p time~n", [Count]),
     logger:log(debug, "~p resend CON msg for ~p time~n", [self(), Count]),
     Timeout2 = Timeout*2,
     {[{send, BinMessage}, {start_timer, Timeout2}], Exchange#exchange{retry_time=Timeout2, retry_count=Count+1, stage=await_pack}};
