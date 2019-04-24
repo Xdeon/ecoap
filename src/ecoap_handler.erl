@@ -16,7 +16,7 @@
 
 -record(state, {
     endpoint_pid = undefined :: pid(),
-    cache_timeout = undefined :: non_neg_integer(),
+    cache_timeout = undefined :: timeout(),
     max_body_size = undefined :: non_neg_integer(),
     max_block_size = undefined :: non_neg_integer(),
     id = undefined :: handler_id(),
@@ -27,18 +27,14 @@
     obseq = undefined :: non_neg_integer(), 
     obstate = undefined :: term(), 
     timer = undefined :: undefined | reference(),
-    uri = undefined :: uri(),
-    prefix = undefined :: undefined | uri(), 
-    suffix = undefined :: undefined | uri()}).
-    % query = undefined :: query()}).
+    uri = undefined :: ecoap_uri:path(),
+    prefix = undefined :: undefined | ecoap_uri:path(), 
+    suffix = undefined :: undefined | ecoap_uri:path()}).
 
--type method() :: atom().
--type uri() :: ecoap_uri:path().
--type query() :: ecoap_uri:query().
 -type reason() :: binary().
 -type observe_ref() :: term().
--type observe_state() :: term().
--type handler_id() :: {method(), uri(), query()}.
+-type observe_state() :: any().
+-type handler_id() :: {coap_message:coap_method(), ecoap_uri:path(), ecoap_uri:query()}.
 
 -type last_response() ::
     undefined |
@@ -46,7 +42,7 @@
     coap_message:coap_success() | 
     coap_message:coap_error().
 
--export_type([uri/0, query/0, reason/0, handler_id/0]).
+-export_type([reason/0, handler_id/0]).
 
 %% TODO: consider method to specify type of sperate response
 %% e.g. CON -> Empty ACK -> CON -> Empty ACK, or
@@ -54,7 +50,7 @@
 
 % called when a client asks for .well-known/core resources
 -callback coap_discover(Prefix) -> [Uri] when
-    Prefix :: uri(),
+    Prefix :: ecoap_uri:path(),
     Uri :: core_link:coap_uri().
 -optional_callbacks([coap_discover/1]). 
 
@@ -62,8 +58,8 @@
 -callback coap_get(EpID, Prefix, Suffix, Request) -> 
     {ok, Content} | {error, Error} | {error, Error, Reason} when
     EpID :: ecoap_endpoint:ecoap_endpoint_id(),
-    Prefix :: uri(),
-    Suffix :: uri(),
+    Prefix :: ecoap_uri:path(),
+    Suffix :: ecoap_uri:path(),
     % Query :: 'query'(),
     Request :: coap_message:coap_message(),
     Content :: coap_content:coap_content(),
@@ -75,8 +71,8 @@
 -callback coap_fetch(EpID, Prefix, Suffix, Request) -> 
     {ok, Content} | {error, Error} | {error, Error, Reason} when
     EpID :: ecoap_endpoint:ecoap_endpoint_id(),
-    Prefix :: uri(),
-    Suffix :: uri(),
+    Prefix :: ecoap_uri:path(),
+    Suffix :: ecoap_uri:path(),
     Request :: coap_message:coap_message(),
     Content :: coap_content:coap_content(),
     Error :: coap_message:error_code(),
@@ -87,8 +83,8 @@
 -callback coap_post(EpID, Prefix, Suffix, Request) -> 
     {ok, Code, Content} | {error, Error} | {error, Error, Reason} when
     EpID :: ecoap_endpoint:ecoap_endpoint_id(),
-    Prefix :: uri(),
-    Suffix :: uri(),
+    Prefix :: ecoap_uri:path(),
+    Suffix :: ecoap_uri:path(),
     Request :: coap_message:coap_message(),
     Code :: coap_message:success_code(),
     Content :: coap_content:coap_content(),
@@ -100,8 +96,8 @@
 -callback coap_put(EpID, Prefix, Suffix, Request) -> 
     ok | {ok, Content} | {error, Error} | {error, Error, Reason} when
     EpID :: ecoap_endpoint:ecoap_endpoint_id(),
-    Prefix :: uri(),
-    Suffix :: uri(),
+    Prefix :: ecoap_uri:path(),
+    Suffix :: ecoap_uri:path(),
     Request :: coap_message:coap_message(),
     Content :: coap_content:coap_content(),
     Error :: coap_message:error_code(),
@@ -112,8 +108,8 @@
 -callback coap_patch(EpID, Prefix, Suffix, Request) -> 
     ok | {ok, Content} | {error, Error} | {error, Error, Reason} when
     EpID :: ecoap_endpoint:ecoap_endpoint_id(),
-    Prefix :: uri(),
-    Suffix :: uri(),
+    Prefix :: ecoap_uri:path(),
+    Suffix :: ecoap_uri:path(),
     Request :: coap_message:coap_message(),
     Content :: coap_content:coap_content(),
     Error :: coap_message:error_code(),
@@ -124,8 +120,8 @@
 -callback coap_ipatch(EpID, Prefix, Suffix, Request) -> 
     ok | {ok, Content} | {error, Error} | {error, Error, Reason} when
     EpID :: ecoap_endpoint:ecoap_endpoint_id(),
-    Prefix :: uri(),
-    Suffix :: uri(),
+    Prefix :: ecoap_uri:path(),
+    Suffix :: ecoap_uri:path(),
     Request :: coap_message:coap_message(),
     Content :: coap_content:coap_content(),
     Error :: coap_message:error_code(),
@@ -136,8 +132,8 @@
 -callback coap_delete(EpID, Prefix, Suffix, Request) -> 
     ok | {ok, Content} | {error, Error} | {error, Error, Reason} when
     EpID :: ecoap_endpoint:ecoap_endpoint_id(),
-    Prefix :: uri(),
-    Suffix :: uri(),
+    Prefix :: ecoap_uri:path(),
+    Suffix :: ecoap_uri:path(),
     Request :: coap_message:coap_message(),
     Content :: coap_content:coap_content(),
     Error :: coap_message:error_code(),
@@ -148,8 +144,8 @@
 -callback coap_observe(EpID, Prefix, Suffix, Request) -> 
     {ok, ObState} | {error, Error} | {error, Error, Reason} when
     EpID :: ecoap_endpoint:ecoap_endpoint_id(),
-    Prefix :: uri(),
-    Suffix :: uri(),
+    Prefix :: ecoap_uri:path(),
+    Suffix :: ecoap_uri:path(),
     Request :: coap_message:coap_message(),
     ObState :: observe_state(),
     Error :: coap_message:error_code(),
@@ -203,7 +199,7 @@ close(Pid) ->
     gen_server:cast(Pid, shutdown).
 
 
--spec notify(uri(), term()) -> ok.
+-spec notify(ecoap_uri:path(), term()) -> ok.
 notify(Uri, Info) ->
     case pg2:get_members({coap_observer, Uri}) of
         {error, _} -> ok;
@@ -773,11 +769,13 @@ coap_put(Module, EpID, Prefix, Suffix, Request) ->
         false -> {error, 'MethodNotAllowed'}
     end.
 
+
 coap_patch(Module, EpID, Prefix, Suffix, Request) ->
     case erlang:function_exported(Module, coap_patch, 4) of
         true -> Module:coap_patch(EpID, Prefix, Suffix, Request);
         false -> {error, 'MethodNotAllowed'}
     end.
+
 
 coap_ipatch(Module, EpID, Prefix, Suffix, Request) ->
     case erlang:function_exported(Module, coap_ipatch, 4) of
@@ -824,6 +822,11 @@ coap_ack(Module, Ref, ObState) ->
         false -> {ok, ObState}
     end.
 
+% invoke_callback(Module, Function, Arity, Args) ->
+%     case erlang:function_exported(Module, Function, Arity) of
+%         true -> erlang:apply(Module, Function, Args);
+%         false -> {error, 'MethodNotAllowed'}
+%     end.
 
 send_server_error(Request, State) ->
     send_server_error([], Request, State).

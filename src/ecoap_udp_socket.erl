@@ -75,7 +75,7 @@ get_endpoint_count(Pid) ->
 
 %% module specific send function 
 -spec send(inet:socket(), ecoap_endpoint:ecoap_endpoint_id(), binary()) -> ok | {error, term()}.
-send(Socket, {PeerIP, PeerPortNo}, Datagram) ->
+send(Socket, {udp, {PeerIP, PeerPortNo}}, Datagram) ->
     gen_udp:send(Socket, PeerIP, PeerPortNo, Datagram).
 
 %% gen_server.
@@ -156,7 +156,7 @@ handle_cast(_Msg, State) ->
 
 handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, 
 	State=#state{socket=Socket, endpoint_pool=PoolPid, endpoint_count=Count, protocol_config=ProtoConfig}) ->
-	EpID = {PeerIP, PeerPortNo},
+	EpID = {udp, {PeerIP, PeerPortNo}},
 	case find_endpoint(EpID) of
 		{ok, EpPid} ->
 			EpPid ! {datagram, Bin},

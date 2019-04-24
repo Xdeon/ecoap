@@ -67,7 +67,7 @@ init([accept, Name, ListenSocket, ProtoConfig0, TimeOut]) ->
 	ProtoConfig = ecoap_config:merge_protocol_config(ProtoConfig0),
 	StateData = #data{protocol_config=ProtoConfig, server_name=Name, lsocket=ListenSocket, timeout=TimeOut},
 	{ok, accept, StateData, [{next_event, internal, accept}]};
-init([connect, EpID={PeerIP, PeerPortNo}, TransOpts0, ProtoConfig0, TimeOut]) ->
+init([connect, EpID={dtls, {PeerIP, PeerPortNo}}, TransOpts0, ProtoConfig0, TimeOut]) ->
 	TransOpts = ecoap_config:merge_sock_opts(default_dtls_transopts(), TransOpts0),
 	ProtoConfig = ecoap_config:merge_protocol_config(ProtoConfig0),
 	case ssl:connect(PeerIP, PeerPortNo, TransOpts, TimeOut) of
@@ -169,9 +169,9 @@ code_change(_OldVsn, StateName, StateData, _Extra) ->
 do_handshake(CSocket, StateData=#data{timeout=TimeOut}) ->
 	case ssl:handshake(CSocket, TimeOut) of
 		{ok, Socket} -> 
-			{ok, EpID} = ssl:peername(Socket),
+			{ok, PeerAddr} = ssl:peername(Socket),
 			ok = ssl:setopts(Socket, [{active, ?ACTIVE_PACKETS}]),
-			{next_state, connected, StateData#data{socket=Socket, ep_id=EpID}};
+			{next_state, connected, StateData#data{socket=Socket, ep_id={dtls, PeerAddr}}};
 		{error, {tls_alert, _}} ->
 			{stop, normal, StateData#data{socket=CSocket}};
 		{error, Reason} when Reason =:= timeout; Reason =:= closed ->

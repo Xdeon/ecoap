@@ -5,7 +5,7 @@
 -export([start_link/5, start_link/4]).
 -export([ping/1, send/2, send_message/3, send_request/3, send_response/3, cancel_request/2]).
 -export([register_handler/3]).
-% -export([request_complete/3]).
+-export([get_peer_info/2]).
 
 %% gen_server.
 -export([init/1]).
@@ -36,7 +36,7 @@
     handler_refs = #{} :: #{pid() => ecoap_handler:handler_id() | undefined}
 }).
 
--type ecoap_endpoint_id() :: {inet:ip_address(), inet:port_number()}.
+-type ecoap_endpoint_id() :: {atom(), {inet:ip_address(), inet:port_number()}}.
 -type trid() :: {in | out, coap_message:msg_id()}.
 -type receiver() :: {pid(), reference()}.
 
@@ -102,8 +102,16 @@ cancel_request(EndpointPid, Ref) ->
 % monitor_handler(EndpointPid, Pid) ->
 %     EndpointPid ! {handler_started, Pid}, ok.
 
+-spec register_handler(pid(), ecoap_handler:handler_id(), pid()) -> ok.
 register_handler(EndpointPid, ID, Pid) ->
     EndpointPid ! {register_handler, ID, Pid}, ok.
+
+-spec get_peer_info(transport, ecoap_endpoint_id()) -> atom();
+                   (ip, ecoap_endpoint_id()) -> inet:ip_address();
+                   (port, ecoap_endpoint_id()) -> inet:port_number().
+get_peer_info(transport, {RawTransport, _}) -> RawTransport;
+get_peer_info(ip, {_, {PeerIP, _}}) -> PeerIP;
+get_peer_info(port, {_, {_, PeerPortNo}}) -> PeerPortNo.
 
 % request_complete(EndpointPid, Receiver, ResponseType) ->
 %     EndpointPid ! {request_complete, Receiver, ResponseType}, ok. 
