@@ -51,21 +51,27 @@ transform_urimap(UriMap0=#{host:=RawHost, scheme:=RawScheme}) ->
 transform_urimap(_) ->
     {error, invalid_uri}.
 
+-spec get_peer_addr(binary() | list() | tuple()) -> {ok, undefined | binary(), inet:ip_addres()} | {error, term()}.
 get_peer_addr(Host) when is_binary(Host) ->
     get_peer_addr(binary_to_list(Host));
 get_peer_addr(Host) ->
+    % first check if it is an ip address like "127.0.0.1"
     case inet:parse_address(Host) of
         {ok, PeerIP} -> 
             {ok, undefined, PeerIP};
         {error, einval} -> 
+            % then check if it is an ip addrss like {127,0,0,1} or a domain like "coap.me"
             case inet:getaddr(Host, inet) of
-                {ok, PeerIP} ->
+                {ok, PeerIP} when is_list(Host) ->
                     {ok, list_to_binary(Host), PeerIP};
+                {ok, PeerIP} ->
+                    {ok, undefined, PeerIP};
                 {error, Reason} ->
                     {error, Reason}
             end
     end. 
 
+-spec get_uri_parms(uri_map() | list() | binary()) -> map().
 get_uri_parms(UriMap) when is_map(UriMap) ->
     Path = split_path(maps:get(path, UriMap, <<>>)),
     Query = split_query(maps:get('query', UriMap, <<>>)),
