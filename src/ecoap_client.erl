@@ -470,15 +470,16 @@ handle_call({observe, Uri, Options}, {Pid, _}, State=#state{socket=Socket, reque
 	ObsRegs2 = maps:put(ObsKey, Ref, ObsRegs),
 	{reply, {ok, Ref}, State#state{requests=Requests2, observe_regs=ObsRegs2}};
 handle_call({unobserve, Ref, ETag}, {Pid, _}, 
-	State=#state{requests=Requests, request_mapping=RequestMapping, observe_regs=ObsRegs}) ->
+	State=#state{socket=Socket, requests=Requests, request_mapping=RequestMapping, observe_regs=ObsRegs, ep_id=EpID}) ->
 	case maps:find(Ref, Requests) of
 		error ->
 			{reply, {error, no_observe}, State};
 		{ok, {_, #request{observe_key=undefined}}} ->
 			{reply, {error, no_observe}, State};
-		{ok, {EndpointPid, #request{options=Options, observe_key=ObsKey} = Request}} ->
+		{ok, {_, #request{options=Options, observe_key=ObsKey} = Request}} ->
 			Ref = maps:get(ObsKey, ObsRegs),
 			Options2 = coap_message:add_option('ETag', ETag, Options),
+			{ok, EndpointPid} = get_endpoint(Socket, EpID),
 			{ok, Ref} = ecoap_endpoint:send_request(EndpointPid, Ref,
 							ecoap_request:request('CON', 'GET', coap_message:add_option('Observe', 1, Options2))),
 			Request2 = Request#request{options=Options2, origin_ref=Ref, reply_to=Pid}, 
