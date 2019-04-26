@@ -33,7 +33,8 @@
     ep_id = undefined :: ecoap_endpoint_id(),
     handler_sup = undefined :: undefined | pid(),
     handler_regs = #{} :: #{ecoap_handler:handler_id() => pid()},
-    handler_refs = #{} :: #{pid() => ecoap_handler:handler_id() | undefined}
+    handler_refs = #{} :: #{pid() => ecoap_handler:handler_id() | undefined},
+    client_set = ordsets:new() :: ordsets:set(pid())
 }).
 
 -type ecoap_endpoint_id() :: {atom(), {inet:ip_address(), inet:port_number()}}.
@@ -295,18 +296,23 @@ handle_info({'DOWN', _Ref, process, Pid, _Reason}, State=#state{rescnt=Count, ha
             {noreply, State}
     end;
 
-handle_info({'EXIT', Pid, _Reason}, State=#state{receivers=Receivers}) ->
+handle_info({'EXIT', Pid, _Reason}, State=#state{receivers=Receivers, client_set=CSet}) ->
     % if this exit signal comes from an embedded client which shares the same socket process with the server
     % we should ensure all requests the client issued that have not been completed yet are cancelled
-    State2 =  maps:fold(fun(Receiver={ClientPid, _}, {Token, TrId, _}, Acc) when ClientPid =:= Pid -> 
-                    do_cancel_msg(TrId, complete_request(Receiver, Token, Acc));
-                (_, _, Acc) -> Acc 
-        end, State, Receivers),
-    {noreply, State2};
+    case is_client(Pid, CSet) of
+        true ->
+            CSet2 = purge_client_set(Pid, CSet),
+            State2 = maps:fold(fun(Receiver={ClientPid, _}, {Token, TrId, _}, Acc) when ClientPid =:= Pid -> 
+                                do_cancel_msg(TrId, complete_request(Receiver, Token, Acc));
+                                (_, _, Acc) -> Acc end, State#state{client_set=CSet2}, Receivers),
+            {noreply, State2};
+        false ->
+            {noreply, State}
+    end;
     
 handle_info(_Info, State) ->
     % error_logger:error_msg("unexpected info ~p received by ~p as ~p~n", [_Info, self(), ?MODULE]),
-    % logger:log(error, "unexpected info ~p received by ~p as ~p~n", [_Info, self(), ?MODULE]),
+    logger:log(error, "unexpected info ~p received by ~p as ~p~n", [_Info, self(), ?MODULE]),
 	{noreply, State}.
 
 terminate(_Reason, _State) ->
@@ -351,14 +357,16 @@ code_change(_OldVsn, State, _Extra) ->
 %     Tokens2 = maps:put(Token, Receiver, Tokens),
 %     make_new_message(Message, Receiver, State#state{tokens=Tokens2, receivers=Receivers2}).
 
-make_new_request(Message, Receiver, State=#state{tokens=Tokens, nextmid=MsgId, receivers=Receivers, protocol_config=#{token_length:=TKL}}) ->
+make_new_request(Message, Receiver={ClientPid, _}, 
+    State=#state{tokens=Tokens, nextmid=MsgId, receivers=Receivers, client_set=CSet, protocol_config=#{token_length:=TKL}}) ->
     Token = case maps:find(Receiver, Receivers) of
         {ok, {OldToken, _, _}} -> OldToken;
         error -> ecoap_message_token:generate_token(TKL)
     end,
     Tokens2 = maps:put(Token, Receiver, Tokens),
     Receivers2 = maps:put(Receiver, {Token, {out, MsgId}, coap_message:get_option('Observe', Message)}, Receivers),
-    make_new_message(coap_message:set_token(Token, Message), Receiver, State#state{tokens=Tokens2, receivers=Receivers2}).
+    CSet2 = update_client_set(ClientPid, CSet),
+    make_new_message(coap_message:set_token(Token, Message), Receiver, State#state{tokens=Tokens2, receivers=Receivers2, client_set=CSet2}).
 
 make_new_message(Message, Receiver, State=#state{nextmid=MsgId}) ->
     make_message({out, MsgId}, coap_message:set_id(MsgId, Message), Receiver, State#state{nextmid=ecoap_message_id:next_mid(MsgId)}).
@@ -416,6 +424,18 @@ scan_state(State=#state{trans=Trans}) ->
     CurrentTime = erlang:monotonic_time(),
     Trans2 = maps:filter(fun(_TrId, TrState) -> ecoap_exchange:not_expired(CurrentTime, TrState) end, Trans),
     purge_state(State#state{trans=Trans2}).
+
+update_client_set(ClientPid, CSet) ->
+    ordsets:add_element(ClientPid, CSet).
+
+purge_client_set(ClientPid, CSet) ->
+    ordsets:del_element(ClientPid, CSet).
+
+is_client(ClientPid, CSet) ->
+    ordsets:is_element(ClientPid, CSet).
+
+client_set_size(CSet) ->
+    ordsets:size(CSet).
 
 % This is the code for issue where one client send mulitiple observer requests to same resource with different tokens
 % update_handler_regs({_, undefined}=ID, Pid, Regs) ->
@@ -552,9 +572,8 @@ do_cancel_msg(TrId, State=#state{trans=Trans}) ->
 % update_state(State=#state{trans=Trans, timer=Timer}, TrId, TrState) ->
 %     Trans2 = maps:put(TrId, TrState, Trans),
 %     {noreply, State#state{trans=Trans2, timer=endpoint_timer:kick_timer(Timer)}}.
-
-purge_state(State=#state{tokens=Tokens, trans=Trans, rescnt=Count, timer=Timer}) ->
-    case {maps:size(Tokens) + maps:size(Trans) + Count, endpoint_timer:is_kicked(Timer)} of
+purge_state(State=#state{tokens=Tokens, trans=Trans, rescnt=Count, client_set=CSet, timer=Timer}) ->
+    case {maps:size(Tokens) + maps:size(Trans) + Count + client_set_size(CSet), endpoint_timer:is_kicked(Timer)} of
         {0, false} -> 
             {stop, normal, State};
         _ -> 
