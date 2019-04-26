@@ -24,7 +24,7 @@
     protocol_config = undefined :: ecoap_config:protocol_config(),
 	tokens = #{} :: #{coap_message:token() => receiver()},
 	trans = #{} :: #{trid() => ecoap_exchange:exchange()},
-    receivers = #{} :: #{receiver() => {coap_message:token(), trid(), non_neg_integer()}},
+    receivers = #{} :: #{receiver() => {coap_message:token(), trid(), observe_seq()}},
 	nextmid = undefined :: coap_message:msg_id(),
 	rescnt = 0 :: non_neg_integer(),
     timer = undefined :: endpoint_timer:timer_state(),
@@ -39,6 +39,7 @@
 -type ecoap_endpoint_id() :: {atom(), {inet:ip_address(), inet:port_number()}}.
 -type trid() :: {in | out, coap_message:msg_id()}.
 -type receiver() :: {pid(), reference()}.
+-type observe_seq() :: non_neg_integer().
 
 -opaque state() :: #state{}.
 
@@ -127,6 +128,8 @@ init([undefined, Transport, Socket, EpID, ProtoConfig0]) ->
     {ok, #state{transport=Transport, sock=Socket, ep_id=EpID, nextmid=ecoap_message_id:first_mid(), timer=Timer, protocol_config=ProtoConfig}};
 % server
 init([SupPid, Transport, Socket, EpID, ProtoConfig0]) ->
+    % need this also in server mode to avoid termination with ecoap_client 
+    process_flag(trap_exit, true),
     ProtoConfig = ProtoConfig0#{endpoint_pid=>self()},
     Timer = endpoint_timer:start_timer(?SCAN_INTERVAL, start_scan),
     {ok, #state{transport=Transport, sock=Socket, ep_id=EpID, nextmid=ecoap_message_id:first_mid(), timer=Timer, protocol_config=ProtoConfig}, {continue, {init, SupPid}}}.
