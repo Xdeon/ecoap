@@ -71,7 +71,8 @@ get_peer_addr(Host) ->
             end
     end. 
 
--spec get_uri_parms(uri_map() | list() | binary()) -> map().
+-spec get_uri_parms(map()) -> map();
+                   (list() | binary()) -> map() | {error, _, _}.
 get_uri_parms(UriMap) when is_map(UriMap) ->
     Path = split_path(maps:get(path, UriMap, <<>>)),
     Query = split_query(maps:get('query', UriMap, <<>>)),
@@ -81,7 +82,10 @@ get_uri_parms("/" ++ _ = Uri) ->
 get_uri_parms(Uri) when is_list(Uri) ->
     get_uri_parms(list_to_binary("/" ++ Uri));
 get_uri_parms(Uri) ->
-    get_uri_parms(parse_uri(Uri)).
+    case parse_uri(Uri) of
+        {error, _, _} = Error -> Error;
+        UriMap -> get_uri_parms(UriMap)
+    end.
 
 scheme_to_atom(<<"coap">>) ->
     coap;
