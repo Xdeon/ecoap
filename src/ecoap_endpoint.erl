@@ -33,7 +33,7 @@
     ep_id = undefined :: ecoap_endpoint_id(),
     handler_sup = undefined :: undefined | pid(),
     handler_regs = #{} :: #{ecoap_handler:handler_id() => pid()},
-    handler_refs = #{} :: #{pid() => ecoap_handler:handler_id() | undefined},
+    handler_refs = #{} :: #{reference() => ecoap_handler:handler_id()},
     client_set = ordsets:new() :: ordsets:set(pid())
 }).
 
@@ -271,7 +271,7 @@ handle_info({timeout, TrId, Event}, State=#state{trans=Trans, protocol_config=Pr
 
 % Only record pid of possible observe/blockwise handlers instead of every new spawned handler
 % so that we have better parallelism
-handle_info({register_handler, ID, Pid}, State=#state{handler_regs=Regs, handler_refs=Refs}) ->
+handle_info({register_handler, ID, Pid}, State=#state{handler_regs=Regs}) ->
     case maps:find(ID, Regs) of
         {ok, Pid} -> 
             % handler already registered
@@ -282,16 +282,14 @@ handle_info({register_handler, ID, Pid}, State=#state{handler_regs=Regs, handler
             {noreply, State};
         error ->
             Regs2 = update_handler_regs(ID, Pid, Regs),
-            {noreply, State#state{handler_regs=Regs2, handler_refs=maps:update(Pid, ID, Refs)}}
+            {noreply, State#state{handler_regs=Regs2}}
     end;
 
-handle_info({'DOWN', _Ref, process, Pid, _Reason}, State=#state{rescnt=Count, handler_regs=Regs, handler_refs=Refs}) ->
-    case maps:find(Pid, Refs) of
-        {ok, undefined} ->
-            {noreply, State#state{rescnt=Count-1, handler_refs=maps:remove(Pid, Refs)}};
+handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{rescnt=Count, handler_regs=Regs, handler_refs=Refs}) ->
+    case maps:find(Ref, Refs) of
         {ok, ID} -> 
             Regs2 = purge_handler_regs(ID, Regs),
-            {noreply, State#state{rescnt=Count-1, handler_regs=Regs2, handler_refs=maps:remove(Pid, Refs)}};
+            {noreply, State#state{rescnt=Count-1, handler_regs=Regs2, handler_refs=maps:remove(Ref, Refs)}};
         error -> 
             {noreply, State}
     end;
@@ -543,8 +541,8 @@ get_handler(SupPid, ID, HandlerConfig, State=#state{rescnt=Count, handler_regs=R
         error ->          
             case ecoap_handler_sup:start_handler(SupPid, [ID, HandlerConfig]) of
                 {ok, Pid} ->
-                    _ = erlang:monitor(process, Pid),
-                    {ok, Pid, State#state{rescnt=Count+1, handler_refs=maps:put(Pid, undefined, Refs)}};
+                    Ref = erlang:monitor(process, Pid),
+                    {ok, Pid, State#state{rescnt=Count+1, handler_refs=maps:put(Ref, ID, Refs)}};
                 Else ->
                     Else    
             end
