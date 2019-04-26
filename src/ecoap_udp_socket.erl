@@ -46,8 +46,8 @@
 %% API.
 
 %% client
--spec connect(_, [gen_udp:option()], map(), _) -> {ok, pid()} | {error, term()}.
-connect(_EpID, TransOpts, ProtoConfig, _TimeOut) ->
+-spec connect(ecoap_endpoint:endpoint_addr(), [gen_udp:option()], map(), _) -> {ok, pid()} | {error, term()}.
+connect(_EpAddr, TransOpts, ProtoConfig, _TimeOut) ->
 	gen_server:start_link(?MODULE, [TransOpts, ProtoConfig], []).
 
 -spec close(pid()) -> ok.
@@ -60,9 +60,9 @@ start_link(SupPid, Name, TransOpts, ProtoConfig) when is_pid(SupPid) ->
 	gen_server:start_link({local, Name}, ?MODULE, [SupPid, Name, TransOpts, ProtoConfig], []).
 
 %% start endpoint manually
--spec get_endpoint(pid(), ecoap_endpoint:ecoap_endpoint_id()) -> {ok, pid()} | {error, term()}.
-get_endpoint(Pid, {PeerIP, PeerPortNo}) ->
-    gen_server:call(Pid, {get_endpoint, {PeerIP, PeerPortNo}}).
+-spec get_endpoint(pid(), ecoap_endpoint:endpoint_addr()) -> {ok, pid()} | {error, term()}.
+get_endpoint(Pid, EpAddr) ->
+    gen_server:call(Pid, {get_endpoint, EpAddr}).
 
 %% utility function
 -spec get_all_endpoints(pid()) -> [pid()].
@@ -75,7 +75,7 @@ get_endpoint_count(Pid) ->
 
 %% module specific send function 
 -spec send(inet:socket(), ecoap_endpoint:ecoap_endpoint_id(), binary()) -> ok | {error, term()}.
-send(Socket, {udp, {PeerIP, PeerPortNo}}, Datagram) ->
+send(Socket, {_, {PeerIP, PeerPortNo}}, Datagram) ->
     gen_udp:send(Socket, PeerIP, PeerPortNo, Datagram).
 
 %% gen_server.
@@ -109,32 +109,34 @@ handle_continue({init, SupPid}, State=#state{socket=Socket}) ->
 	{noreply, State#state{endpoint_pool=PoolPid}}.
 
 % get an endpoint when being as a client
-handle_call({get_endpoint, EpID}, _From, 
+handle_call({get_endpoint, EpAddr}, _From, 
 	State=#state{socket=Socket, endpoint_pool=undefined, endpoint_count=Count, protocol_config=ProtoConfig}) ->
-    case find_endpoint(EpID) of
+    case find_endpoint(EpAddr) of
     	{ok, EpPid} ->
     		{reply, {ok, EpPid}, State};
     	error ->
+			EpID = {{udp, self()}, EpAddr},
     		case ecoap_endpoint:start_link(?MODULE, Socket, EpID, ProtoConfig) of
     			{ok, EpPid} ->
-					store_endpoint(EpID, EpPid),
-		    		store_endpoint(erlang:monitor(process, EpPid), {EpID, undefined}),
+					store_endpoint(EpAddr, EpPid),
+		    		store_endpoint(erlang:monitor(process, EpPid), {EpAddr, undefined}),
 		    		{reply, {ok, EpPid}, State#state{endpoint_count=Count+1}};
 		    	Error ->
 		    		{reply, Error, State}
 		    end
     end;
 % get an endpoint when being as a server
-handle_call({get_endpoint, EpID}, _From, 
+handle_call({get_endpoint, EpAddr}, _From, 
 	State=#state{socket=Socket, endpoint_pool=PoolPid, endpoint_count=Count, protocol_config=ProtoConfig}) ->
-	case find_endpoint(EpID) of
+	case find_endpoint(EpAddr) of
 		{ok, EpPid} ->
 			{reply, {ok, EpPid}, State};
 		error ->
+			EpID = {{udp, self()}, EpAddr},
 			case endpoint_sup_sup:start_endpoint(PoolPid, [?MODULE, Socket, EpID, ProtoConfig]) of
 		        {ok, EpSupPid, EpPid} ->
-					store_endpoint(EpID, EpPid),
-					store_endpoint(erlang:monitor(process, EpPid), {EpID, EpSupPid}),
+					store_endpoint(EpAddr, EpPid),
+					store_endpoint(erlang:monitor(process, EpPid), {EpAddr, EpSupPid}),
 		            {reply, {ok, EpPid}, State#state{endpoint_count=Count+1}};
 		        Error ->
 		            {reply, Error, State}
@@ -156,18 +158,19 @@ handle_cast(_Msg, State) ->
 
 handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, 
 	State=#state{socket=Socket, endpoint_pool=PoolPid, endpoint_count=Count, protocol_config=ProtoConfig}) ->
-	EpID = {udp, {PeerIP, PeerPortNo}},
-	case find_endpoint(EpID) of
+	EpAddr = {PeerIP, PeerPortNo},
+	case find_endpoint(EpAddr) of
 		{ok, EpPid} ->
 			EpPid ! {datagram, Bin},
 			{noreply, State};
 		error when is_pid(PoolPid) ->
+			EpID = {{udp, self()}, EpAddr},
 			case endpoint_sup_sup:start_endpoint(PoolPid, [?MODULE, Socket, EpID, ProtoConfig]) of
 				{ok, EpSupPid, EpPid} -> 
 					% logger:log(debug, "~p start endpoint as a server in ~p~n", [self(), ?MODULE]),
 					EpPid ! {datagram, Bin},
-					store_endpoint(EpID, EpPid),
-					store_endpoint(erlang:monitor(process, EpPid), {EpID, EpSupPid}),
+					store_endpoint(EpAddr, EpPid),
+					store_endpoint(erlang:monitor(process, EpPid), {EpAddr, EpSupPid}),
 					{noreply, State#state{endpoint_count=Count+1}};
 				{error, _Reason} -> 
 					% logger:log(debug, "~p start endpoint failed as a server in ~p with reason ~p~n", [self(), ?MODULE, Reason]),
@@ -180,9 +183,9 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin},
 	end;
 handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{endpoint_count=Count, endpoint_pool=PoolPid}) ->
  	case find_endpoint(Ref) of
- 		{ok, {EpID, EpSupPid}} -> 
+ 		{ok, {EpAddr, EpSupPid}} -> 
  			erase_endpoint(Ref),
- 			erase_endpoint(EpID),
+ 			erase_endpoint(EpAddr),
  			ok = delete_endpoint(PoolPid, EpSupPid),
  			{noreply, State#state{endpoint_count=Count-1}};
  		error -> 

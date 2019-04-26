@@ -37,7 +37,8 @@
     client_set = ordsets:new() :: ordsets:set(pid())
 }).
 
--type ecoap_endpoint_id() :: {atom(), {inet:ip_address(), inet:port_number()}}.
+-type endpoint_addr() :: {inet:ip_address(), inet:port_number()}.
+-type ecoap_endpoint_id() :: {ecoap_socket:socket_id(), endpoint_addr()}.
 -type trid() :: {in | out, coap_message:msg_id()}.
 -type receiver() :: {pid(), reference()}.
 -type observe_seq() :: non_neg_integer().
@@ -47,6 +48,7 @@
 -export_type([state/0]).
 -export_type([trid/0]).
 -export_type([receiver/0]).
+-export_type([endpoint_addr/0]).
 -export_type([ecoap_endpoint_id/0]).
 
 %% API.

@@ -63,7 +63,7 @@ close(Pid) ->
 ping(Uri) ->
 	{ok, Pid} = start_link(),
 	#{ip:=IP, port:=Port} = ecoap_uri:decode_uri(Uri),
-	Res = case send_request(Pid, {udp, {IP, Port}}, ping) of
+	Res = case send_request(Pid, {IP, Port}, ping) of
 		{error, 'RST'} -> ok;
 		_Else -> error
 	end,
@@ -81,8 +81,8 @@ request(Method, Uri, Content) ->
 -spec request(coap_message:coap_method(), string(), binary(), coap_message:optionset()) -> response().
 request(Method, Uri, Content, Options) ->
 	{ok, Pid} = start_link(),
-	{EpID, Req} = assemble_request(Method, Uri, Options, Content),
-	Res = send_request(Pid, EpID, Req),
+	{EpAddr, Req} = assemble_request(Method, Uri, Options, Content),
+	Res = send_request(Pid, EpAddr, Req),
 	ok = close(Pid),
 	Res.
 
@@ -91,15 +91,15 @@ request(Method, Uri, Content, Options) ->
 init([]) ->
 	{ok, #state{}}.
 
-handle_call({send_request, EpID, ping}, From, State) -> 
-	{ok, SockPid} = ecoap_udp_socket:connect(EpID, [], #{}, infinity),
-	{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpID),
+handle_call({send_request, EpAddr, ping}, From, State) -> 
+	{ok, SockPid} = ecoap_udp_socket:connect(EpAddr, [], #{}, infinity),
+	{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpAddr),
 	{ok, Ref} = ecoap_endpoint:ping(EndpointPid),
 	{noreply, State#state{sock_pid=SockPid, endpoint_pid=EndpointPid, ref=Ref, from=From}};
 
-handle_call({send_request, EpID, {Method, Options, Content}}, From, State) ->
-	{ok, SockPid} = ecoap_udp_socket:connect(EpID, [], #{}, infinity),
-	{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpID),
+handle_call({send_request, EpAddr, {Method, Options, Content}}, From, State) ->
+	{ok, SockPid} = ecoap_udp_socket:connect(EpAddr, [], #{}, infinity),
+	{ok, EndpointPid} = ecoap_udp_socket:get_endpoint(SockPid, EpAddr),
 	{ok, Ref} = request_block(EndpointPid, Method, Options, Content),
 	Req = #req{method=Method, options=Options, content=Content},
 	{noreply, State#state{sock_pid=SockPid, endpoint_pid=EndpointPid, ref=Ref, req=Req, from=From}};
@@ -141,7 +141,7 @@ assemble_request(Method, Uri, Options, Content) ->
 					coap_message:add_option('Uri-Query', Query,
 						coap_message:add_option('Uri-Host', Host, 
 							coap_message:add_option('Uri-Port', Port, Options)))),
-	{{udp, {IP, Port}}, {Method, Options2, Content}}.
+	{{IP, Port}, {Method, Options2, Content}}.
 
 request_block(EndpointPid, Method, ROpt, Content) ->
     request_block(EndpointPid, Method, ROpt, undefined, Content).

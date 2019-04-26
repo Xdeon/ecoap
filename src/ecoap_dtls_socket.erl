@@ -38,13 +38,13 @@
 start_link(Name, ListenSocket, ProtoConfig, TimeOut) ->
 	gen_statem:start_link(?MODULE, [accept, Name, ListenSocket, ProtoConfig, TimeOut], []).
 
--spec connect(ecoap_endpoint:ecoap_endpoint_id(), [ssl:connect_option()], map(), timeout()) -> {ok, pid()} | {error, term()}.
-connect(EpID, TransOpts, ProtoConfig, TimeOut) ->
-	gen_statem:start_link(?MODULE, [connect, EpID, TransOpts, ProtoConfig, TimeOut], []).
+-spec connect(ecoap_endpoint:endpoint_addr(), [ssl:connect_option()], map(), timeout()) -> {ok, pid()} | {error, term()}.
+connect(EpAddr, TransOpts, ProtoConfig, TimeOut) ->
+	gen_statem:start_link(?MODULE, [connect, EpAddr, TransOpts, ProtoConfig, TimeOut], []).
 
--spec get_endpoint(pid(), ecoap_endpoint:ecoap_endpoint_id()) -> {ok, pid()} | {error, term()}.
-get_endpoint(Pid, EpID) ->
-	gen_statem:call(Pid, {get_endpoint, EpID}).
+-spec get_endpoint(pid(), ecoap_endpoint:endpoint_addr()) -> {ok, pid()} | {error, term()}.
+get_endpoint(Pid, EpAddr) ->
+	gen_statem:call(Pid, {get_endpoint, EpAddr}).
 
 -spec send(ssl:sslsocket(), ecoap_endpoint:ecoap_endpoint_id(), binary()) -> ok | {error, term()}.
 send(Socket, _, Datagram) ->
@@ -67,12 +67,13 @@ init([accept, Name, ListenSocket, ProtoConfig0, TimeOut]) ->
 	ProtoConfig = ecoap_config:merge_protocol_config(ProtoConfig0),
 	StateData = #data{protocol_config=ProtoConfig, server_name=Name, lsocket=ListenSocket, timeout=TimeOut},
 	{ok, accept, StateData, [{next_event, internal, accept}]};
-init([connect, EpID={dtls, {PeerIP, PeerPortNo}}, TransOpts0, ProtoConfig0, TimeOut]) ->
+init([connect, EpAddr={PeerIP, PeerPortNo}, TransOpts0, ProtoConfig0, TimeOut]) ->
 	TransOpts = ecoap_config:merge_sock_opts(default_dtls_transopts(), TransOpts0),
 	ProtoConfig = ecoap_config:merge_protocol_config(ProtoConfig0),
 	case ssl:connect(PeerIP, PeerPortNo, TransOpts, TimeOut) of
 		{ok, Socket} ->
 			ok = ssl:setopts(Socket, [{active, ?ACTIVE_PACKETS}]),
+			EpID = {{dtls, self()}, EpAddr},
 			{ok, connected, #data{protocol_config=ProtoConfig, socket=Socket, ep_id=EpID, timeout=TimeOut}};
 		{error, timeout} ->
 			{stop, connect_timeout};
@@ -100,22 +101,22 @@ accept(EventType, EventData, _StateData) ->
 	keep_state_and_data.
 
 % client
-connected({call, From}, {get_endpoint, EpID}, 
-	StateData=#data{socket=Socket, ep_id=EpID, server_name=undefined, endpoint_pid=undefined, endpoint_ref=undefined, protocol_config=ProtoConfig}) ->
+connected({call, From}, {get_endpoint, EpAddr}, 
+	StateData=#data{socket=Socket, ep_id=EpID={_, EpAddr}, server_name=undefined, endpoint_pid=undefined, endpoint_ref=undefined, protocol_config=ProtoConfig}) ->
 	{ok, EpPid} = ecoap_endpoint:start_link(?MODULE, Socket, EpID, ProtoConfig),
 	Ref = erlang:monitor(process, EpPid),
 	{keep_state, StateData#data{endpoint_pid=EpPid, endpoint_ref=Ref}, [{reply, From, {ok, EpPid}}]};
 % server
-connected({call, From}, {get_endpoint, EpID}, 
-	StateData=#data{socket=Socket, ep_id=EpID, endpoint_pid=undefined, endpoint_ref=undefined, protocol_config=ProtoConfig}) ->
+connected({call, From}, {get_endpoint, EpAddr}, 
+	StateData=#data{socket=Socket, ep_id=EpID={_, EpAddr}, endpoint_pid=undefined, endpoint_ref=undefined, protocol_config=ProtoConfig}) ->
 	{ok, EpSupPid, EpPid} = endpoint_sup:start_link([?MODULE, Socket, EpID, ProtoConfig]),
 	Ref = erlang:monitor(process, EpPid),
 	{keep_state, StateData#data{endpoint_pid=EpPid, endpoint_sup_pid=EpSupPid, endpoint_ref=Ref}, [{reply, From, {ok, EpPid}}]};
 % in general
-connected({call, From}, {get_endpoint, EpID}, #data{ep_id=EpID, endpoint_pid=EpPid}) ->
+connected({call, From}, {get_endpoint, EpAddr}, #data{ep_id={_, EpAddr}, endpoint_pid=EpPid}) ->
 	{keep_state_and_data, [{reply, From, {ok, EpPid}}]};
 % this is illegal
-connected({call, From}, {get_endpoint, _EpID}, _StateData) ->
+connected({call, From}, {get_endpoint, _EpAddr}, _StateData) ->
 	{keep_state_and_data, [{reply, From, {error, unmatched_endpoint_id}}]};
 % ssl communication
 connected(info, {ssl, Socket, Bin}, StateData=#data{socket=Socket, ep_id=EpID, endpoint_pid=undefined, protocol_config=ProtoConfig}) ->
@@ -171,7 +172,7 @@ do_handshake(CSocket, StateData=#data{timeout=TimeOut}) ->
 		{ok, Socket} -> 
 			{ok, PeerAddr} = ssl:peername(Socket),
 			ok = ssl:setopts(Socket, [{active, ?ACTIVE_PACKETS}]),
-			{next_state, connected, StateData#data{socket=Socket, ep_id={dtls, PeerAddr}}};
+			{next_state, connected, StateData#data{socket=Socket, ep_id={{dtls, self()}, PeerAddr}}};
 		{error, {tls_alert, _}} ->
 			{stop, normal, StateData#data{socket=CSocket}};
 		{error, Reason} when Reason =:= timeout; Reason =:= closed ->

@@ -57,7 +57,7 @@
 -record(state, {
 	owner = undefined :: {reference(), pid()},
 	client_opts = #{} :: client_opts(),
-	socket = closed :: closed | {internal_socket | external_socket, module(), socket_id()},
+	socket = closed :: closed | {internal_socket | external_socket, module(), any()},
 	socket_ref = undefined :: undefined | reference(),
 	host = undefined :: undefined | binary(),
 	ep_id = undefined :: undefined | ecoap_endpoint:ecoap_endpoint_id(),
@@ -95,9 +95,6 @@
 -type observe_response() :: 
 	{ok, reference(), pid(), non_neg_integer(), response()}.
 
-% socket_id() refers to the id of the socket holder, can be pid/registered name/remote
--type socket_id() :: pid() | atom() | tuple().
-
 -type client_opts() :: #{
 	owner => pid(),
 	protocol_config => map(),
@@ -105,7 +102,7 @@
 	protocol => coap | coaps,
 	transport => udp | dtls,
 	transport_opts => [gen_udp:option()] | [ssl:connect_option()],
-	external_socket => {udp | dtls, socket_id()}
+	external_socket => ecoap_socket:socket_id()
 }.
 
 -export_type([client_opts/0]).
@@ -421,7 +418,8 @@ handle_continue({resolve, RawTransport, Host0, Port}, State=#state{socket={_, _,
 	case ecoap_uri:get_peer_addr(Host0) of
 		{ok, Host, IP} ->
 			SocketRef = erlang:monitor(process, Socket),
-			{noreply, State#state{host=Host, ep_id={RawTransport, {IP, Port}}, socket_ref=SocketRef}};
+			EpID = {{RawTransport, Socket}, {IP, Port}},
+			{noreply, State#state{host=Host, ep_id=EpID, socket_ref=SocketRef}};
 		Other ->
 			{stop, {shutdown, Other}, State}
 	end;
@@ -429,7 +427,7 @@ handle_continue({connect, RawTransport, Host0, Port}, State) ->
 	Transport = select_transport(RawTransport),
 	case ecoap_uri:get_peer_addr(Host0) of
 		{ok, Host, IP} ->
-			start_connection(Transport, State#state{host=Host, ep_id={RawTransport, {IP, Port}}});
+			start_connection(RawTransport, Transport, {IP, Port}, State#state{host=Host});
 		Other ->	
 			{stop, {shutdown, Other}, State}
 	end.
@@ -437,21 +435,22 @@ handle_continue({connect, RawTransport, Host0, Port}, State) ->
 select_transport(udp) -> ecoap_udp_socket;
 select_transport(dtls) -> ecoap_dtls_socket.
 
-start_connection(Transport, State=#state{ep_id=EpID, client_opts=ClientOpts}) ->
+start_connection(RawTransport, Transport, EpAddr, State=#state{client_opts=ClientOpts}) ->
 	TransOpts = maps:get(transport_opts, ClientOpts, []),
 	TimeOut = maps:get(connect_timeout, ClientOpts, 5000),
 	ProtoConfig = maps:get(protocol_config, ClientOpts, #{}),
-	case Transport:connect(EpID, TransOpts, ProtoConfig, TimeOut) of
+	case Transport:connect(EpAddr, TransOpts, ProtoConfig, TimeOut) of
 		{ok, Socket} -> 
 			SocketRef = erlang:monitor(process, Socket),
-			{noreply, State#state{socket={internal_socket, Transport, Socket}, socket_ref=SocketRef}};
+			EpID = {{RawTransport, Socket}, EpAddr},
+			{noreply, State#state{socket={internal_socket, Transport, Socket}, ep_id=EpID, socket_ref=SocketRef}};
 		Other ->
 			{stop, {shutdown, Other}, State}
 	end.
 
 % assume endpoint process will not terminate when everything goes fine and termination only means crash
-handle_call({command, Command}, From, State=#state{endpoint_pid=undefined, ep_id=EpID, socket={_, Transport, SocketPid}}) ->
-	{ok, EndpointPid} = Transport:get_endpoint(SocketPid, EpID),
+handle_call({command, Command}, From, State=#state{endpoint_pid=undefined, ep_id={_, EpAddr}, socket={_, Transport, SocketPid}}) ->
+	{ok, EndpointPid} = Transport:get_endpoint(SocketPid, EpAddr),
 	link(EndpointPid),
 	handle_command(Command, From, State#state{endpoint_pid=EndpointPid});
 handle_call({command, Command}, From, State) ->
