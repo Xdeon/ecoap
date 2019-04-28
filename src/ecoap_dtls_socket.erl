@@ -128,7 +128,7 @@ connected(info, {ssl, Socket, Bin}, #data{socket=Socket, endpoint_pid=EpPid}) ->
 	EpPid ! {datagram, Bin},
 	keep_state_and_data;
 connected(info, {ssl_passive, Socket}, #data{socket=Socket}) ->
-	ok = ssl:setopts(Socket, [{active, ?ACTIVE_PACKETS}]),
+	ssl:setopts(Socket, [{active, ?ACTIVE_PACKETS}]),
 	keep_state_and_data;
 connected(info, {ssl_closed, Socket}, StateData=#data{socket=Socket}) ->
 	% io:format("~p in ~p~n", [ssl_closed, self()]), 
@@ -171,7 +171,7 @@ do_handshake(CSocket, StateData=#data{timeout=TimeOut}) ->
 	case ssl:handshake(CSocket, TimeOut) of
 		{ok, Socket} -> 
 			{ok, PeerAddr} = ssl:peername(Socket),
-			ok = ssl:setopts(Socket, [{active, ?ACTIVE_PACKETS}]),
+			ssl:setopts(Socket, [{active, ?ACTIVE_PACKETS}]),
 			{next_state, connected, StateData#data{socket=Socket, ep_id={{dtls, self()}, PeerAddr}}};
 		{error, {tls_alert, _}} ->
 			{stop, normal, StateData#data{socket=CSocket}};
