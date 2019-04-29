@@ -101,7 +101,7 @@ init([SupPid, Name, TransOpts, ProtoConfig]) ->
 	end.
 
 handle_continue(init, State=#state{socket=Socket}) ->
-	inet:setopts(Socket, [{active, ?ACTIVE_PACKETS}]),
+	_ = inet:setopts(Socket, [{active, ?ACTIVE_PACKETS}]),
 	{noreply, State};
 handle_continue({init, SupPid}, State=#state{socket=Socket}) ->
 	{ok, PoolPid} = ecoap_server_sup:start_endpoint_sup_sup(SupPid),
@@ -192,7 +192,7 @@ handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{endpoint_count=C
  			{noreply, State}
  	end;
 handle_info({udp_passive, Socket}, State=#state{socket=Socket}) ->
-	inet:setopts(Socket, [{active, ?ACTIVE_PACKETS}]),
+	_ = inet:setopts(Socket, [{active, ?ACTIVE_PACKETS}]),
 	{noreply, State};
 	
 handle_info(_Info, State) ->

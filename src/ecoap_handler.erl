@@ -301,6 +301,28 @@ handle_info(_Info, State=#state{observer=undefined}) ->
     % ignore unexpected notification
     {noreply, State};
 
+% 1. handle_info succeeds, 
+% calling coap_unobserve fails, which is caught, trigger send_server_error which calls cancel_observer and return error
+% 2. handle_info fails or return bad value,
+% which is caught, then trigger send_server_error, which calls cancel_observer and return error
+% 3. client send unobserve request, call coap_unobserve, which fails, 
+% trigger send_server_error, which calls cancel_observer and return error
+
+% how to invoke cancel_observer/coap_unobserve only once?
+
+% when will we call coap_unobserve?
+% 1. client send unobserve request, we should cleanup, return response to GET request if no exception occurrs, otherwise return internal error
+% 2. call shutdown of ecoap_handler, we should cleanup and not return anything to client(?)
+% 3. recvd client rst on observe, we should cleanup and not return anything
+% 4. handle_info returns {stop, ...}, we should cleanup and not return anything to client(?)
+% 5. handle_info returns {error, ...}, we should cleanup return {error, ...} to client 
+
+% 1 is included in normal processing chain and will be catched in cased of exception
+% 2, 3 is not in the chain
+% 4, 5 need more considering
+
+%% TODO: how to safely invoke coap_unobserve and ensure only invoke once, no matter under sucess or failure
+
 handle_info(Info, State=#state{module=Module, observer=Observer, obstate=ObState}) ->
     try case handle_info(Module, Info, Observer, ObState) of
         {notify, Resource, ObState2} -> 
@@ -567,8 +589,10 @@ cancel_observe_and_send_response(Request, Response, State) ->
 
 
 cancel_observe_and_send_response(Ref, Request, Response, State=#state{module=Module, obstate=ObState}) ->
-    State2 = cancel_observer(State),
+    % invoke user-defined callback first, so if it crashes, cancel_observer is not executed yet, 
+    % and will be executed in send_server_error/2
     ok = coap_unobserve(Module, ObState),
+    State2 = cancel_observer(State),
     case Response of
         {error, Code, Reason} ->
             return_response(Ref, Request, {error, Code}, Reason, State2);
@@ -579,11 +603,12 @@ cancel_observe_and_send_response(Ref, Request, Response, State=#state{module=Mod
 
 cancel_observer(State=#state{uri=Uri}) ->
     ok = pg2:leave({coap_observer, Uri}, self()),
+    % TODO: will the belowing cause race condition?
     % will the last observer to leave this group please turn out the lights
-    case pg2:get_members({coap_observer, Uri}) of
-        [] -> pg2:delete({coap_observer, Uri});
-        _Else -> ok
-    end,
+    % case pg2:get_members({coap_observer, Uri}) of
+    %     [] -> pg2:delete({coap_observer, Uri});
+    %     _Else -> ok
+    % end,
     State#state{observer=undefined, obstate=undefined}.
 
 
