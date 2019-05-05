@@ -20,7 +20,7 @@
 -record(data, {
 	lsocket = undefined :: undefined | ssl:sslsocket(),
 	socket = undefined :: undefined | ssl:sslsocket(),
-	server_name = undefined :: atom(),
+	server_name = '$client' :: atom(),
 	ep_id = undefined :: undefined | ecoap_endpoint:ecoap_endpoint_id(),
 	endpoint_pid = undefined :: undefined | pid(),
 	endpoint_sup_pid = undefined :: undefined | pid(),
@@ -102,7 +102,7 @@ accept(EventType, EventData, _StateData) ->
 
 % client
 connected({call, From}, {get_endpoint, EpAddr}, 
-	StateData=#data{socket=Socket, ep_id=EpID={_, EpAddr}, server_name=undefined, endpoint_pid=undefined, endpoint_ref=undefined, protocol_config=ProtoConfig}) ->
+	StateData=#data{socket=Socket, ep_id=EpID={_, EpAddr}, server_name='$client', endpoint_pid=undefined, endpoint_ref=undefined, protocol_config=ProtoConfig}) ->
 	{ok, EpPid} = ecoap_endpoint:start_link(?MODULE, Socket, EpID, ProtoConfig),
 	Ref = erlang:monitor(process, EpPid),
 	{keep_state, StateData#data{endpoint_pid=EpPid, endpoint_ref=Ref}, [{reply, From, {ok, EpPid}}]};
@@ -118,12 +118,18 @@ connected({call, From}, {get_endpoint, EpAddr}, #data{ep_id={_, EpAddr}, endpoin
 % this is illegal
 connected({call, From}, {get_endpoint, _EpAddr}, _StateData) ->
 	{keep_state_and_data, [{reply, From, {error, unmatched_endpoint_id}}]};
-% ssl communication
-connected(info, {ssl, Socket, Bin}, StateData=#data{socket=Socket, ep_id=EpID, endpoint_pid=undefined, protocol_config=ProtoConfig}) ->
-	{ok, EpSupPid, EpPid} = endpoint_sup:start_link([?MODULE, Socket, EpID, ProtoConfig]),
-	EpPid ! {datagram, Bin},
-	Ref = erlang:monitor(process, EpPid),
-	{keep_state, StateData#data{endpoint_pid=EpPid, endpoint_sup_pid=EpSupPid, endpoint_ref=Ref}};
+% ssl message
+connected(info, {ssl, Socket, Bin}, StateData=#data{socket=Socket, server_name=Name, ep_id=EpID, endpoint_pid=undefined, protocol_config=ProtoConfig}) ->
+	case Name of
+		'$client' -> 
+			% ignore unexpected message received by a client
+			keep_state_and_data;
+		_ ->
+			{ok, EpSupPid, EpPid} = endpoint_sup:start_link([?MODULE, Socket, EpID, ProtoConfig]),
+			EpPid ! {datagram, Bin},
+			Ref = erlang:monitor(process, EpPid),
+			{keep_state, StateData#data{endpoint_pid=EpPid, endpoint_sup_pid=EpSupPid, endpoint_ref=Ref}}
+	end;
 connected(info, {ssl, Socket, Bin}, #data{socket=Socket, endpoint_pid=EpPid}) ->
 	EpPid ! {datagram, Bin},
 	keep_state_and_data;
@@ -132,22 +138,14 @@ connected(info, {ssl_passive, Socket}, #data{socket=Socket}) ->
 	keep_state_and_data;
 connected(info, {ssl_closed, Socket}, StateData=#data{socket=Socket}) ->
 	% io:format("~p in ~p~n", [ssl_closed, self()]), 
-    {stop, normal, StateData};
+    {stop, {shutdown, ssl_closed}, StateData};
 connected(info, {ssl_error, Socket, Reason}, StateData=#data{socket=Socket}) ->
 	% io:format("~p in ~p~n", [ssl_error, self()]),
     {stop, {shutdown, Reason}, StateData};
 % handle endpoint process down
-connected(info, {'DOWN', Ref, process, _Pid, _Reason}, StateData=#data{endpoint_ref=Ref, endpoint_sup_pid=EpSupPid}) ->
-	case is_pid(EpSupPid) of
-		true -> 
-			%% TODO: whether to terminate after endpoint process goes downn as a server? if not, when to?
-			% server
-			% gen_server:stop(EpSupPid),
-			{stop, normal, StateData};
-		false ->
-			% client
-			{keep_state, StateData#data{endpoint_pid=undefined, endpoint_ref=undefined, endpoint_sup_pid=undefined}}
-	end;
+connected(info, {'DOWN', Ref, process, _Pid, Reason}, StateData=#data{endpoint_ref=Ref}) ->
+	%% TODO: whether to terminate after endpoint process goes downn as a server? if not, when to?
+	{stop, Reason, StateData};
 connected(EventType, EventData, _StateData) ->
 	logger:log(error, "~p recvd unexpected event ~p in state ~p as ~p~n", [self(), {EventType, EventData}, ?FUNCTION_NAME, ?MODULE]),
 	keep_state_and_data.
