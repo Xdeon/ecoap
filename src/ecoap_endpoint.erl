@@ -3,7 +3,7 @@
 
 %% API.
 -export([start_link/5, start_link/4]).
--export([ping/1, send/2, send_message/3, send_request/3, send_response/3, cancel_request/2]).
+-export([ping/1, ping/2, send/2, send_message/3, send_request/3, send_response/3, cancel_request/2]).
 -export([register_handler/3]).
 -export([get_peer_info/2]).
 
@@ -63,7 +63,11 @@ start_link(SupPid, Transport, Socket, EpID, ProtoConfig) ->
 
 -spec ping(pid()) -> {ok, reference()}.
 ping(EndpointPid) ->
-    send_message(EndpointPid, make_ref(), ecoap_request:ping_msg()).
+    ping(EndpointPid, make_ref()).
+
+-spec ping(pid(), Ref) -> {ok, Ref}.
+ping(EndpointPid, Ref) ->
+    send_message(EndpointPid, Ref, {ping, ecoap_request:ping_msg()}).
 
 -spec send(pid(), coap_message:coap_message()) -> {ok, reference()}.
 send(EndpointPid, Message) ->
@@ -89,9 +93,9 @@ send_request(EndpointPid, Ref, Message) ->
     gen_server:cast(EndpointPid, {send_request, Message, {self(), Ref}}),
     {ok, Ref}.
 
--spec send_message(pid(), Ref, coap_message:coap_message()) -> {ok, Ref}.
-send_message(EndpointPid, Ref, Message) ->
-    gen_server:cast(EndpointPid, {send_message, Message, {self(), Ref}}),
+-spec send_message(pid(), Ref, {ping | message, coap_message:coap_message()}) -> {ok, Ref}.
+send_message(EndpointPid, Ref, {Tag, Message}) ->
+    gen_server:cast(EndpointPid, {send_message, {Tag, Message}, {self(), Ref}}),
     {ok, Ref}.
 
 -spec send_response(pid(), Ref, coap_message:coap_message()) -> {ok, Ref}.
@@ -142,7 +146,6 @@ handle_continue({init, SupPid}, State) ->
     {noreply, State#state{handler_sup=HdlSupPid}}.
 
 handle_call(_Request, _From, State) ->
-    % error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
     logger:log(error, "unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
 	{noreply, State}.
 
@@ -164,7 +167,6 @@ handle_cast({cancel_request, Receiver}, State=#state{receivers=Receivers}) ->
             {noreply, State}
     end;
 handle_cast(_Msg, State) ->
-    % error_logger:error_msg("unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
     logger:log(error, "unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
 	{noreply, State}.
 
@@ -311,7 +313,6 @@ handle_info({'EXIT', Pid, _Reason}, State=#state{receivers=Receivers, client_set
     end;
     
 handle_info(_Info, State) ->
-    % error_logger:error_msg("unexpected info ~p received by ~p as ~p~n", [_Info, self(), ?MODULE]),
     logger:log(error, "unexpected info ~p received by ~p as ~p~n", [_Info, self(), ?MODULE]),
 	{noreply, State}.
 
@@ -351,24 +352,22 @@ code_change(_OldVsn, State, _Extra) ->
 % change a msg from NON to CON periodically & limit data rate according to some congestion control strategy (e.g. cocoa)
 % problem: What should we do when queue overflows? Should we inform the req/resp sender?
 
-% make_new_request(Message=#coap_message{token=Token}, Receiver, State=#state{tokens=Tokens, nextmid=MsgId, receivers=Receivers}) ->
-%     % in case this is a request using previous token, we need to remove the outdated receiver reference first
-%     Receivers2 = maps:put(Receiver, {Token, {out, MsgId}}, maps:remove(maps:get(Token, Tokens, undefined), Receivers)),
-%     Tokens2 = maps:put(Token, Receiver, Tokens),
-%     make_new_message(Message, Receiver, State#state{tokens=Tokens2, receivers=Receivers2}).
-
-make_new_request(Message, Receiver={ClientPid, _}, 
-    State=#state{tokens=Tokens, nextmid=MsgId, receivers=Receivers, client_set=CSet, protocol_config=#{token_length:=TKL}}) ->
+make_new_request(Message, Receiver, State=#state{receivers=Receivers, protocol_config=#{token_length:=TKL}}) ->
     Token = case maps:find(Receiver, Receivers) of
         {ok, {OldToken, _, _}} -> OldToken;
         error -> ecoap_message_token:generate_token(TKL)
     end,
+    go_make_new_request(Message, Token, Receiver, State).
+
+go_make_new_request(Message, Token, Receiver={ClientPid, _}, State=#state{nextmid=MsgId, tokens=Tokens, receivers=Receivers, client_set=CSet}) ->
     Tokens2 = maps:put(Token, Receiver, Tokens),
     Receivers2 = maps:put(Receiver, {Token, {out, MsgId}, coap_message:get_option('Observe', Message)}, Receivers),
     CSet2 = update_client_set(ClientPid, CSet),
-    make_new_message(coap_message:set_token(Token, Message), Receiver, State#state{tokens=Tokens2, receivers=Receivers2, client_set=CSet2}).
+    make_new_message({message, coap_message:set_token(Token, Message)}, Receiver, State#state{tokens=Tokens2, receivers=Receivers2, client_set=CSet2}).
 
-make_new_message(Message, Receiver, State=#state{nextmid=MsgId}) ->
+make_new_message({ping, Message}, Receiver, State) ->
+    go_make_new_request(Message, <<>>, Receiver, State);
+make_new_message({message, Message}, Receiver, State=#state{nextmid=MsgId}) ->
     make_message({out, MsgId}, coap_message:set_id(MsgId, Message), Receiver, State#state{nextmid=ecoap_message_id:next_mid(MsgId)}).
 
 make_message(TrId, Message, Receiver, State=#state{protocol_config=ProtoConfig}) ->
@@ -382,33 +381,29 @@ make_new_response(Message, Receiver, State=#state{trans=Trans, protocol_config=P
     TrId = {in, coap_message:get_id(Message)},
     case maps:find(TrId, Trans) of
         {ok, TrState} ->
-            % io:format("find TrState of ~p~n", [TrId]),
             % coap_transport:awaits_response is used to 
             % check if we are in the case that
             % we received a CON request, have its state stored, but did not send its ACK yet
             case ecoap_exchange:awaits_response(TrState) of
                 true ->
-                    % io:format("~p is awaits_response~n", [TrId]),
                     % request is found in store and is in awaits_response state
                     % we are about to send ACK by calling coap_exchange:send, we make the state change to pack_sent
                     update_state(State, TrId,
                         ecoap_exchange:send(Message, ProtoConfig, TrState));
                 false ->
-                    % io:format("~p is not awaits_response~n", [TrId]),
                     % request is found in store but not in awaits_response state
                     % which means we are in one of the three following cases
                     % 1. we are going to send a NON response whose original NON request has not expired yet
                     % 2. ... send a separate response whose original request has been empty acked and not expired yet
                     % 3. ... send an observe notification whose original request has been responded and not expired yet
-                    make_new_message(Message, Receiver, State)
+                    make_new_message({message, Message}, Receiver, State)
             end;
         error ->
-            % io:format("did not find TrState of ~p~n", [TrId]),
             % no TrState is found, which implies the original request has expired
             % 1. we are going to send a NON response whose original NON request has expired
             % 2. ... send a separate response whose original request has been empty acked and expired
             % 3. ... send an observe notification whose original request has been responded and expired
-            make_new_message(Message, Receiver, State)
+            make_new_message({message, Message}, Receiver, State)
     end.
 
 % find or initialize a new exchange
@@ -511,19 +506,19 @@ handle_request(Message, State=#state{ep_id=EpID, protocol_config=ProtoConfig, ha
     end.
 
 handle_response(Message, Exchange, State=#state{ep_id=EpID}) ->
-    %io:fwrite("handle_response called from ~p with ~p~n", [self(), Message]),    
+    % logger:log(debug, "handle_response called from ~p with ~p~n", [self(), Message]),    
     {Sender, Ref} = Receiver = ecoap_exchange:get_receiver(Exchange),
     Sender ! {coap_response, EpID, self(), Ref, Message},
     request_complete(Message, Receiver, State).
 
 handle_error(Message, Error, Exchange, State=#state{ep_id=EpID}) ->
-    %io:fwrite("handle_error called from ~p with ~p~n", [self(), Message]),
+    % logger:log(debug, "handle_error called from ~p with ~p~n", [self(), Message]),
     {Sender, Ref} = Receiver = ecoap_exchange:get_receiver(Exchange),
     Sender ! {coap_error, EpID, self(), Ref, Error},
     request_complete(Message, Receiver, State).
 
 handle_ack(_Message, Exchange, #state{ep_id=EpID}) ->
-    %io:fwrite("handle_ack called from ~p with ~p~n", [self(), _Message]),
+    % logger:log(debug, "handle_ack called from ~p with ~p~n", [self(), _Message]),
     {Sender, Ref} = ecoap_exchange:get_receiver(Exchange),
     Sender ! {coap_ack, EpID, self(), Ref},
     ok.

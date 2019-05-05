@@ -12,9 +12,15 @@
 %% 2. do not realize 2 using explicit args cuz they are not always available, we may use EpID as a ref?
 %%    say, instead of being {PeerIP, Port}, let it be something like {{Transport, SocketPid}, {PeerIP, Port}}?
 
+%% TODO:
+%% when message lifetime is set to value less than retransmit interval, 
+%% it is possible that we never get a reply if using synchronous APIs with infinity timeout + the remote endpoint is unresponsive
+%% this is because message exchange is cleaned up too early and the transmit timeout message leads to no where
+%% however in this case we still have stale token info left in the endpoint process ...
+
 %% API.
 -export([open/2, open/3, close/1]).
--export([ping/1]).
+-export([ping/1, ping/2]).
 -export([
 	get/2, get/3, get/4, 
 	put/3, put/4, put/5, 
@@ -113,7 +119,7 @@ open(Host, Port) ->
 	open(Host, Port, #{}).
 
 -spec open(inet:hostname() | inet:ip_address(), inet:port_number(), client_opts()) -> {ok, pid()} | {error, term()}.
-open(Host, Port, ClientOpts=#{owner:=_}) ->
+open(Host, Port, ClientOpts=#{owner:=_}) when is_list(Host); is_atom(Host); is_tuple(Host) ->
 	case check_options(ClientOpts) of
 		ok -> start_link(Host, Port, ClientOpts);
 		CheckError -> CheckError
@@ -152,7 +158,11 @@ check_options([Opt|_]) ->
 
 -spec ping(pid()) -> ok | {error, _}.
 ping(Pid) ->
-	case gen_server:call(Pid, {command, ping}, infinity) of
+	ping(Pid, infinity).
+
+-spec ping(pid(), timeout()) -> ok | {error, _}.
+ping(Pid, TimeOut) ->
+	case gen_server:call(Pid, {command, ping}, TimeOut) of
 		{error, 'RST'} -> ok;
 		Else -> Else
 	end.
@@ -466,8 +476,8 @@ handle_call(get_obsregs, _From, State=#state{observe_regs=ObsRegs}) ->
 handle_call(_Request, _From, State) ->
 	{noreply, State}.
 
-handle_command(ping, From, State=#state{endpoint_pid=EndpointPid, requests=Requests}) ->
-	{ok, Ref} = ecoap_endpoint:ping(EndpointPid),
+handle_command(ping, {Pid, _}=From, State=#state{endpoint_pid=EndpointPid, requests=Requests}) ->
+	{ok, Ref} = ecoap_endpoint:ping(EndpointPid, erlang:monitor(process, Pid)),
 	Request = #request{method=undefined, origin_ref=Ref, reply_to=From},
 	{noreply, State#state{requests=maps:put(Ref, Request, Requests)}};
 handle_command({request, Sync, Method, Uri, Content, Options}, {Pid, _}=From, State=#state{endpoint_pid=EndpointPid, requests=Requests, host=Host, ep_id=EpID}) ->
@@ -559,7 +569,7 @@ handle_info({'DOWN', Ref, process, _Pid, Reason}, State=#state{socket_ref=Ref}) 
 	{stop, Reason, State#state{socket=closed}};
 handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{requests=Requests}) ->
 	case maps:find(Ref, Requests) of
-		{ok, {_, #request{origin_ref=OriginRef}}} ->
+		{ok, #request{origin_ref=OriginRef}} ->
 			{noreply, check_and_cancel_request(OriginRef, State)};
 		error ->
 			{noreply, State}

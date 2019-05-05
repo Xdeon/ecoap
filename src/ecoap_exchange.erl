@@ -206,8 +206,8 @@ out_con({out, Message}, ProtoConfig, Exchange) ->
     logger:log(debug, "~p send outgoing CON msg ~p~n", [self(), Message]),
     BinMessage = coap_message:encode(Message),
     % _ = rand:seed(exs1024),
-    Timeout = ?ACK_TIMEOUT(ProtoConfig)+rand:uniform(?ACK_RANDOM_FACTOR(ProtoConfig)),
-    {[{send, BinMessage}, {start_timer, Timeout}], Exchange#exchange{msgbin=BinMessage, retry_count=0, retry_time=Timeout, stage=await_pack}}.
+    TimeOut = ?ACK_TIMEOUT(ProtoConfig)+rand:uniform(?ACK_RANDOM_FACTOR(ProtoConfig)),
+    {[{send, BinMessage}, {start_timer, TimeOut}], Exchange#exchange{msgbin=BinMessage, retry_count=0, retry_time=TimeOut, stage=await_pack}}.
 
 % peer ack
 await_pack({in, BinAck}, _, Exchange) ->
@@ -232,11 +232,11 @@ await_pack({in, BinAck}, _, Exchange) ->
             {[], Exchange#exchange{stage=await_pack}}
     end;
 
-await_pack({timeout, await_pack}, ProtoConfig, Exchange=#exchange{msgbin=BinMessage, retry_time=Timeout, retry_count=Count}) when Count < ?MAX_RETRANSMIT(ProtoConfig) ->
+await_pack({timeout, await_pack}, ProtoConfig, Exchange=#exchange{msgbin=BinMessage, retry_time=TimeOut, retry_count=Count}) when Count < ?MAX_RETRANSMIT(ProtoConfig) ->
     % BinMessage = coap_message:encode(Message),
-    logger:log(debug, "~p resend CON msg for ~p time~n", [self(), Count]),
-    Timeout2 = Timeout*2,
-    {[{send, BinMessage}, {start_timer, Timeout2}], Exchange#exchange{retry_time=Timeout2, retry_count=Count+1, stage=await_pack}};
+    logger:log(debug, "~p resend CON msg for ~p time after ~pms have passed~n", [self(), Count, TimeOut]),
+    TimeOut2 = TimeOut*2,
+    {[{send, BinMessage}, {start_timer, TimeOut2}], Exchange#exchange{retry_time=TimeOut2, retry_count=Count+1, stage=await_pack}};
 
 await_pack({timeout, await_pack}, _, Exchange=#exchange{trid={out, MsgId}}) ->
     logger:log(debug, "~p timeout for outgoing CON msg~n", [self()]),

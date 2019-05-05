@@ -7,6 +7,15 @@
 basic_test_() ->
     [{setup,
         fun() ->
+            {ok, Pid} = ecoap_client:open("127.0.0.1", 50234),
+            Pid
+        end,
+        fun(Pid) ->
+            ecoap_client:close(Pid)
+        end,
+        fun unresponsive_endpoint/1},
+    {setup,
+        fun() ->
             {ok, Pid} = ecoap_client:open("coap.me", 5683),
             Pid
         end,
@@ -23,6 +32,15 @@ basic_test_() ->
             ecoap_client:close(Pid)
         end,
         fun basic_async/1}
+    ].
+
+unresponsive_endpoint(Pid) ->
+    [
+        ?_assertMatch({'EXIT', _}, catch ecoap_client:ping(Pid, 1000)),
+        ?_assertMatch({'EXIT', _}, catch ecoap_client:get(Pid, "/made_up", #{}, 1000)),
+        ?_assertMatch({'EXIT', _}, catch ecoap_client:put(Pid, "/made_up", <<>>, #{}, 1000)),
+        ?_assertMatch({'EXIT', _}, catch ecoap_client:post(Pid, "/made_up", <<>>, #{}, 1000)),
+        ?_assertMatch({'EXIT', _}, catch ecoap_client:delete(Pid, "/made_up", #{}, 1000))
     ].
 
 basic_sync(Pid) ->
