@@ -43,6 +43,8 @@ filter(Links, Querys) ->
         end
     end, Links, Querys).
 
+%% TODO: need to be fix after OTP22 where query with key + no value is allowed
+%% currently can be worked around using cow_qs:parse_qs in spite that this function will crash instead of return error
 parse_query(Query) ->
     case uri_string:dissect_query(Query) of
         [{Name0, Value0}] ->
@@ -56,8 +58,10 @@ parse_query(Query) ->
         _ -> {error, bad_query}
     end.
 
+wildcard_value(true) ->
+    {global, true};
 wildcard_value(<<>>) ->
-    {global, <<>>};
+    {global, true};
 wildcard_value(Value) ->
     case binary:last(Value) of
         $* -> {prefix, binary:part(Value, 0, byte_size(Value)-1)};
@@ -95,17 +99,20 @@ attribute_query_test_() ->
     Link = [{absolute, [<<"sensor">>], [{title, <<"Sensor Index">>}]},
            {absolute, [<<"sensors">>, <<"temp">>], [{rt, <<"temperature-c">>}, {'if', <<"sensor">>}, {foo, true}, {bar, [<<"one">>, <<"two">>]}, {sz, 1280}]},
            {absolute, [<<"sensors">>, <<"light">>], [{rt, [<<"light-lux">>, <<"core.sen-light">>]}, {'if', <<"sensor">>}, {foo, true}]}],
-    Sensors = <<"</sensors/temp>;rt=\"temperature-c\";if=\"sensor\";foo;bar=\"one two\";sz=1280">>,
-    [?_assertEqual(Sensors, core_link:encode(filter(Link, make_query("bar=one&if=sensor")))),
-    ?_assertEqual(Sensors, core_link:encode(filter(Link, make_query("bar=one&foo")))),
-    ?_assertEqual(Sensors, core_link:encode(filter(Link, make_query("if=sensor&bar=one")))),
-    ?_assertEqual(Sensors, core_link:encode(filter(Link, make_query("foo&bar=one")))),
-    ?_assertEqual(Sensors, core_link:encode(filter(Link, make_query("bar=one&bar=two")))),
-    ?_assertEqual(Sensors, core_link:encode(filter(Link, make_query("bar=one*")))),
-    ?_assertEqual(Sensors, core_link:encode(filter(Link, make_query("bar=one&sz=1280")))),
+    TempSensor = <<"</sensors/temp>;rt=\"temperature-c\";if=\"sensor\";foo;bar=\"one two\";sz=1280">>,
+    Sensors = <<"</sensors/temp>;rt=\"temperature-c\";if=\"sensor\";foo;bar=\"one two\";sz=1280,</sensors/light>;rt=\"light-lux core.sen-light\";if=\"sensor\";foo">>,
+    [?_assertEqual(TempSensor, core_link:encode(filter(Link, make_query("bar=one&if=sensor")))),
+    ?_assertEqual(TempSensor, core_link:encode(filter(Link, make_query("bar=one&foo")))),
+    % test for query with key + no value
+    % ?_assertEqual(Sensors, core_link:encode(filter(Link, make_query("foo")))),
+    ?_assertEqual(TempSensor, core_link:encode(filter(Link, make_query("if=sensor&bar=one")))),
+    ?_assertEqual(TempSensor, core_link:encode(filter(Link, make_query("foo&bar=one")))),
+    ?_assertEqual(TempSensor, core_link:encode(filter(Link, make_query("bar=one&bar=two")))),
+    ?_assertEqual(TempSensor, core_link:encode(filter(Link, make_query("bar=one*")))),
+    ?_assertEqual(TempSensor, core_link:encode(filter(Link, make_query("bar=one&sz=1280")))),
     ?_assertEqual(<<>>, core_link:encode(filter(Link, make_query("bar=one&bar=three")))),
     % test for not qualified query
-    ?_assertEqual(core_link:encode(Link), core_link:encode(filter(Link, make_query("bar&")))),
+    ?_assertEqual(core_link:encode(Link), core_link:encode(filter(Link, [<<"&=bar">>]))),
     % test unknown atoms for safety
     ?_assertEqual(<<>>, core_link:encode(filter(Link, make_query("what=one&thefuck=three"))))
     ]. 
