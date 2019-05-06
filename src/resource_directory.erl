@@ -4,9 +4,9 @@
 
 -behaviour(ecoap_handler).
 
-coap_discover(_Prefix) ->
-    % [{absolute, Prefix, []}].
-    [].
+coap_discover(Prefix) ->
+    [{absolute, Prefix, []}].
+    % [].
 
 coap_get(_EpID, _Prefix, [], Request) ->
     Query = ecoap_request:query(Request),
