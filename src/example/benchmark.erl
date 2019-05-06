@@ -24,7 +24,11 @@ start() ->
         #{
             routes => Routes,
             % protocol_config => #{exchange_lifetime => 1500},
-            transport_opts => [{recbuf, 1048576}, {sndbuf, 1048576}, {keyfile, "./cert/server.key"}, {certfile, "./cert/server.crt"}]
+            transport_opts => [{recbuf, 1048576}, 
+                                {sndbuf, 1048576}, 
+                                {keyfile, "./cert/server.key"}, 
+                                {certfile, "./cert/server.crt"}, 
+                                {cacertfile, "./cert/cowboy-ca.crt"}]
         }).
 
 stop() ->
