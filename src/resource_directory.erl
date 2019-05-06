@@ -58,8 +58,8 @@ parse_query(Query) ->
         _ -> {error, bad_query}
     end.
 
-wildcard_value(true) ->
-    {global, true};
+% wildcard_value(true) ->
+%     {global, true};
 wildcard_value(<<>>) ->
     {global, true};
 wildcard_value(Value) ->

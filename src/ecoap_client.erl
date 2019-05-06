@@ -22,6 +22,7 @@
 -export([open/2, open/3, close/1]).
 -export([ping/1, ping/2]).
 -export([
+	discover/1, discover/2, discover_async/1,
 	get/2, get/3, get/4, 
 	put/3, put/4, put/5, 
 	post/3, post/4, post/5, 
@@ -167,6 +168,18 @@ ping(Pid, TimeOut) ->
 		Else -> Else
 	end.
 
+-spec discover(pid()) -> response().
+discover(Pid) ->
+	get(Pid, <<".well-known/core">>).
+
+-spec discover(pid(), timeout()) -> response() | no_return().
+discover(Pid, TimeOut) ->
+	get(Pid, <<".well-known/core">>, #{}, TimeOut).
+
+-spec discover_async(pid()) -> {ok, reference()}.
+discover_async(Pid) ->
+	get_async(Pid, <<".well-known/core">>).
+
 -spec get(pid(), iodata()) -> response().
 get(Pid, Uri) ->
 	request(Pid, 'GET', Uri, <<>>, #{}, infinity).
@@ -175,7 +188,7 @@ get(Pid, Uri) ->
 get(Pid, Uri, Options) ->
 	request(Pid, 'GET', Uri, <<>>, Options, infinity).
 
--spec get(pid(), iodata(), coap_message:optionset(), non_neg_integer() | infinity) -> response().
+-spec get(pid(), iodata(), coap_message:optionset(), non_neg_integer() | infinity) -> response() | no_return().
 get(Pid, Uri, Options, TimeOut) ->
 	request(Pid, 'GET', Uri, <<>>, Options, TimeOut).
 
@@ -195,7 +208,7 @@ put(Pid, Uri, Content) ->
 put(Pid, Uri, Content, Options) ->
 	request(Pid, 'PUT', Uri, Content, Options, infinity).
 
--spec put(pid(), iodata(), binary(), coap_message:optionset(), non_neg_integer() | infinity) -> response().
+-spec put(pid(), iodata(), binary(), coap_message:optionset(), non_neg_integer() | infinity) -> response() | no_return().
 put(Pid, Uri, Content, Options, TimeOut) ->
 	request(Pid, 'PUT', Uri, Content, Options, TimeOut).
 
@@ -215,7 +228,7 @@ post(Pid, Uri, Content) ->
 post(Pid, Uri, Content, Options) ->
 	request(Pid, 'POST', Uri, Content, Options, infinity).
 
--spec post(pid(), iodata(), binary(), coap_message:optionset(), non_neg_integer() | infinity) -> response().
+-spec post(pid(), iodata(), binary(), coap_message:optionset(), non_neg_integer() | infinity) -> response() | no_return().
 post(Pid, Uri, Content, Options, TimeOut) ->
 	request(Pid, 'POST', Uri, Content, Options, TimeOut).
 
@@ -235,7 +248,7 @@ delete(Pid, Uri) ->
 delete(Pid, Uri, Options) ->
 	request(Pid, 'DELETE', Uri, <<>>, Options, infinity).
 
--spec delete(pid(), iodata(), coap_message:optionset(), non_neg_integer() | infinity) -> response().
+-spec delete(pid(), iodata(), coap_message:optionset(), non_neg_integer() | infinity) -> response() | no_return().
 delete(Pid, Uri, Options, TimeOut) ->
 	request(Pid, 'DELETE', Uri, <<>>, Options, TimeOut).
 
@@ -251,7 +264,7 @@ delete_async(Pid, Uri, Options) ->
 fetch(Pid, Uri, Content, Options) ->
 	request(Pid, 'FETCH', Uri, Content, Options, infinity).
 
--spec fetch(pid(), iodata(), binary(), coap_message:optionset(), non_neg_integer() | infinity) -> response().
+-spec fetch(pid(), iodata(), binary(), coap_message:optionset(), non_neg_integer() | infinity) -> response() | no_return().
 fetch(Pid, Uri, Content, Options, TimeOut) ->
 	request(Pid, 'FETCH', Uri, Content, Options, TimeOut).
 
@@ -263,7 +276,7 @@ fetch_async(Pid, Uri, Content, Options) ->
 patch(Pid, Uri, Content, Options) ->
 	request(Pid, 'PATCH', Uri, Content, Options, infinity).
 
--spec patch(pid(), iodata(), binary(), coap_message:optionset(), non_neg_integer() | infinity) -> response().
+-spec patch(pid(), iodata(), binary(), coap_message:optionset(), non_neg_integer() | infinity) -> response() | no_return().
 patch(Pid, Uri, Content, Options, TimeOut) ->
 	request(Pid, 'PATCH', Uri, Content, Options, TimeOut).
 
@@ -283,7 +296,7 @@ ipatch(Pid, Uri, Content, Options, TimeOut) ->
 ipatch_async(Pid, Uri, Content, Options) ->
 	request_async(Pid, 'iPATCH', Uri, Content, Options).
 
--spec request(pid(), coap_message:coap_method(), iodata(), binary(), coap_message:optionset(), non_neg_integer() | infinity) -> response().
+-spec request(pid(), coap_message:coap_method(), iodata(), binary(), coap_message:optionset(), non_neg_integer() | infinity) -> response() | no_return().
 request(Pid, Method, Uri, Content, Options, TimeOut) ->
 	gen_server:call(Pid, {command, {request, sync, Method, Uri, Content, Options}}, TimeOut).
 
@@ -311,7 +324,7 @@ observe_and_wait_response(Pid, Uri) ->
 observe_and_wait_response(Pid, Uri, Options) ->
 	observe_and_wait_response(Pid, Uri, Options, infinity).
 
--spec observe_and_wait_response(pid(), iodata(), coap_message:optionset(), non_neg_integer() | infinity) -> observe_response() | response().
+-spec observe_and_wait_response(pid(), iodata(), coap_message:optionset(), non_neg_integer() | infinity) -> observe_response() | response() | no_return().
 observe_and_wait_response(Pid, Uri, Options, TimeOut) ->
 	{ok, Ref} = observe(Pid, Uri, Options),
 	MonitorRef = erlang:monitor(process, Pid),
@@ -345,7 +358,7 @@ unobserve_and_wait_response(Pid, Ref) ->
 unobserve_and_wait_response(Pid, Ref, ETag) ->
 	unobserve_and_wait_response(Pid, Ref, ETag, infinity).
 
--spec unobserve_and_wait_response(pid(), reference(), [binary()], non_neg_integer() | infinity) -> response().
+-spec unobserve_and_wait_response(pid(), reference(), [binary()], non_neg_integer() | infinity) -> response() | no_return().
 unobserve_and_wait_response(Pid, Ref, ETag, TimeOut) ->
 	{ok, Ref2} = unobserve(Pid, Ref, ETag),
 	MonitorRef = erlang:monitor(process, Pid),

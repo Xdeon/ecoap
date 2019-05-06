@@ -1,7 +1,7 @@
 PROJECT = ecoap
 PROJECT_DESCRIPTION = An Erlang CoAP client/server
 PROJECT_VERSION = 0.1.0
-PROJECT_REGISTERED = ecoap_udp_socket ecoap_registry
+PROJECT_REGISTERED = ecoap_udp_socket ecoap_dtls_listener_sup ecoap_registry
 
 # DEPS = cowlib
 LOCAL_DEPS = crypto ssl
