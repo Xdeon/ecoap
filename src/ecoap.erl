@@ -15,18 +15,28 @@
 
 -spec start_udp(atom(), config()) -> supervisor:startchild_ret().
 start_udp(Name, Config) ->
-	TransOpts0 = maps:get(transport_opts, Config, []),
-	TransOpts = [{port, ?DEFAULT_COAP_PORT}|TransOpts0],
-	Routes = maps:get(routes, Config, []),
-	ProtoConfig = maps:get(protocol_config, Config, #{}),
+	{Routes, TransOpts, ProtoConfig} = init_common_config(Config, udp),
 	ok = ecoap_registry:register_handler(Routes),
+	ok = ecoap_registry:set_new_listener_config(Name, TransOpts, ProtoConfig),
 	ecoap_sup:start_server({ecoap_udp_socket, start_link, [Name, TransOpts, ProtoConfig]}, Name, worker).
 
 -spec start_dtls(atom(), config()) -> supervisor:startchild_ret().
 start_dtls(Name, Config) ->
-	Routes = maps:get(routes, Config, []),
-	ok = ecoap_registry:register_handler(Routes),
-	ecoap_sup:start_server({ecoap_dtls_listener_sup, start_link, [Name, Config]}, Name, supervisor).
+	{Routes, TransOpts, ProtoConfig} = init_common_config(Config, dtls),
+	case lists:keymember(cert, 1, TransOpts)
+			orelse lists:keymember(certfile, 1, TransOpts)
+			orelse lists:keymember(sni_fun, 1, TransOpts)
+			orelse lists:keymember(sni_hosts, 1, TransOpts) of
+		true ->
+			TimeOut = maps:get(handshake_timeout, Config, 5000),
+			NumAcceptors = maps:get(num_acceptors, Config, 10),
+			ok = ecoap_registry:register_handler(Routes),
+			ok = ecoap_registry:set_new_listener_config(Name, TransOpts, ProtoConfig),
+			ecoap_sup:start_server({ecoap_dtls_listener_sup, start_link, 
+				[Name, TransOpts, ProtoConfig, TimeOut, NumAcceptors]}, Name, supervisor);
+		false ->
+			{error, no_cert}
+	end.
 
 -spec stop_udp(atom()) -> ok | {error, term()}.
 stop_udp(Name) ->
@@ -35,3 +45,9 @@ stop_udp(Name) ->
 -spec stop_dtls(atom()) -> ok | {error, term()}.
 stop_dtls(Name) ->
 	ecoap_sup:stop_server(Name).
+
+init_common_config(Config, Transport) ->
+	Routes = maps:get(routes, Config, []),
+	TransOpts = [{port, ecoap_socket:port(Transport)} | maps:get(transport_opts, Config, [])],
+	ProtoConfig = maps:get(protocol_config, Config, #{}),
+	{Routes, TransOpts, ProtoConfig}.

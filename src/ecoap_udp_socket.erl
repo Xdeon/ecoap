@@ -26,10 +26,6 @@
 -export([code_change/3]).
 
 -define(ACTIVE_PACKETS, 100).
--define(READ_PACKETS, 1000).
-
--define(DEFAULT_SOCK_OPTS,
-	[binary, {active, false}, {reuseaddr, true}, {read_packets, ?READ_PACKETS}]).
 
 -record(state, {
 	socket = undefined :: inet:socket(),
@@ -80,9 +76,8 @@ send(Socket, {_, {PeerIP, PeerPortNo}}, Datagram) ->
 
 %% gen_server.
 
-init([TransOpts, ProtoConfig0]) ->
-	ProtoConfig = ecoap_config:merge_protocol_config(ProtoConfig0),
-	case gen_udp:open(0, ecoap_config:merge_sock_opts(?DEFAULT_SOCK_OPTS, TransOpts)) of
+init([TransOpts, ProtoConfig]) ->
+	case gen_udp:open(0, ecoap_socket:socket_opts(udp, TransOpts)) of
 		{ok, Socket} ->
 			% logger:log(info, "socket setting: ~p~n", [inet:getopts(Socket, [recbuf, sndbuf, buffer])]),
 			logger:log(info, "ecoap listen on *:~p~n", [inet:port(Socket)]),
@@ -93,7 +88,8 @@ init([TransOpts, ProtoConfig0]) ->
 init([SupPid, Name, TransOpts, ProtoConfig]) ->
 	case init([TransOpts, ProtoConfig]) of
 		{ok, State, _} -> 
-			{ok, State, {continue, {init, SupPid}}};
+			ok = ecoap_registry:set_listener(Name, self()),
+			{ok, State#state{server_name=Name}, {continue, {init, SupPid}}};
 		{stop, {error, Reason}=Error} -> 
 			logger:log(error, "Failed to start ecoap listener ~p in ~p:listen (~999999p) for reason ~p~n", 
 				[Name, ?MODULE, TransOpts, Reason]),
@@ -127,13 +123,13 @@ handle_call({get_endpoint, EpAddr}, _From,
     end;
 % get an endpoint when being as a server
 handle_call({get_endpoint, EpAddr}, _From, 
-	State=#state{socket=Socket, endpoint_pool=PoolPid, endpoint_count=Count, protocol_config=ProtoConfig}) ->
+	State=#state{socket=Socket, endpoint_pool=PoolPid, endpoint_count=Count, server_name=Name}) ->
 	case find_endpoint(EpAddr) of
 		{ok, EpPid} ->
 			{reply, {ok, EpPid}, State};
 		error ->
 			EpID = {{udp, self()}, EpAddr},
-			case endpoint_sup_sup:start_endpoint(PoolPid, [?MODULE, Socket, EpID, ProtoConfig]) of
+			case endpoint_sup_sup:start_endpoint(PoolPid, [?MODULE, Socket, EpID, Name]) of
 		        {ok, EpSupPid, EpPid} ->
 					store_endpoint(EpAddr, EpPid),
 					store_endpoint(erlang:monitor(process, EpPid), {EpAddr, EpSupPid}),
@@ -157,7 +153,7 @@ handle_cast(_Msg, State) ->
 	{noreply, State}.
 
 handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, 
-	State=#state{socket=Socket, endpoint_pool=PoolPid, endpoint_count=Count, protocol_config=ProtoConfig}) ->
+	State=#state{socket=Socket, endpoint_pool=PoolPid, endpoint_count=Count, server_name=Name}) ->
 	EpAddr = {PeerIP, PeerPortNo},
 	case find_endpoint(EpAddr) of
 		{ok, EpPid} ->
@@ -165,7 +161,7 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin},
 			{noreply, State};
 		error when is_pid(PoolPid) ->
 			EpID = {{udp, self()}, EpAddr},
-			case endpoint_sup_sup:start_endpoint(PoolPid, [?MODULE, Socket, EpID, ProtoConfig]) of
+			case endpoint_sup_sup:start_endpoint(PoolPid, [?MODULE, Socket, EpID, Name]) of
 				{ok, EpSupPid, EpPid} -> 
 					% logger:log(debug, "~p start endpoint as a server in ~p~n", [self(), ?MODULE]),
 					EpPid ! {datagram, Bin},
@@ -178,7 +174,7 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin},
 			end;
 		error ->
 			% ignore unexpected message received by a client
-		    % logger:log(debug, "~p recvd unexpected packet ~p from ~p as a client in ~p~n", [self(), Bin, EpID, ?MODULE]),
+		    logger:log(debug, "~p recvd unexpected packet ~p from ~p as a client in ~p~n", [self(), Bin, EpAddr, ?MODULE]),
 			{noreply, State}
 	end;
 handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{endpoint_count=Count, endpoint_pool=PoolPid}) ->

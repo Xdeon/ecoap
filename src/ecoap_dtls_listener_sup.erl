@@ -1,12 +1,10 @@
 -module(ecoap_dtls_listener_sup).
 -behaviour(supervisor).
 
--export([start_link/3]).
+-export([start_link/6]).
 -export([init/1]).
--export([start_listener/1]).
+-export([start_acceptor/1]).
 -export([count_acceptors/1]).
-
--include("ecoap.hrl").
 
 %% TODO: consider acceptor & supervisor pair or acceptor as supervisor pattern
 %% check issue and discussion from Cowboy repo
@@ -21,16 +19,11 @@
 %% 1. DTLS listen port still observable using inet:i() after stop ecoap
 %% 2. corresponding process still observable in ssl application 
 
-start_link(_ServerSupPid, Name, Config) ->
-	supervisor:start_link({local, Name}, ?MODULE, [Name, Config]).
+start_link(_ServerSupPid, Name, TransOpts, ProtoConfig, TimeOut, NumAcceptors) ->
+	supervisor:start_link({local, Name}, ?MODULE, [Name, TransOpts, ProtoConfig, TimeOut, NumAcceptors]).
 
-init([Name, Config]) ->
-	TransOpts0 = maps:get(transport_opts, Config, []),
-	TransOpts = [{port, ?DEFAULT_COAPS_PORT}|TransOpts0],
-	ProtoConfig = maps:get(protocol_config, Config, #{}),
-	TimeOut = maps:get(handshake_timeout, Config, 5000),
-	NumAcceptors = maps:get(num_acceptors, Config, 10),
-	ListenSocket = case ssl:listen(0, ecoap_config:merge_sock_opts(ecoap_dtls_socket:default_dtls_transopts(), TransOpts)) of
+init([Name, TransOpts, ProtoConfig, TimeOut, NumAcceptors]) ->
+	ListenSocket = case ssl:listen(0, ecoap_socket:socket_opts(dtls, TransOpts)) of
 		{ok, Socket} -> 
 			Socket;
 		{error, Reason} -> 
@@ -38,7 +31,8 @@ init([Name, Config]) ->
 				[Name, ?MODULE, TransOpts, Reason]),
 			exit({listen_error, Name, Reason})
 	end,
-	_ = start_listeners(Name, NumAcceptors),
+	ok = ecoap_registry:set_listener(Name, self()),
+	_ = start_acceptors(Name, NumAcceptors),
 	Procs = [
 			#{id => ecoap_dtls_socket, 
 			start => {ecoap_dtls_socket, start_link, [Name, ListenSocket, ProtoConfig, TimeOut]},
@@ -48,10 +42,10 @@ init([Name, Config]) ->
 			modules => [ecoap_dtls_socket]}],
 	{ok, {#{strategy => simple_one_for_one, intensity => 1, period => 5}, Procs}}.		
 
-start_listeners(Name, NumAcceptors) ->
-	spawn_link(fun() -> [start_listener(Name) || _ <- lists:seq(1, NumAcceptors)] end).
+start_acceptors(Name, NumAcceptors) ->
+	spawn_link(fun() -> [start_acceptor(Name) || _ <- lists:seq(1, NumAcceptors)] end).
 
-start_listener(Name) ->
+start_acceptor(Name) ->
 	supervisor:start_child(Name, []).
 
 count_acceptors(Name) ->

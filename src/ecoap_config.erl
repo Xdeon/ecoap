@@ -1,6 +1,5 @@
 -module(ecoap_config).
 -export([default_protocol_config/0, merge_protocol_config/1, handler_config/1, default_max_block_size/0]).
--export([merge_sock_opts/2]).
 
 -type protocol_config() :: #{
 	token_length := 0..8, 
@@ -50,18 +49,6 @@ handler_config(Config) ->
 
 -spec default_max_block_size() -> non_neg_integer().
 default_max_block_size() -> 1024.
-
--spec merge_sock_opts([ssl:tls_option()], [ssl:tls_option()]) -> [ssl:tls_option()].
-merge_sock_opts(Defaults, Options) ->
-    lists:foldl(
-        fun({Opt, Val}, Acc) ->
-                lists:keystore(Opt, 1, Acc, {Opt, Val});
-            (Opt, Acc) ->
-                case lists:member(Opt, Acc) of
-                    true  -> Acc;
-                    false -> [Opt | Acc]
-                end
-    end, Defaults, Options).
 
 native_time(Time) ->
     erlang:convert_time_unit(Time, millisecond, native).

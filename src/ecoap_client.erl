@@ -434,7 +434,7 @@ init([Host, Port, ClientOpts=#{owner:=Owner}]) ->
 	State = #state{owner={OwnerRef, Owner}, client_opts=ClientOpts},
 	case maps:find(external_socket, ClientOpts) of
 		{ok, {RawTransport, Socket}} ->
-			Transport = select_transport(RawTransport),
+			Transport = ecoap_socket:transport_module(RawTransport),
 			{ok, State#state{socket={external_socket, Transport, Socket}}, {continue, {resolve, RawTransport, Host, Port}}};
 		error ->
 			RawTransport = maps:get(transport, ClientOpts, ecoap_uri:default_transport(Port)),
@@ -451,16 +451,13 @@ handle_continue({resolve, RawTransport, Host0, Port}, State=#state{socket={_, _,
 			{stop, {shutdown, Other}, State}
 	end;
 handle_continue({connect, RawTransport, Host0, Port}, State) ->
-	Transport = select_transport(RawTransport),
+	Transport = ecoap_socket:transport_module(RawTransport),
 	case ecoap_uri:get_peer_addr(Host0) of
 		{ok, Host, IP} ->
 			start_connection(RawTransport, Transport, {IP, Port}, State#state{host=Host});
 		Other ->	
 			{stop, {shutdown, Other}, State}
 	end.
-
-select_transport(udp) -> ecoap_udp_socket;
-select_transport(dtls) -> ecoap_dtls_socket.
 
 start_connection(RawTransport, Transport, EpAddr, State=#state{client_opts=ClientOpts}) ->
 	TransOpts = maps:get(transport_opts, ClientOpts, []),

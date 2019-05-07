@@ -57,9 +57,9 @@
 start_link(Transport, Socket, EpID, ProtoConfig) ->
     start_link(undefined, Transport, Socket, EpID, ProtoConfig).
     
--spec start_link(pid() | undefined, module(), inet:socket(), ecoap_endpoint_id(), ecoap_config:protocol_config()) -> {ok, pid()} | {error, term()}.
-start_link(SupPid, Transport, Socket, EpID, ProtoConfig) ->
-    gen_server:start_link(?MODULE, [SupPid, Transport, Socket, EpID, ProtoConfig], []).
+% -spec start_link(pid() | undefined, module(), inet:socket(), ecoap_endpoint_id(), ecoap_config:protocol_config()) -> {ok, pid()} | {error, term()}.
+start_link(SupPid, Transport, Socket, EpID, Name) ->
+    gen_server:start_link(?MODULE, [SupPid, Transport, Socket, EpID, Name], []).
 
 -spec ping(pid()) -> {ok, reference()}.
 ping(EndpointPid) ->
@@ -130,14 +130,15 @@ get_peer_info(port, {_, {_, PeerPortNo}}) -> PeerPortNo.
 init([undefined, Transport, Socket, EpID, ProtoConfig0]) ->
     % we would like to terminate as well when upper layer socket process terminates
     process_flag(trap_exit, true),
-    ProtoConfig = ProtoConfig0#{endpoint_pid=>self()},
+    ProtoConfig = ecoap_config:merge_protocol_config(ProtoConfig0#{endpoint_pid=>self()}),
     Timer = endpoint_timer:start_timer(?SCAN_INTERVAL, start_scan),
     {ok, #state{transport=Transport, sock=Socket, ep_id=EpID, nextmid=ecoap_message_id:first_mid(), timer=Timer, protocol_config=ProtoConfig}};
 % server
-init([SupPid, Transport, Socket, EpID, ProtoConfig0]) ->
+init([SupPid, Transport, Socket, EpID, Name]) ->
     % need this also in server mode to avoid termination with ecoap_client 
     process_flag(trap_exit, true),
-    ProtoConfig = ProtoConfig0#{endpoint_pid=>self()},
+    ProtoConfig0 = ecoap_registry:get_protocol_config(Name),
+    ProtoConfig = ecoap_config:merge_protocol_config(ProtoConfig0#{endpoint_pid=>self()}),
     Timer = endpoint_timer:start_timer(?SCAN_INTERVAL, start_scan),
     {ok, #state{transport=Transport, sock=Socket, ep_id=EpID, nextmid=ecoap_message_id:first_mid(), timer=Timer, protocol_config=ProtoConfig}, {continue, {init, SupPid}}}.
 

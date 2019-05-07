@@ -2,7 +2,11 @@
 -behaviour(gen_server).
 
 %% API.
--export([start_link/0, get_links/0, register_handler/1, unregister_handler/1, match_handler/1, clear_registry/0]).
+-export([start_link/0, get_links/0, register_handler/1, unregister_handler/1, match_handler/1]).
+
+-export([set_listener/2, set_new_listener_config/3, set_protocol_config/2, set_transport_opts/2]).
+-export([get_listener/1, get_listeners/0, get_protocol_config/1, get_transport_opts/1]).
+-export([cleanup_listener_opts/1]).
 
 %% gen_server.
 -export([init/1]).
@@ -13,12 +17,14 @@
 -export([code_change/3]).
 
 -record(state, {
+    monitors = [] :: list()
 }).
 
 -type route_rule() :: {[binary()], module()}.
 -export_type([route_rule/0]).
 
--define(HANDLER_TAB, ?MODULE).
+-define(HANDLER_TAB, ecoap_routes).
+-define(CONFIG_TAB, ecoap_config).
 
 %% API.
 
@@ -42,8 +48,38 @@ get_links() ->
 -spec match_handler([binary()]) -> {route_rule(), [binary()]} | undefined.
 match_handler(Uri) -> match_handler(Uri, ?HANDLER_TAB).
 
--spec clear_registry() -> true.
-clear_registry() -> ets:delete_all_objects(?HANDLER_TAB).
+set_listener(Name, Pid) ->
+    gen_server:call(?MODULE, {set_listener, Name, Pid}).
+
+set_new_listener_config(Name, TransOpts, ProtoConfig) ->
+    gen_server:call(?MODULE, {set_new_listener_config, Name, TransOpts, ProtoConfig}).
+
+set_protocol_config(Name, ProtoConfig) ->
+    gen_server:call(?MODULE, {set_protocol_config, Name, ProtoConfig}).
+
+set_transport_opts(Name, TransOpts) ->
+    gen_server:call(?MODULE, {set_transport_opts, Name, TransOpts}).
+
+get_listener(Name) ->
+    ets:lookup_element(?CONFIG_TAB, {listener, Name}, 2).
+
+get_listeners() ->
+    [{Name, Pid} || [Name, Pid] <- ets:match(?CONFIG_TAB, {{listener, '$1'}, '$2'})].
+
+get_protocol_config(Name) ->
+    ets:lookup_element(?CONFIG_TAB, {protocol_config, Name}, 2).
+
+get_transport_opts(Name) ->
+    ets:lookup_element(?CONFIG_TAB, {transport_opts, Name}, 2).
+
+cleanup_listener_opts(Name) ->
+    _ = ets:delete(?CONFIG_TAB, {transport_opts, Name}),
+    _ = ets:delete(?CONFIG_TAB, {protocol_config, Name}),
+    _ = ets:delete(?CONFIG_TAB, {listener, Name}),
+    ok.
+
+% -spec clear_registry() -> true.
+% clear_registry() -> ets:delete_all_objects(?HANDLER_TAB).
 
 % select an entry with a longest prefix
 % this allows user to have one handler for "foo" and another for "foo/bar"
@@ -127,8 +163,11 @@ call_coap_discover(Module, Prefix) ->
 %% gen_server.
 init([]) ->
     spawn(fun() -> ecoap_registry:register_handler([{[<<".well-known">>, <<"core">>], resource_directory}]) end),
-    {ok, #state{}}.
+    ListenerMonitors = [{{erlang:monitor(process, Pid), Pid}, {listener, Ref}} ||
+        [Ref, Pid] <- ets:match(?CONFIG_TAB, {{listener, '$1'}, '$2'})],
+    {ok, #state{monitors=ListenerMonitors}}.
 
+% routing
 handle_call({register, Regs}, _From, State) ->
     ok = load_handlers(Regs),
     ets:insert(?HANDLER_TAB, Regs),
@@ -136,12 +175,41 @@ handle_call({register, Regs}, _From, State) ->
 handle_call({unregister, Prefix}, _From, State) ->
     ets:delete(?HANDLER_TAB, Prefix),
     {reply, ok, State};
+% protocol and transport
+handle_call({set_listener, Name, Pid}, _From, State0) ->
+    State = set_monitored_process({listener, Name}, Pid, State0),
+    {reply, ok, State};
+handle_call({set_new_listener_config, Name, TransOpts, ProtoConfig}, _From, State) ->
+    ets:insert_new(?CONFIG_TAB, {{transport_opts, Name}, TransOpts}),
+    ets:insert_new(?CONFIG_TAB, {{protocol_config, Name}, ProtoConfig}),
+    {reply, ok, State};
+handle_call({set_protocol_config, Name, ProtoConfig}, _From, State) ->
+    ets:insert(?CONFIG_TAB, {{protocol_config, Name}, ProtoConfig}),
+    {reply, ok, State};
+handle_call({set_transport_opts, Name, TransOpts}, _From, State) ->
+    ets:insert(?CONFIG_TAB, {{transport_opts, Name}, TransOpts}),
+    {reply, ok, State};
 handle_call(_Request, _From, State) ->
     {noreply, State}.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
+handle_info({'DOWN', MonitorRef, process, Pid, Reason}, State=#state{monitors=Monitors}) ->
+    {_, TypeRef} = lists:keyfind({MonitorRef, Pid}, 1, Monitors),
+    ok = case {TypeRef, Reason} of
+        {{listener, Name}, normal} ->
+            cleanup_listener_opts(Name);
+        {{listener, Name}, shutdown} ->
+            cleanup_listener_opts(Name);
+        {{listener, Name}, {shutdown, _}} ->
+            cleanup_listener_opts(Name);
+        _ ->
+            _ = ets:delete(?CONFIG_TAB, TypeRef),
+            ok
+    end,
+    Monitors2 = lists:keydelete({MonitorRef, Pid}, 1, Monitors),
+    {noreply, State#state{monitors=Monitors2}};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -150,6 +218,24 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+set_monitored_process(Key, Pid, State=#state{monitors=Monitors0}) ->
+    %% First we cleanup the monitor if a residual one exists.
+    %% This can happen during crashes when the restart is faster
+    %% than the cleanup.
+    Monitors = case lists:keytake(Key, 2, Monitors0) of
+        false ->
+            Monitors0;
+        {value, {{OldMonitorRef, _}, _}, Monitors1} ->
+            true = erlang:demonitor(OldMonitorRef, [flush]),
+            Monitors1
+    end,
+    %% Then we unconditionally insert in the ets table.
+    %% If residual data is there, it will be overwritten.
+    true = ets:insert(?CONFIG_TAB, {Key, Pid}),
+    %% Finally we start monitoring this new process.
+    MonitorRef = erlang:monitor(process, Pid),
+    State#state{monitors=[{{MonitorRef, Pid}, Key}|Monitors]}.
 
 % in case the system is not run as release, we should manually load all module files
 load_handlers(Reg) ->

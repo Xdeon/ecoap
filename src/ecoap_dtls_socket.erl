@@ -3,7 +3,7 @@
 -behaviour(ecoap_socket).
 
 %% API.
--export([start_link/4, connect/4, close/1, default_dtls_transopts/0]).
+-export([start_link/4, connect/4, close/1]).
 -export([get_endpoint/2, send/3]).
 
 %% gen_statem.
@@ -29,7 +29,6 @@
 	protocol_config = undefined :: ecoap_config:protocol_config()
 }).
 
--define(READ_PACKETS, 1000).
 -define(ACTIVE_PACKETS, 100).
 
 %% API.
@@ -54,22 +53,15 @@ send(Socket, _, Datagram) ->
 close(Pid) ->
 	gen_statem:stop(Pid).
 
--spec default_dtls_transopts() -> [ssl:connect_option()].
-default_dtls_transopts() ->
-	[binary, {active, false}, {reuseaddr, true}, {protocol, dtls}, {read_packets, ?READ_PACKETS}].
-
 %% gen_statem.
 
 callback_mode() ->
 	state_functions.
 
-init([accept, Name, ListenSocket, ProtoConfig0, TimeOut]) ->
-	ProtoConfig = ecoap_config:merge_protocol_config(ProtoConfig0),
+init([accept, Name, ListenSocket, ProtoConfig, TimeOut]) ->
 	StateData = #data{protocol_config=ProtoConfig, server_name=Name, lsocket=ListenSocket, timeout=TimeOut},
 	{ok, accept, StateData, [{next_event, internal, accept}]};
-init([connect, EpAddr={PeerIP, PeerPortNo}, TransOpts0, ProtoConfig0, TimeOut]) ->
-	TransOpts = ecoap_config:merge_sock_opts(default_dtls_transopts(), TransOpts0),
-	ProtoConfig = ecoap_config:merge_protocol_config(ProtoConfig0),
+init([connect, EpAddr={PeerIP, PeerPortNo}, TransOpts, ProtoConfig, TimeOut]) ->
 	case ssl:connect(PeerIP, PeerPortNo, TransOpts, TimeOut) of
 		{ok, Socket} ->
 			ok = ssl:setopts(Socket, [{active, ?ACTIVE_PACKETS}]),
@@ -84,7 +76,7 @@ init([connect, EpAddr={PeerIP, PeerPortNo}, TransOpts0, ProtoConfig0, TimeOut]) 
 accept(_, accept, StateData=#data{server_name=Name, lsocket=ListenSocket}) ->
 	case ssl:transport_accept(ListenSocket) of
 		{ok, CSocket} -> 
-		    {ok, _} = ecoap_dtls_listener_sup:start_listener(Name),
+		    {ok, _} = ecoap_dtls_listener_sup:start_acceptor(Name),
 			do_handshake(CSocket, StateData);
 		{error, emfile} ->
 			logger:log(warning, "DTLS acceptor reducing accept rate: out of file descriptors~n"),

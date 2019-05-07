@@ -10,7 +10,8 @@ start_link() ->
 	supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 init([]) ->
-	_ = ets:new(ecoap_registry, [set, named_table, public, {read_concurrency, true}]),
+	_ = ets:new(ecoap_routes, [set, named_table, public, {read_concurrency, true}]),
+	_ = ets:new(ecoap_config, [set, named_table, public, {read_concurrency, true}]),
 	Procs = [#{id => ecoap_registry,
 			   start => {ecoap_registry, start_link, []},
 			   restart => permanent,
@@ -39,7 +40,7 @@ stop_server(Name) ->
 	case supervisor:terminate_child(?MODULE, {ecoap_server_sup, Name}) of
 		ok ->
 			_ = supervisor:delete_child(?MODULE, {ecoap_server_sup, Name}),
-			ok;
+			ecoap_registry:cleanup_listener_opts(Name);
 		{error, Reason} ->
 			{error, Reason}
 	end.
