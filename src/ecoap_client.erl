@@ -335,6 +335,8 @@ observe_and_wait_response(Pid, Uri, Options, TimeOut) ->
 		{coap_response, Ref, _Pid, Response} ->
 			demonitor(MonitorRef, [flush]),
 			Response;
+		{'DOWN', MonitorRef, process, Pid, noconnection} ->
+			exit({nodedown, node(Pid)});
 		{'DOWN', MonitorRef, process, Pid, Reason} ->
 			exit(Reason)
 	after TimeOut ->
@@ -366,6 +368,8 @@ unobserve_and_wait_response(Pid, Ref, ETag, TimeOut) ->
 		{coap_response, Ref2, _Pid, Response} ->
 			demonitor(MonitorRef, [flush]),
 			Response;
+		{'DOWN', MonitorRef, process, Pid, noconnection} ->
+			exit({nodedown, node(Pid)});
 		{'DOWN', MonitorRef, process, Pid, Reason} ->
 			exit(Reason)
 	after TimeOut ->

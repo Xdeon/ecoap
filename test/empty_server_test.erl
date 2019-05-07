@@ -41,7 +41,7 @@ empty_server(Client) ->
     % discovery
     ?_assertEqual({ok, {error, 'NotFound'}, #coap_content{}}, ecoap_client:get(Client, "/")),
     ?_assertEqual({ok, {error, 'NotFound'}, #coap_content{}}, ecoap_client:get(Client, "/.well-known")),
-    ?_assertMatch({ok, {ok, 'Content'}, #coap_content{payload= <<>>}}, ecoap_client:get(Client, "/.well-known/core")),
+    ?_assertMatch({ok, {ok, 'Content'}, #coap_content{payload= <<"</.well-known/core>">>}}, ecoap_client:get(Client, "/.well-known/core")),
     % other methods
     ?_assertEqual({ok, {error, 'MethodNotAllowed'}, #coap_content{}}, ecoap_client:post(Client, "/.well-known/core", <<>>)),
     ?_assertEqual({ok, {error, 'MethodNotAllowed'}, #coap_content{}}, ecoap_client:put(Client, "/.well-known/core", <<>>)),
@@ -65,7 +65,7 @@ unknown_handler_test_() ->
 
 unknown_handler(Client) ->
     [
-    ?_assertMatch({ok, {ok, 'Content'}, #coap_content{payload= <<"</unknown>">>}}, ecoap_client:get(Client, "/.well-known/core")),
+    ?_assertMatch({ok, {ok, 'Content'}, #coap_content{payload= <<"</.well-known/core>,</unknown>">>}}, ecoap_client:get(Client, "/.well-known/core")),
     ?_assertEqual({ok, {error,'MethodNotAllowed'}, #coap_content{}}, ecoap_client:get(Client, "/unknown"))
     ].
 

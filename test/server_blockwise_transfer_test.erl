@@ -40,7 +40,7 @@ blockwise_transfer(Client) ->
     [
     % discovery
     ?_assertMatch({ok, {ok, 'Content'}, 
-        #coap_content{payload= <<"</reflect>,</text>">>, options=#{'Content-Format':= <<"application/link-format">>}}}, 
+        #coap_content{payload= <<"</.well-known/core>,</reflect>,</text>">>, options=#{'Content-Format':= <<"application/link-format">>}}}, 
             ecoap_client:get(Client, "/.well-known/core")),
     % resource access
     ?_assertEqual({ok, {ok, 'Content'}, test_utils:text_resource(128)}, ecoap_client:get(Client, "/text/128")),
