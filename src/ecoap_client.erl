@@ -170,15 +170,15 @@ ping(Pid, TimeOut) ->
 
 -spec discover(pid()) -> response().
 discover(Pid) ->
-	get(Pid, <<".well-known/core">>).
+	discover(Pid, infinity).
 
 -spec discover(pid(), timeout()) -> response() | no_return().
 discover(Pid, TimeOut) ->
-	get(Pid, <<".well-known/core">>, #{}, TimeOut).
+	get(Pid, <<"/.well-known/core">>, #{}, TimeOut).
 
 -spec discover_async(pid()) -> {ok, reference()}.
 discover_async(Pid) ->
-	get_async(Pid, <<".well-known/core">>).
+	get_async(Pid, <<"/.well-known/core">>).
 
 -spec get(pid(), iodata()) -> response().
 get(Pid, Uri) ->
