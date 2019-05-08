@@ -11,7 +11,7 @@ start() ->
     ok = application:start(mnesia),
     {atomic, ok} = mnesia:create_table(resources, []),
     {ok, _} = application:ensure_all_started(ecoap),
-    ecoap:start_udp(test_server, 
+    ecoap:start_udp(test_server, [{port, 5683}],
         #{routes => [{[<<"*">>], ?MODULE}], protocol_config => #{max_block_size => 64}}).
 
 stop() ->

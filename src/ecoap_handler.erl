@@ -700,8 +700,6 @@ get_etag(Options) ->
         undefined -> undefined
     end.
 
-% TODO: if user does not provice coap_get but imp coap_post, etc. 
-% all calls will fail because coap_get returns {error, ...} by default.
 coap_get(Module, EpID, Prefix, Suffix, Request) ->
     case erlang:function_exported(Module, coap_get, 4) of
         true -> Module:coap_get(EpID, Prefix, Suffix, Request);
