@@ -455,16 +455,21 @@ try_check_resource(EpID, Request, State) ->
 
 
 check_resource(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
-    case coap_get(Module, EpID, Prefix, Suffix, Request) of
-        {ok, Content} ->
-            check_preconditions(EpID, Request, Content, State);
-        {error, 'NotFound'} = Result ->
-            check_preconditions(EpID, Request, Result, State);
-        {error, Code} ->
-            return_response(Request, {error, Code}, State);
-        {error, Code, Reason} ->
-            return_response([], Request, {error, Code}, Reason, State)
-    end.
+    % case coap_get(Module, EpID, Prefix, Suffix, Request) of
+    %     {ok, Content} ->
+    %         check_preconditions(EpID, Request, Content, State);
+    %     {error, 'NotFound'} = Result ->
+    %         check_preconditions(EpID, Request, Result, State);
+    %     {error, Code} ->
+    %         return_response(Request, {error, Code}, State);
+    %     {error, Code, Reason} ->
+    %         return_response([], Request, {error, Code}, Reason, State)
+    % end.
+    Result = case coap_get(Module, EpID, Prefix, Suffix, Request) of
+        {ok, Content} -> Content;
+        Other -> Other
+    end,
+    check_preconditions(EpID, Request, Result, State).
 
 
 check_preconditions(EpID, Request, Content, State) ->
@@ -476,7 +481,10 @@ check_preconditions(EpID, Request, Content, State) ->
     end.
 
 
-if_match(Request, {error, 'NotFound'}) ->
+if_match(Request, {error, _}) ->
+    not coap_message:has_option('If-Match', Request);
+
+if_match(Request, {error, _, _}) ->
     not coap_message:has_option('If-Match', Request);
 
 if_match(Request, #coap_content{options=Options}) ->
@@ -489,6 +497,9 @@ if_match(Request, #coap_content{options=Options}) ->
 
 
 if_none_match(_Request, {error, _}) ->
+    true;
+
+if_none_match(_Request, {error, _, _}) ->
     true;
 
 if_none_match(Request, _Content) ->
@@ -767,6 +778,8 @@ get_etag(Options) ->
     end.
 
 
+% TODO: if user does not provice coap_get but imp coap_post, etc. 
+% all calls will fail because coap_get returns {error, ...} by default.
 coap_get(Module, EpID, Prefix, Suffix, Request) ->
     case erlang:function_exported(Module, coap_get, 4) of
         true -> Module:coap_get(EpID, Prefix, Suffix, Request);
