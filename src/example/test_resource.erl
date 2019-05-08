@@ -1,17 +1,17 @@
 -module(test_resource).
 -export([coap_discover/1, coap_get/4, coap_post/4, coap_put/4, coap_delete/4, 
         coap_observe/4, coap_unobserve/1, handle_info/3, coap_ack/2]).
--export([start/0, stop/0]).
+-export([start/1, stop/0]).
 
 -behaviour(ecoap_handler).
 
-start() ->
+start(Port) ->
     _ = application:stop(ecoap),
     _ = application:stop(mnesia),
     ok = application:start(mnesia),
     {atomic, ok} = mnesia:create_table(resources, []),
     {ok, _} = application:ensure_all_started(ecoap),
-    ecoap:start_udp(test_server, [{port, 5683}],
+    ecoap:start_udp(test_server, [{port, Port}],
         #{routes => [{[<<"*">>], ?MODULE}], protocol_config => #{max_block_size => 64}}).
 
 stop() ->

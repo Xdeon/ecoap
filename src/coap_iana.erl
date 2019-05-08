@@ -156,6 +156,7 @@ decode_content_format(50) -> <<"application/json">>;
 decode_content_format(60) -> <<"application/cbor">>;
 decode_content_format(61) -> <<"application/cwt">>;
 decode_content_format(11542) -> <<"application/vnd.oma.lwm2m+tlv">>;
+decode_content_format(11543) -> <<"application/vnd.oma.lwm2m+json">>;
 % unknown content-format
 decode_content_format(FormatCode) -> FormatCode.
 
@@ -169,6 +170,7 @@ encode_content_format(<<"application/json">>) -> 50;
 encode_content_format(<<"application/cbor">>) -> 60;
 encode_content_format(<<"application/cwt">>) -> 61;
 encode_content_format(<<"application/vnd.oma.lwm2m+tlv">>) -> 11542;
+encode_content_format(<<"application/vnd.oma.lwm2m+json">>) -> 11543;
 encode_content_format(Format) when is_integer(Format) -> Format.
 
 -ifdef(TEST).
