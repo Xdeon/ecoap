@@ -1,8 +1,6 @@
 -module(ecoap).
 -export([start_udp/2, stop_udp/1, start_dtls/2, stop_dtls/1]).
 
--include("ecoap.hrl").
-
 -type config() :: #{
 	routes => [ecoap_registry:route_rule()],
 	protocol_config => map(),
@@ -48,6 +46,7 @@ stop_dtls(Name) ->
 
 init_common_config(Config, Transport) ->
 	Routes = maps:get(routes, Config, []),
-	TransOpts = [{port, ecoap_socket:port(Transport)} | maps:get(transport_opts, Config, [])],
+	% add default port which could be surpassed by user-deined port
+	TransOpts = [{port, ecoap_socket:default_port(Transport)} | maps:get(transport_opts, Config, [])],
 	ProtoConfig = maps:get(protocol_config, Config, #{}),
 	{Routes, TransOpts, ProtoConfig}.

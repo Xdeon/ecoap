@@ -1,5 +1,5 @@
 -module(ecoap_socket).
--export([port/1, transport_module/1, socket_opts/2]).
+-export([default_port/1, transport_module/1, socket_opts/2]).
 
 -define(READ_PACKETS, 1000).
 
@@ -16,12 +16,15 @@
 	EpAddr :: ecoap_endpoint:endpoint_addr(),
 	EpPid :: pid().
 
-port(udp) -> 5683;
-port(dtls) -> 5684.
+-spec default_port(atom()) -> inet:port_number().
+default_port(udp) -> 5683;
+default_port(dtls) -> 5684.
 
+-spec transport_module(atom()) -> module().
 transport_module(udp) -> ecoap_udp_socket;
 transport_module(dtls) -> ecoap_dtls_socket.
 
+-spec socket_opts(atom(), any()) -> any().
 socket_opts(Transport, Options) ->
 	merge_sock_opts(default_socket_opts(Transport), Options).
 
