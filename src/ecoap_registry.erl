@@ -48,30 +48,39 @@ get_links() ->
 -spec match_handler([binary()]) -> {route_rule(), [binary()]} | undefined.
 match_handler(Uri) -> match_handler(Uri, ?HANDLER_TAB).
 
+-spec set_listener(atom(), pid()) -> ok.
 set_listener(Name, Pid) ->
     gen_server:call(?MODULE, {set_listener, Name, Pid}).
 
+-spec set_new_listener_config(atom(), any(), map()) -> ok.
 set_new_listener_config(Name, TransOpts, ProtoConfig) ->
     gen_server:call(?MODULE, {set_new_listener_config, Name, TransOpts, ProtoConfig}).
 
+-spec set_protocol_config(atom(), map()) -> ok.
 set_protocol_config(Name, ProtoConfig) ->
     gen_server:call(?MODULE, {set_protocol_config, Name, ProtoConfig}).
 
+-spec set_transport_opts(atom(), any()) -> ok.
 set_transport_opts(Name, TransOpts) ->
     gen_server:call(?MODULE, {set_transport_opts, Name, TransOpts}).
 
+-spec get_listener(atom()) -> pid().
 get_listener(Name) ->
     ets:lookup_element(?CONFIG_TAB, {listener, Name}, 2).
 
+-spec get_listeners() -> [{atom(), pid()}].
 get_listeners() ->
     [{Name, Pid} || [Name, Pid] <- ets:match(?CONFIG_TAB, {{listener, '$1'}, '$2'})].
 
+-spec get_protocol_config(atom()) -> map().
 get_protocol_config(Name) ->
     ets:lookup_element(?CONFIG_TAB, {protocol_config, Name}, 2).
 
+-spec get_transport_opts(atom()) -> any().
 get_transport_opts(Name) ->
     ets:lookup_element(?CONFIG_TAB, {transport_opts, Name}, 2).
 
+-spec cleanup_listener_opts(atom()) -> ok.
 cleanup_listener_opts(Name) ->
     _ = ets:delete(?CONFIG_TAB, {transport_opts, Name}),
     _ = ets:delete(?CONFIG_TAB, {protocol_config, Name}),
@@ -239,18 +248,9 @@ set_monitored_process(Key, Pid, State=#state{monitors=Monitors0}) ->
 
 % in case the system is not run as release, we should manually load all module files
 load_handlers(Reg) ->
-    lists:foreach(fun({_, {_, Module}}) -> 
-        case ensure_loaded(Module) of
-            {module, Module} -> ok;
-            {error, embedded} -> ok;
-            % {error, Error} -> error_logger:error_msg("handler module load fail: ~p~n", [{Module, {error, Error}}])
-            {error, Error} -> logger:log(error, "handler module load fail: ~p~n", [{Module, {error, Error}}])
-        end end, Reg).
-
-ensure_loaded(Module) ->
-    case erlang:module_loaded(Module) of
-        true -> {module, Module};
-        false -> code:ensure_loaded(Module)
+    case code:ensure_modules_loaded([Module || {_, {_, Module}} <- Reg]) of
+        ok -> ok;
+        {error, [{Module, What}]} -> logger:log(error, "Fail to load handler module: ~p~n", [{Module, What}])
     end.
 
 process_regs(Regs) ->
