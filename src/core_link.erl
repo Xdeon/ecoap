@@ -66,6 +66,8 @@ encode_link_param({Other, Value}) -> [";", atom_to_list(Other), "=\"", process_p
 
 process_param_value(Value) when is_integer(Value) ->
     integer_to_binary(Value);
+process_param_value(Value) when is_float(Value) ->
+    float_to_binary(Value, [{decimals, 2}, compact]);
 process_param_value(Value) when is_binary(Value) ->
     Value;
 process_param_value(Values) when is_list(Values) ->
@@ -100,6 +102,20 @@ codec_test_() ->
         [{absolute, [<<"sensors">>, <<"temp">>], 
                     [{rt, <<"temperature-c">>}, {'if', <<"sensor">>}, {foo, true}, {bar, [<<"one">>, <<"two">>]}]
         }]),
+    test_decode(<<"</19/0/0>;ver=\"1.0\";dim=\"8\";pmin=\"0\";pmax=\"60\";gt=\"50\";lt=\"42.2\";st=\"1.3\";title=\"MY TITLE\";ct=\"0 50 11542\";par1=\"1\";par2=\"PAR2\";par3=\"1 2 3\"">>,
+        [{absolute,[<<"19">>,<<"0">>,<<"0">>],
+           [{ver,<<"1.0">>},
+            {dim,8},
+            {pmin,0},
+            {pmax,60},
+            {gt,50},
+            {lt,42.2},
+            {st,1.3},
+            {title,<<"MY TITLE">>},
+            {ct,[0,50,11542]},
+            {par1,1},
+            {par2,<<"PAR2">>},
+            {par3,[1,2,3]}]}]),
     test_decode(<<"/link">>, error)
     ].
 
