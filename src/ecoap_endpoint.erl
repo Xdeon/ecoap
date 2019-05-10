@@ -217,7 +217,7 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgI
                         ecoap_exchange:received(BinMessage, ProtoConfig, init_exchange(TrId, Receiver)));
                 error ->
                     % token was not recognized
-                    % logger:log(info, "separate response with unrecognized token received by ~p as ~p, sending RST~n", [self(), ?MODULE]),
+                    logger:log(debug, "separate response with unrecognized token received by ~p as ~p, sending RST~n", [self(), ?MODULE]),
                     BinRST = coap_message:encode(ecoap_request:rst(MsgId)),
                     Transport:send(Socket, EpID, BinRST),
                     {noreply, State}

@@ -548,9 +548,9 @@ handle_info({coap_response, EpID, EndpointPid, Ref, Message}, State=#state{reque
 		error -> 
 			{noreply, State};
 		{ok, Request} ->
-			case coap_message:get_type(Message) of
-				'CON' -> {ok, _} = ecoap_endpoint:send(EndpointPid, ecoap_request:ack(Message)), ok;
-				_ -> ok
+			case ecoap_request:requires_ack(Message) of
+				true -> {ok, _} = ecoap_endpoint:send(EndpointPid, ecoap_request:ack(Message)), ok;
+				false -> ok
 			end,
 			case coap_message:get_code(Message) of
 				{ok, 'Continue'} ->
