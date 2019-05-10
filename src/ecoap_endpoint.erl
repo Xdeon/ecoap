@@ -216,6 +216,17 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgI
                     update_state(State, TrId,
                         ecoap_exchange:received(BinMessage, ProtoConfig, init_exchange(TrId, Receiver)));
                 error ->
+                    %% TODO: do we need failover for observe token?
+                    % possible steps:
+                    % check persistent store (e.g. mnesia) for token
+                    % e.g. token -> some related info
+                    % find where the restarted client process is via some registry or start new client directly (if client combined with handler)
+                    % forward the response
+                    % how does the client process recognize this response?
+                    % maybe store the origin request as well and let client fetch it if can not find any locally
+                    % how to invoke custom code upon the response?
+                    % 1. for separate client process, it may fetch reply_to_pid from the store, but it is problemtic to check whether the info is still valid 
+                    % 2. for combined client process, it can directly invoke callback code.
                     % token was not recognized
                     logger:log(debug, "separate response with unrecognized token received by ~p as ~p, sending RST~n", [self(), ?MODULE]),
                     BinRST = coap_message:encode(ecoap_request:rst(MsgId)),
