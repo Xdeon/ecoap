@@ -543,7 +543,7 @@ handle_command(get_remote_addr, _From, State=#state{host=Host, ep_id=EpID}) ->
 handle_cast(_Msg, State) ->
 	{noreply, State}.
 
-handle_info({coap_response, EpID, EndpointPid, Ref, Message}, State=#state{ep_id=EpID, requests=Requests}) ->
+handle_info({coap_response, EpID, EndpointPid, Ref, Message}, State=#state{requests=Requests}) ->
 	case maps:find(Ref, Requests) of
 		error -> 
 			{noreply, State};
@@ -561,14 +561,14 @@ handle_info({coap_response, EpID, EndpointPid, Ref, Message}, State=#state{ep_id
 					handle_error(Ref, Request, {coap_response, Message}, State)
 			end
 	end;
-handle_info({coap_error, EpID, _EndpointPid, Ref, Error}, State=#state{ep_id=EpID, requests=Requests}) ->
+handle_info({coap_error, _EpID, _EndpointPid, Ref, Error}, State=#state{requests=Requests}) ->
 	case maps:find(Ref, Requests) of
 		error -> 
 			{noreply, State};
 		{ok, Request} ->
 			handle_error(Ref, Request, {coap_error, Error}, State)
 	end;
-handle_info({coap_ack, EpID, _EndpointPid, Ref}, State=#state{ep_id=EpID, requests=Requests}) ->
+handle_info({coap_ack, _EpID, _EndpointPid, Ref}, State=#state{requests=Requests}) ->
 	case maps:find(Ref, Requests) of
 		{ok, #request{} = Request} ->
 			send_response(Request, {separate, Ref}),
