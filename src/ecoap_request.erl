@@ -32,7 +32,7 @@ method(#coap_message{code=Method}) when is_atom(Method) ->
 
 -spec requires_ack(coap_message:coap_message()) -> boolean().
 requires_ack(#coap_message{type='CON'}) -> true;
-requires_ack(#coap_message{type='NON'}) -> false.
+requires_ack(#coap_message{}) -> false.
 
 -spec request(coap_message:coap_type(), coap_message:coap_method()) -> coap_message:coap_message().
 request(Type, Code) ->
