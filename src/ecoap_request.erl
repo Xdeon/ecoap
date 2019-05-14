@@ -135,4 +135,13 @@ response_compose_test_() ->
             ecoap_request:response({ok, 'Content'}, Payload, Request))
     ].
 
+util_test_() ->
+    [
+        ?_assertEqual(true, ecoap_request:requires_ack(#coap_message{type='CON'})),
+        ?_assertEqual(false, ecoap_request:requires_ack(#coap_message{type='NON'})),
+        ?_assertEqual(false, ecoap_request:requires_ack(#coap_message{type='ACK'})),
+        ?_assertEqual(false, ecoap_request:requires_ack(#coap_message{type='RST'}))
+
+    ].
+
 -endif.
