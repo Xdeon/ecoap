@@ -80,7 +80,7 @@ init([TransOpts, ProtoConfig]) ->
 	case gen_udp:open(0, ecoap_socket:socket_opts(udp, TransOpts)) of
 		{ok, Socket} ->
 			% logger:log(info, "socket setting: ~p~n", [inet:getopts(Socket, [recbuf, sndbuf, buffer])]),
-			logger:log(info, "ecoap listen on *:~p~n", [inet:port(Socket)]),
+			logger:log(info, "ecoap listen on *:~p", [inet:port(Socket)]),
 			{ok, #state{socket=Socket, protocol_config=ProtoConfig}, {continue, init}};
 		Error ->
 			{stop, Error}
@@ -91,7 +91,7 @@ init([SupPid, Name, TransOpts, ProtoConfig]) ->
 			ok = ecoap_registry:set_listener(Name, self()),
 			{ok, State#state{server_name=Name}, {continue, {init, SupPid}}};
 		{stop, {error, Reason}=Error} -> 
-			logger:log(error, "Failed to start ecoap listener ~p in ~p:listen (~999999p) for reason ~p~n", 
+			logger:log(error, "Failed to start ecoap listener ~p in ~p:listen (~999999p) for reason ~p", 
 				[Name, ?MODULE, TransOpts, Reason]),
 			{stop, Error}
 	end.
@@ -145,11 +145,11 @@ handle_call(get_all_endpoints, _From, State) ->
 handle_call(get_endpoint_count, _From, State=#state{endpoint_count=Count}) ->
 	{reply, Count, State};
 handle_call(_Request, _From, State) ->
-	logger:log(error, "unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
+    logger:log(error, "~p recvd unexpected call ~p in ~p", [self(), _Request, ?MODULE]),
 	{noreply, State}.
 
 handle_cast(_Msg, State) ->
-	logger:log(error, "unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
+    logger:log(error, "~p recvd unexpected cast ~p in ~p", [self(), _Msg, ?MODULE]),
 	{noreply, State}.
 
 handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, 
@@ -174,7 +174,9 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin},
 			end;
 		error ->
 			% ignore unexpected message received by a client
-		    logger:log(debug, "~p recvd unexpected packet ~p from ~p as a client in ~p~n", [self(), Bin, EpAddr, ?MODULE]),
+		    logger:log(debug, "~p recvd unexpected packet ~p from ~p as a client in ~p", [self(), Bin, EpAddr, ?MODULE]),
+		    EpID = {{udp, self()}, EpAddr},
+			_ = ecoap_endpoint:maybe_send_rst(?MODULE, Socket, EpID, Bin),
 			{noreply, State}
 	end;
 handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{endpoint_count=Count, endpoint_pool=PoolPid}) ->
@@ -192,7 +194,7 @@ handle_info({udp_passive, Socket}, State=#state{socket=Socket}) ->
 	{noreply, State};
 	
 handle_info(_Info, State) ->
-    logger:log(error, "unexpected info ~p received by ~p as ~p~n", [_Info, self(), ?MODULE]),
+    logger:log(error, "~p recvd unexpected info ~p in ~p", [self(), _Info, ?MODULE]),
 	{noreply, State}.
 
 terminate(_Reason, #state{socket=Socket}) ->

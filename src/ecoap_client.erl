@@ -442,12 +442,10 @@ init([Host, Port, ClientOpts=#{owner:=Owner}]) ->
 			{ok, State, {continue, {connect, RawTransport, Host, Port}}}
 	end.
 
-handle_continue({resolve, RawTransport, Host0, Port}, State=#state{socket={_, _, Socket}}) ->
+handle_continue({resolve, RawTransport, Host0, Port}, State) ->
 	case ecoap_uri:get_peer_addr(Host0) of
 		{ok, Host, IP} ->
-			SocketRef = erlang:monitor(process, Socket),
-			EpID = {{RawTransport, Socket}, {IP, Port}},
-			{noreply, State#state{host=Host, ep_id=EpID, socket_ref=SocketRef}};
+			{noreply, init_endpoint(RawTransport, {IP, Port}, State#state{host=Host})};
 		Other ->
 			{stop, {shutdown, Other}, State}
 	end;
@@ -460,23 +458,26 @@ handle_continue({connect, RawTransport, Host0, Port}, State) ->
 			{stop, {shutdown, Other}, State}
 	end.
 
-start_connection(RawTransport, Transport, EpAddr, State=#state{client_opts=ClientOpts}) ->
+start_connection(RawTransport, Transport, EpAddr, State0=#state{client_opts=ClientOpts}) ->
 	TransOpts = maps:get(transport_opts, ClientOpts, []),
 	TimeOut = maps:get(connect_timeout, ClientOpts, 5000),
 	ProtoConfig = maps:get(protocol_config, ClientOpts, #{}),
 	case Transport:connect(EpAddr, TransOpts, ProtoConfig, TimeOut) of
 		{ok, Socket} -> 
-			SocketRef = erlang:monitor(process, Socket),
-			EpID = {{RawTransport, Socket}, EpAddr},
-			{noreply, State#state{socket={internal_socket, Transport, Socket}, ep_id=EpID, socket_ref=SocketRef}};
+			State = init_endpoint(RawTransport, EpAddr, State0#state{socket={internal_socket, Transport, Socket}}),
+			{noreply, State};
 		Other ->
-			{stop, {shutdown, Other}, State}
+			{stop, {shutdown, Other}, State0}
 	end.
 
+init_endpoint(RawTransport, EpAddr, State=#state{socket={_, Transport, Socket}}) ->
+	EpID = {{RawTransport, Socket}, EpAddr},
+	{ok, EndpointPid} = get_endpoint(Transport, Socket, EpAddr),
+	SocketRef = erlang:monitor(process, Socket),
+	EndpointRef = erlang:monitor(process, EndpointPid),
+	State#state{socket_ref=SocketRef, ep_id=EpID, endpoint_pid=EndpointPid, endpoint_ref=EndpointRef}.
+	
 % assume endpoint process will not terminate when everything goes fine and termination only means crash
-handle_call({command, Command}, From, State=#state{endpoint_pid=undefined, ep_id={_, EpAddr}, socket={_, Transport, SocketPid}}) ->
-	{ok, EndpointPid} = get_endpoint(Transport, SocketPid, EpAddr),
-	handle_command(Command, From, State#state{endpoint_pid=EndpointPid, endpoint_ref=erlang:monitor(process, EndpointPid)});
 handle_call({command, Command}, From, State) ->
 	handle_command(Command, From, State);
 % FOR TEST USE
@@ -819,7 +820,7 @@ format_response(Error) when is_atom(Error) -> {error, Error};
 format_response(Message) -> {ok, coap_message:get_code(Message), coap_content:get_content(Message)}.
 
 send_response(#request{reply_to=ReplyTo, origin_ref=Ref, observe_seq=ObsSeq, observe_key=ObsKey}, Response) when is_pid(ReplyTo) ->
-	case is_observe(ObsSeq, ObsKey) of
+	_ = case is_observe(ObsSeq, ObsKey) of
 		true -> 
 			ReplyTo ! {coap_notify, Ref, self(), ObsSeq, Response};
 		false -> 
