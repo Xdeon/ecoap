@@ -69,6 +69,7 @@
 	host = undefined :: undefined | binary(),
 	ep_id = undefined :: undefined | ecoap_endpoint:ecoap_endpoint_id(),
 	endpoint_pid = undefined :: undefined | pid(),
+	endpoint_ref = undefined :: undefined | reference(),
 	requests = #{} :: #{reference() => request()},
 	ongoing_blocks = #{} :: #{block_key() => reference()},
 	observe_regs = #{} :: #{observe_key() => reference()},
@@ -430,7 +431,6 @@ get_blockregs(Pid) -> gen_server:call(Pid, get_blockregs).
 %% gen_server.
 
 init([Host, Port, ClientOpts=#{owner:=Owner}]) ->
-	process_flag(trap_exit, true),
 	OwnerRef = erlang:monitor(process, Owner),
 	State = #state{owner={OwnerRef, Owner}, client_opts=ClientOpts},
 	case maps:find(external_socket, ClientOpts) of
@@ -476,7 +476,7 @@ start_connection(RawTransport, Transport, EpAddr, State=#state{client_opts=Clien
 % assume endpoint process will not terminate when everything goes fine and termination only means crash
 handle_call({command, Command}, From, State=#state{endpoint_pid=undefined, ep_id={_, EpAddr}, socket={_, Transport, SocketPid}}) ->
 	{ok, EndpointPid} = get_endpoint(Transport, SocketPid, EpAddr),
-	handle_command(Command, From, State#state{endpoint_pid=EndpointPid});
+	handle_command(Command, From, State#state{endpoint_pid=EndpointPid, endpoint_ref=erlang:monitor(process, EndpointPid)});
 handle_call({command, Command}, From, State) ->
 	handle_command(Command, From, State);
 % FOR TEST USE
@@ -581,6 +581,8 @@ handle_info({'DOWN', Ref, process, Owner, Reason}, State=#state{owner={Ref, Owne
 	{stop, {shutdown, Reason}, State};
 handle_info({'DOWN', Ref, process, _Pid, Reason}, State=#state{socket_ref=Ref}) ->
 	{stop, {shutdown, Reason}, State#state{socket=closed}};
+handle_info({'DOWN', Ref, process, _Pid, Reason}, State=#state{endpoint_ref=Ref}) ->
+	{stop, {shutdown, Reason}, State};
 handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{requests=Requests}) ->
 	case maps:find(Ref, Requests) of
 		{ok, #request{origin_ref=OriginRef}} ->
@@ -588,8 +590,6 @@ handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{requests=Request
 		error ->
 			{noreply, State}
 	end;
-handle_info({'EXIT', Pid, Reason}, State=#state{endpoint_pid=Pid}) ->
-	{stop, {shutdown, Reason}, State};
 handle_info(_Info, State) ->
 	{noreply, State}.
 
@@ -655,7 +655,7 @@ handle_download(EpID, EndpointPid, Ref, Request, Message,
             						request_mapping=RequestMapping3, observe_regs=ObsRegs2}};
         _Else ->
         	% not segmented or all blocks received
-			Response = return_response(coap_message:set_payload(<<Fragment/binary, Data/binary>>, Message)),
+			Response = format_response(coap_message:set_payload(<<Fragment/binary, Data/binary>>, Message)),
 			send_response(Request#request{observe_seq=ObsSeq}, Response),
 			% clean ongoing block2 transfer, if any
 			OngoingBlocks2 = maps:remove(BlockKey, OngoingBlocks),
@@ -682,11 +682,7 @@ handle_download(EpID, EndpointPid, Ref, Request, Message,
 handle_error(Ref, Request, Error, 
 	State=#state{requests=Requests, ongoing_blocks=OngoingBlocks, request_mapping=RequestMapping, observe_regs=ObsRegs}) ->
 	#request{origin_ref=OriginRef, block_key=BlockKey, observe_key=ObsKey} = Request,
-	Response = case Error of 
-		{coap_error, Reason} -> {error, Reason};
-		{coap_response, Message} -> return_response(Message)
-	end,
-	send_response(Request, Response),
+	send_response(Request, format_response(Error)),
 	RequestMapping2 = maps:remove(OriginRef, RequestMapping),
 	Requests2 = maps:remove(Ref, maps:remove(OriginRef, Requests)),
 	OngoingBlocks2 = maps:remove(BlockKey, OngoingBlocks),
@@ -807,6 +803,7 @@ check_and_cancel_request(Ref, State=#state{endpoint_pid=EndpointPid, requests=Re
 % 	end.
 
 do_cancel_request(EndpointPid, Ref) ->
+	_ = erlang:demonitor(Ref, [flush]),
 	ecoap_endpoint:cancel_request(EndpointPid, Ref).
 
 is_observe(ObsSeq, ObsKey) when is_integer(ObsSeq), is_tuple(ObsKey) -> true;
@@ -817,13 +814,20 @@ separate(Request=#request{reply_to={Pid, _}}) ->
 separate(Request=#request{}) ->
 	Request.
 
-return_response(Message) -> {ok, coap_message:get_code(Message), coap_content:get_content(Message)}.
+format_response({coap_response, Message}) -> {ok, coap_message:get_code(Message), coap_content:get_content(Message)};
+% this can be {error, 'RST'} or {error, timeout}
+format_response({coap_error, Error}) -> {error, Error}.
 
 send_response(#request{reply_to=ReplyTo, origin_ref=Ref, observe_seq=ObsSeq, observe_key=ObsKey}, Response) when is_pid(ReplyTo) ->
 	case is_observe(ObsSeq, ObsKey) of
-		true -> ReplyTo ! {coap_notify, Ref, self(), ObsSeq, Response}, ok;
-		false -> ReplyTo ! {coap_response, Ref, self(), Response}, ok
-	end;
-send_response(#request{reply_to=ReplyTo}, Response) ->
+		true -> 
+			ReplyTo ! {coap_notify, Ref, self(), ObsSeq, Response};
+		false -> 
+			_ = erlang:demonitor(Ref, [flush]),
+			ReplyTo ! {coap_response, Ref, self(), Response}
+	end,
+	ok;
+send_response(#request{reply_to=ReplyTo, origin_ref=Ref}, Response) ->
+	_ = erlang:demonitor(Ref, [flush]),
 	gen_server:reply(ReplyTo, Response),
 	ok.
