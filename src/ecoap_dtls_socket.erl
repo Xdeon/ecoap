@@ -62,7 +62,7 @@ init([accept, Name, ListenSocket, ProtoConfig, TimeOut]) ->
 	StateData = #data{protocol_config=ProtoConfig, server_name=Name, lsocket=ListenSocket, timeout=TimeOut},
 	{ok, accept, StateData, [{next_event, internal, accept}]};
 init([connect, EpAddr={PeerIP, PeerPortNo}, TransOpts, ProtoConfig, TimeOut]) ->
-	case ssl:connect(PeerIP, PeerPortNo, TransOpts, TimeOut) of
+	case ssl:connect(PeerIP, PeerPortNo, ecoap_socket:socket_opts(dtls, TransOpts), TimeOut) of
 		{ok, Socket} ->
 			ok = ssl:setopts(Socket, [{active, ?ACTIVE_PACKETS}]),
 			EpID = {{dtls, self()}, EpAddr},
@@ -111,13 +111,13 @@ connected({call, From}, {get_endpoint, EpAddr}, #data{ep_id={_, EpAddr}, endpoin
 connected({call, From}, {get_endpoint, _EpAddr}, _StateData) ->
 	{keep_state_and_data, [{reply, From, {error, unmatched_endpoint_id}}]};
 % ssl message
-connected(info, {ssl, Socket, Bin}, StateData=#data{socket=Socket, server_name=Name, ep_id=EpID, endpoint_pid=undefined, protocol_config=ProtoConfig}) ->
+connected(info, {ssl, Socket, Bin}, StateData=#data{socket=Socket, server_name=Name, ep_id=EpID, endpoint_pid=undefined}) ->
 	case Name of
 		'$client' -> 
 			% ignore unexpected message received by a client
 			keep_state_and_data;
 		_ ->
-			{ok, EpSupPid, EpPid} = endpoint_sup:start_link([?MODULE, Socket, EpID, ProtoConfig]),
+			{ok, EpSupPid, EpPid} = endpoint_sup:start_link([?MODULE, Socket, EpID, Name]),
 			EpPid ! {datagram, Bin},
 			Ref = erlang:monitor(process, EpPid),
 			{keep_state, StateData#data{endpoint_pid=EpPid, endpoint_sup_pid=EpSupPid, endpoint_ref=Ref}}
