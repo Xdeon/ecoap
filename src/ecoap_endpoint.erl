@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 %% API.
--export([start_link/5, start_link/4]).
+-export([start_link/5, start_link/4, activate/1]).
 -export([ping/1, ping/2, send/2, send_message/3, send_request/3, send_response/3, cancel_request/2]).
 -export([register_handler/3]).
 -export([get_peer_info/2]).
@@ -55,11 +55,15 @@
 
 -spec start_link(module(), inet:socket(), ecoap_endpoint_id(), ecoap_config:protocol_config()) -> {ok, pid()} | {error, term()}.
 start_link(Transport, Socket, EpID, ProtoConfig) ->
-    start_link(undefined, Transport, Socket, EpID, ProtoConfig).
+    gen_server:start_link(?MODULE, [Transport, Socket, EpID, ProtoConfig], []).
     
-% -spec start_link(pid() | undefined, module(), inet:socket(), ecoap_endpoint_id(), ecoap_config:protocol_config()) -> {ok, pid()} | {error, term()}.
+-spec start_link(pid(), module(), inet:socket(), ecoap_endpoint_id(), atom()) -> {ok, pid()} | {error, term()}.
 start_link(SupPid, Transport, Socket, EpID, Name) ->
     gen_server:start_link(?MODULE, [SupPid, Transport, Socket, EpID, Name], []).
+
+-spec activate(pid()) -> ok.
+activate(EndpointPid) ->
+    gen_server:call(EndpointPid, activate).
 
 -spec ping(pid()) -> {ok, reference()}.
 ping(EndpointPid) ->
@@ -127,7 +131,7 @@ get_peer_info(port, {_, {_, PeerPortNo}}) -> PeerPortNo.
 %% gen_server.
 
 % client
-init([undefined, Transport, Socket, EpID, ProtoConfig0]) ->
+init([Transport, Socket, EpID, ProtoConfig0]) ->
     % we would like to terminate as well when upper layer socket process terminates
     process_flag(trap_exit, true),
     ProtoConfig = ecoap_config:merge_protocol_config(ProtoConfig0#{endpoint_pid=>self()}),
@@ -146,6 +150,8 @@ handle_continue({init, SupPid}, State) ->
     {ok, HdlSupPid} = endpoint_sup:start_handler_sup(SupPid),
     {noreply, State#state{handler_sup=HdlSupPid}}.
 
+handle_call(activate, _From, State=#state{timer=Timer}) ->
+    {reply, ok, State#state{timer=endpoint_timer:kick_timer(Timer)}};
 handle_call(_Request, _From, State) ->
     logger:log(error, "unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
 	{noreply, State}.

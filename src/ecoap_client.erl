@@ -475,8 +475,7 @@ start_connection(RawTransport, Transport, EpAddr, State=#state{client_opts=Clien
 
 % assume endpoint process will not terminate when everything goes fine and termination only means crash
 handle_call({command, Command}, From, State=#state{endpoint_pid=undefined, ep_id={_, EpAddr}, socket={_, Transport, SocketPid}}) ->
-	{ok, EndpointPid} = Transport:get_endpoint(SocketPid, EpAddr),
-	link(EndpointPid),
+	{ok, EndpointPid} = get_endpoint(Transport, SocketPid, EpAddr),
 	handle_command(Command, From, State#state{endpoint_pid=EndpointPid});
 handle_call({command, Command}, From, State) ->
 	handle_command(Command, From, State);
@@ -701,17 +700,26 @@ make_options(Host, EpID, Uri, Options) ->
 	coap_message:add_option('Uri-Host', Host, 
 		coap_message:add_option('Uri-Port', PortNo, Options#{'Uri-Path'=>Path, 'Uri-Query'=>Query})).
 
-% this is problemtic
-% one thought: make make_new_request in ecoap_endpoint.erl trigger a flag which makes the process not terminate itself on purge
-% and handle_info({'EXIT', ClientPid, _}, State) will turn off this flag and the endpoint process (if still alive) purge as usual
-% another: make ecoap_client monitor endpoint process and retry on 'DOWN'
-% get_endpoint(Socket={_, Transport, SocketPid}, EpID) ->
-% 	{ok, EndpointPid} = Transport:get_endpoint(SocketPid, EpID),
-% 	try link(EndpointPid) of
-% 		true -> {ok, EndpointPid}
-% 	catch error:noproc -> 
-% 		get_endpoint(Socket, EpID)
-% 	end.
+% When we acquire the endpoint pid, it is possible that this process is under supervsion on server mode
+% that means what we get may not be a fresh enough pid, or the endpoint process can be about to terminate
+% since it has no idea that a client is looking for it (yet).
+% As a result, we should ensure the process is 'activated' before sending any request to it.
+% This step can not be made by the socket process because it can not call itself
+% and the checking adds extra work
+get_endpoint(Transport, SocketPid, EpAddr) ->
+	{ok, EndpointPid} = Transport:get_endpoint(SocketPid, EpAddr),
+	try ecoap_endpoint:activate(EndpointPid) of
+		ok -> 
+			link(EndpointPid),
+			{ok, EndpointPid}
+	catch 
+		% the endpoint process already terminated
+		exit:{noproc, _} -> get_endpoint(Transport, SocketPid, EpAddr);
+		% the ednpoint process is on its way to termination when we get its pid
+		exit:{normal, _} -> get_endpoint(Transport, SocketPid, EpAddr);
+		% any other reason we should exit as well
+		C:R -> C(R)
+	end.
 
 make_reference({Pid, _}) -> 
 	make_reference(Pid);
