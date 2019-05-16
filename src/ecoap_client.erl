@@ -558,7 +558,7 @@ handle_info({coap_response, EpID, EndpointPid, Ref, Message}, State=#state{reque
 				{ok, _Code} ->
 					handle_download(EpID, EndpointPid, Ref, Request, Message, State);
 				{error, _Code} ->
-					handle_error(Ref, Request, {coap_response, Message}, State)
+					handle_error(Ref, Request, Message, State)
 			end
 	end;
 handle_info({coap_error, _EpID, _EndpointPid, Ref, Error}, State=#state{requests=Requests}) ->
@@ -566,7 +566,7 @@ handle_info({coap_error, _EpID, _EndpointPid, Ref, Error}, State=#state{requests
 		error -> 
 			{noreply, State};
 		{ok, Request} ->
-			handle_error(Ref, Request, {coap_error, Error}, State)
+			handle_error(Ref, Request, Error, State)
 	end;
 handle_info({coap_ack, _EpID, _EndpointPid, Ref}, State=#state{requests=Requests}) ->
 	case maps:find(Ref, Requests) of
@@ -814,9 +814,9 @@ separate(Request=#request{reply_to={Pid, _}}) ->
 separate(Request=#request{}) ->
 	Request.
 
-format_response({coap_response, Message}) -> {ok, coap_message:get_code(Message), coap_content:get_content(Message)};
 % this can be {error, 'RST'} or {error, timeout}
-format_response({coap_error, Error}) -> {error, Error}.
+format_response(Error) when is_atom(Error) -> {error, Error};
+format_response(Message) -> {ok, coap_message:get_code(Message), coap_content:get_content(Message)}.
 
 send_response(#request{reply_to=ReplyTo, origin_ref=Ref, observe_seq=ObsSeq, observe_key=ObsKey}, Response) when is_pid(ReplyTo) ->
 	case is_observe(ObsSeq, ObsKey) of
