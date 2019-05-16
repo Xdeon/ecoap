@@ -100,8 +100,8 @@ connected({call, From}, {get_endpoint, EpAddr},
 	{keep_state, StateData#data{endpoint_pid=EpPid, endpoint_ref=Ref}, [{reply, From, {ok, EpPid}}]};
 % server
 connected({call, From}, {get_endpoint, EpAddr}, 
-	StateData=#data{socket=Socket, ep_id=EpID={_, EpAddr}, endpoint_pid=undefined, endpoint_ref=undefined, protocol_config=ProtoConfig}) ->
-	{ok, EpSupPid, EpPid} = endpoint_sup:start_link([?MODULE, Socket, EpID, ProtoConfig]),
+	StateData=#data{socket=Socket, ep_id=EpID={_, EpAddr}, server_name=Name, endpoint_pid=undefined, endpoint_ref=undefined}) ->
+	{ok, EpSupPid, EpPid} = endpoint_sup:start_link([?MODULE, Socket, EpID, Name]),
 	Ref = erlang:monitor(process, EpPid),
 	{keep_state, StateData#data{endpoint_pid=EpPid, endpoint_sup_pid=EpSupPid, endpoint_ref=Ref}, [{reply, From, {ok, EpPid}}]};
 % in general
