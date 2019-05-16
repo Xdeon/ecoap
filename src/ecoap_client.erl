@@ -430,6 +430,7 @@ get_blockregs(Pid) -> gen_server:call(Pid, get_blockregs).
 %% gen_server.
 
 init([Host, Port, ClientOpts=#{owner:=Owner}]) ->
+	process_flag(trap_exit, true),
 	OwnerRef = erlang:monitor(process, Owner),
 	State = #state{owner={OwnerRef, Owner}, client_opts=ClientOpts},
 	case maps:find(external_socket, ClientOpts) of
@@ -578,9 +579,9 @@ handle_info({coap_ack, _EpID, _EndpointPid, Ref}, State=#state{requests=Requests
 			{noreply, State}
 	end;
 handle_info({'DOWN', Ref, process, Owner, Reason}, State=#state{owner={Ref, Owner}}) ->
-	{stop, Reason, State};
+	{stop, {shutdown, Reason}, State};
 handle_info({'DOWN', Ref, process, _Pid, Reason}, State=#state{socket_ref=Ref}) ->
-	{stop, Reason, State#state{socket=closed}};
+	{stop, {shutdown, Reason}, State#state{socket=closed}};
 handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{requests=Requests}) ->
 	case maps:find(Ref, Requests) of
 		{ok, #request{origin_ref=OriginRef}} ->
@@ -588,6 +589,8 @@ handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{requests=Request
 		error ->
 			{noreply, State}
 	end;
+handle_info({'EXIT', Pid, Reason}, State=#state{endpoint_pid=Pid}) ->
+	{stop, {shutdown, Reason}, State};
 handle_info(_Info, State) ->
 	{noreply, State}.
 
