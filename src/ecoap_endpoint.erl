@@ -301,7 +301,9 @@ handle_info({register_handler, ID, Pid}, State=#state{handler_regs=Regs}) ->
         {ok, Pid2} ->  
             % only one handler for each operation allowed, so we terminate the one started earlier
             ok = ecoap_handler:close(Pid2),
-            {noreply, State};
+            % and don't forget to update the registry
+            Regs2 = update_handler_regs(ID, Pid, Regs),
+            {noreply, State#state{handler_regs=Regs2}};
         error ->
             Regs2 = update_handler_regs(ID, Pid, Regs),
             {noreply, State#state{handler_regs=Regs2}}
@@ -395,7 +397,6 @@ make_message(TrId, Message, Receiver, State=#state{protocol_config=ProtoConfig})
 %% TODO: decide whether to send a CON notification considering other notifications may be in transit
 %%       and how to keep the retransimit counter for a newer notification when the former one timed out
 make_new_response(Message, Receiver, State=#state{trans=Trans, protocol_config=ProtoConfig}) ->
-    % io:format("The response: ~p~n", [Message]),
     TrId = {in, coap_message:get_id(Message)},
     case maps:find(TrId, Trans) of
         {ok, TrState} ->
@@ -507,7 +508,6 @@ execute([{handle_ack, Message}|Rest], Exchange, State) ->
 execute([{send, BinMessage}|Rest], Exchange, State=#state{sock=Socket, transport=Transport, ep_id=EpID}) ->
     Transport:send(Socket, EpID, BinMessage),
     execute(Rest, Exchange, State).
-
 
 handle_request(Message, State=#state{ep_id=EpID, protocol_config=ProtoConfig, handler_sup=HdlSupPid}) ->
     %io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
