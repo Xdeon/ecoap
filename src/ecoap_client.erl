@@ -489,6 +489,7 @@ handle_call(get_obsregs, _From, State=#state{observe_regs=ObsRegs}) ->
 	{reply, ObsRegs, State};
 % END FOR TEST USE
 handle_call(_Request, _From, State) ->
+    logger:log(error, "~p recvd unexpected call ~p in ~p~n", [self(), _Request, ?MODULE]),
 	{noreply, State}.
 
 handle_command(ping, {Pid, _}=From, State=#state{endpoint_pid=EndpointPid, requests=Requests}) ->
@@ -542,6 +543,7 @@ handle_command(get_remote_addr, _From, State=#state{host=Host, ep_id=EpID}) ->
 	{reply, {ok, Host, EpID}, State}.
 
 handle_cast(_Msg, State) ->
+    logger:log(error, "~p recvd unexpected cast ~p in ~p~n", [self(), _Msg, ?MODULE]),
 	{noreply, State}.
 
 handle_info({coap_response, EpID, EndpointPid, Ref, Message}, State=#state{requests=Requests}) ->
@@ -592,6 +594,7 @@ handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{requests=Request
 			{noreply, State}
 	end;
 handle_info(_Info, State) ->
+    logger:log(error, "~p recvd unexpected info ~p in ~p~n", [self(), _Info, ?MODULE]),
 	{noreply, State}.
 
 terminate(_Reason, #state{socket={internal_socket, Transport, Socket}}) ->
