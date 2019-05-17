@@ -239,7 +239,7 @@ init([ID={_, Uri, _}, HandlerConfig]) ->
 
 handle_call(_Request, _From, State) ->
     % error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
-    logger:log(error, "unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
+    logger:log(error, "~p recvd unexpected call ~p in ~p~n", [self(), _Request, ?MODULE]),
     {noreply, State}.
 
 handle_cast(shutdown, State=#state{observer=undefined}) ->
@@ -249,7 +249,7 @@ handle_cast(shutdown, State=#state{module=Module, obstate=ObState}) ->
     {stop, normal, cancel_observer(State)};
 handle_cast(_Msg, State) ->
     % error_logger:error_msg("unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
-    logger:log(error, "unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
+    logger:log(error, "~p recvd unexpected cast ~p in ~p~n", [self(), _Msg, ?MODULE]),
     {noreply, State}.
 
 %% TODO:
@@ -285,6 +285,7 @@ handle_info({timeout, TRef, cache_expired}, State=#state{timer=TRef}) ->
     {noreply, State#state{last_response=undefined}};
 handle_info(_Info, State=#state{observer=undefined}) ->
     % ignore unexpected notification
+    logger:log(error, "~p recvd unexpected info ~p in ~p~n", [self(), _Info, ?MODULE]),
     {noreply, State};
 
 % 1. handle_info succeeds, 
@@ -312,13 +313,13 @@ handle_info(_Info, State=#state{observer=undefined}) ->
 handle_info(Info, State=#state{module=Module, observer=Observer, obstate=ObState}) ->
     try case handle_info(Module, Info, Observer, ObState) of
         {notify, Resource, ObState2} -> 
-            handle_notify([], Resource, ObState2, Observer, State);
+            handle_notify(undefined, Resource, ObState2, Observer, State);
         {notify, Ref, Resource, ObState2} ->
             handle_notify(Ref, Resource, ObState2, Observer, State);
         {noreply, ObState2} ->
             {noreply, State#state{obstate=ObState2}};
         {stop, ObState2} ->
-            handle_notify([], {error, 'ServiceUnavailable'}, ObState2, Observer, State)
+            handle_notify(undefined, {error, 'ServiceUnavailable'}, ObState2, Observer, State)
     end catch C:R:S ->
         % send message directly without calling another user-defined callback (coap_unobserve) if this is a crash
         % because we do not want to be override by another possible crash
@@ -360,7 +361,7 @@ handle(EpID, Request, State=#state{id=ID, cache_timeout=TimeOut, endpoint_pid=En
         {'Continue', State2} ->
             % io:format("Has Block1~n"),
             ecoap_endpoint:register_handler(EndpointPid, ID, self()),
-            {ok, _} = ecoap_endpoint:send_response(EndpointPid, [],
+            {ok, _} = ecoap_endpoint:send_response(EndpointPid, undefined,
                 coap_message:set_option('Block1', Block1,
                     ecoap_request:response({ok, 'Continue'}, Request))),
             set_timeout(TimeOut, State2);
@@ -414,7 +415,7 @@ process_blocks(#coap_message{payload=Segment}, {_Num, false, _Size}, State=#stat
 process_request(EpID, Request, State=#state{last_response={ok, Code, Content}}) ->
     case coap_message:get_option('Block2', Request) of
         {N, _, _} when N > 0 ->
-            return_resource([], Request, {ok, Code}, Content, State);
+            return_resource(undefined, Request, {ok, Code}, Content, State);
         _Else ->
             try_check_resource(EpID, Request, State)
     end;
@@ -465,7 +466,7 @@ if_none_match(Request, _Content) ->
 handle_method(_EpID, Request=#coap_message{code=Code}, {error, Error}, State) when Code =:= 'GET'; Code =:= 'FETCH' ->
     return_response(Request, {error, Error}, State);
 handle_method(_EpID, Request=#coap_message{code=Code}, {error, Error, Reason}, State) when Code =:= 'GET'; Code =:= 'FETCH' ->
-    return_response([], Request, {error, Error}, Reason, State);
+    return_response(undefined, Request, {error, Error}, Reason, State);
 handle_method(EpID,  Request=#coap_message{code='GET'}, Content, State) ->
     check_observe(EpID, Request, Content, State);
 handle_method(EpID, Request=#coap_message{code='FETCH'}, _Content, State) ->    
@@ -490,7 +491,7 @@ handle_fetch(EpID, Request, State=#state{module=Module, prefix=Prefix, suffix=Su
         {error, Error} ->
             return_response(Request, {error, Error}, State);
         {error, Error, Reason} ->
-            return_response([], Request, {error, Error}, Reason, State)
+            return_response(undefined, Request, {error, Error}, Reason, State)
     end.
 
 check_observe(EpID, Request, Content, State) ->
@@ -528,7 +529,7 @@ handle_observe(EpID, Request, Content,
         {error, Error} ->
             return_response(Request, {error, Error}, State);
         {error, Error, Reason} ->
-            return_response([], Request, {error, Error}, Reason, State)
+            return_response(undefined, Request, {error, Error}, Reason, State)
     end;
 handle_observe(_EpID, Request, Content, State) ->
     % subsequent observe request from the same user
@@ -540,7 +541,7 @@ handle_unobserve(_EpID, Request, Content, State) ->
     return_resource(Request, Content, State).
 
 cancel_observe_and_send_response(Request, Response, State) ->
-    cancel_observe_and_send_response([], Request, Response, State).
+    cancel_observe_and_send_response(undefined, Request, Response, State).
 
 cancel_observe_and_send_response(Ref, Request, Response, State=#state{module=Module, obstate=ObState}) ->
     % invoke user-defined callback first, so if it crashes, cancel_observer is not executed yet, 
@@ -567,11 +568,11 @@ cancel_observer(State=#state{uri=Uri}) ->
 handle_post(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
     case coap_post(Module, EpID, Prefix, Suffix, Request) of
         {ok, Code, Content} ->
-            return_resource([], Request, {ok, Code}, Content, State);
+            return_resource(undefined, Request, {ok, Code}, Content, State);
         {error, Error} ->
             return_response(Request, {error, Error}, State);
         {error, Error, Reason} ->
-            return_response([], Request, {error, Error}, Reason, State)
+            return_response(undefined, Request, {error, Error}, Reason, State)
     end.
 
 handle_put(EpID, Request, Content, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
@@ -579,11 +580,11 @@ handle_put(EpID, Request, Content, State=#state{prefix=Prefix, suffix=Suffix, mo
         ok ->
             return_response(Request, created_or_changed(Content), State);
         {ok, Content} ->
-            return_resource([], Request, created_or_changed(Content), Content, State);
+            return_resource(undefined, Request, created_or_changed(Content), Content, State);
         {error, Error} ->
             return_response(Request, {error, Error}, State);
         {error, Error, Reason} ->
-            return_response([], Request, {error, Error}, Reason, State)
+            return_response(undefined, Request, {error, Error}, Reason, State)
     end.
 
 handle_patch(EpID, Request, Content, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
@@ -591,11 +592,11 @@ handle_patch(EpID, Request, Content, State=#state{prefix=Prefix, suffix=Suffix, 
         ok ->
             return_response(Request, created_or_changed(Content), State);
         {ok, Content} ->
-            return_resource([], Request, created_or_changed(Content), Content, State);
+            return_resource(undefined, Request, created_or_changed(Content), Content, State);
         {error, Error} ->
             return_response(Request, {error, Error}, State);
         {error, Error, Reason} ->
-            return_response([], Request, {error, Error}, Reason, State)
+            return_response(undefined, Request, {error, Error}, Reason, State)
     end.
 
 handle_ipatch(EpID, Request, Content, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
@@ -603,11 +604,11 @@ handle_ipatch(EpID, Request, Content, State=#state{prefix=Prefix, suffix=Suffix,
         ok ->
             return_response(Request, created_or_changed(Content), State);
         {ok, Content} ->
-            return_resource([], Request, created_or_changed(Content), Content, State);
+            return_resource(undefined, Request, created_or_changed(Content), Content, State);
         {error, Error} ->
             return_response(Request, {error, Error}, State);
         {error, Error, Reason} ->
-            return_response([], Request, {error, Error}, Reason, State)
+            return_response(undefined, Request, {error, Error}, Reason, State)
     end.
 
 created_or_changed({error, 'NotFound'}) ->
@@ -620,15 +621,15 @@ handle_delete(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=M
         ok ->
             return_response(Request, {ok, 'Deleted'}, State);
         {ok, Content} ->
-            return_resource([], Request, created_or_changed(Content), Content, State);
+            return_resource(undefined, Request, created_or_changed(Content), Content, State);
         {error, Error} ->
             return_response(Request, {error, Error}, State);
         {error, Error, Reason} ->
-            return_response([], Request, {error, Error}, Reason, State)
+            return_response(undefined, Request, {error, Error}, Reason, State)
     end.
 
 return_resource(Request, Content, State) ->
-    return_resource([], Request, {ok, 'Content'}, Content, State).
+    return_resource(undefined, Request, {ok, 'Content'}, Content, State).
 
 return_resource(Ref, Request, {ok, Code}, Content=#coap_content{payload=Payload, options=Options}, State=#state{max_block_size=MaxBlockSize}) ->
     ETag = get_etag(Options),
@@ -654,7 +655,7 @@ send_observable(Ref, Request=#coap_message{token=Token}, Response, State=#state{
     end.       
 
 return_response(Request, Code, State) ->
-    return_response([], Request, Code, <<>>, State).
+    return_response(undefined, Request, Code, <<>>, State).
 
 return_response(Ref, Request, Code, Reason, State) ->
     send_response(Ref, ecoap_request:response(Code, Reason, Request), State#state{last_response=Code}).
@@ -777,7 +778,7 @@ coap_ack(Module, Ref, ObState) ->
 %     end.
 
 send_server_error(Request, State) ->
-    send_server_error([], Request, State).
+    send_server_error(undefined, Request, State).
 
 send_server_error(Ref, Request, State=#state{endpoint_pid=EndpointPid, observer=Observer}) ->
     {ok, _} = ecoap_endpoint:send_response(EndpointPid, Ref, ecoap_request:response({error, 'InternalServerError'}, <<>>, Request)),

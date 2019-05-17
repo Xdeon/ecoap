@@ -89,7 +89,7 @@ accept(_, accept, StateData=#data{server_name=Name, lsocket=ListenSocket}) ->
 			{keep_state_and_data, [{next_event, internal, accept}]}
 	end;
 accept(EventType, EventData, _StateData) ->
-	logger:log(error, "~p recvd unexpected event ~p in state ~p as ~p~n", [self(), {EventType, EventData}, ?FUNCTION_NAME, ?MODULE]),
+    logger:log(error, "~p recvd unexpected event ~p in state ~p in ~p~n", [self(), {EventType, EventData}, ?FUNCTION_NAME, ?MODULE]),
 	keep_state_and_data.
 
 % client
@@ -140,11 +140,11 @@ connected(info, {'DOWN', Ref, process, _Pid, Reason}, StateData=#data{endpoint_r
 	%% TODO: whether to terminate after endpoint process goes downn as a server? if not, when to?
 	{stop, Reason, StateData};
 connected(EventType, EventData, _StateData) ->
-	logger:log(error, "~p recvd unexpected event ~p in state ~p as ~p~n", [self(), {EventType, EventData}, ?FUNCTION_NAME, ?MODULE]),
+    logger:log(error, "~p recvd unexpected event ~p in state ~p in ~p~n", [self(), {EventType, EventData}, ?FUNCTION_NAME, ?MODULE]),
 	keep_state_and_data.
 
 handle_event(EventType, EventData, StateName, StateData) ->
-	logger:log(error, "~p recvd unexpected event ~p in state ~p as ~p~n", [self(), {EventType, EventData}, StateName, ?MODULE]),
+    logger:log(error, "~p recvd unexpected event ~p in state ~p in ~p~n", [self(), {EventType, EventData}, StateName, ?MODULE]),
 	{next_state, StateName, StateData}.
 
 terminate(_Reason, _StateName, #data{socket=undefined}) ->
