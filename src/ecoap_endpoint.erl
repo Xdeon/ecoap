@@ -118,7 +118,7 @@ maybe_send_rst(_, _, _, _) ->
     ok.
  
 send_rst(Transport, Socket, EpID, MsgId) ->
-    logger:log(debug, "sending RST"),
+    logger:log(debug, "sending RST~n", []),
     BinRST = coap_message:encode(ecoap_request:rst(MsgId)),
     Transport:send(Socket, EpID, BinRST).
 
@@ -164,7 +164,7 @@ handle_continue({init, SupPid}, State) ->
 handle_call(activate, {Pid, _}, State=#state{client_set=CSet}) ->
     {reply, ok, State#state{client_set=update_client_set(Pid, CSet)}};
 handle_call(_Request, _From, State) ->
-    logger:log(error, "~p recvd unexpected call ~p in ~p", [self(), _Request, ?MODULE]),
+    logger:log(error, "~p recvd unexpected call ~p in ~p~n", [self(), _Request, ?MODULE]),
 	{noreply, State}.
 
 % outgoing CON(0) or NON(1) request
@@ -185,7 +185,7 @@ handle_cast({cancel_request, Receiver}, State=#state{receivers=Receivers}) ->
             {noreply, State}
     end;
 handle_cast(_Msg, State) ->
-    logger:log(error, "~p recvd unexpected cast ~p in ~p", [self(), _Msg, ?MODULE]),
+    logger:log(error, "~p recvd unexpected cast ~p in ~p~n", [self(), _Msg, ?MODULE]),
 	{noreply, State}.
 
 %% CoAP Message Format
@@ -204,14 +204,6 @@ handle_cast(_Msg, State) ->
 %%
 %%
 % incoming CON(0) or NON(1) request
-% pure client would reply with reset
-handle_info({datagram, <<?VERSION:2, 0:1, _:1, _TKL:4, 0:3, _CodeDetail:5, MsgId:16, _/bytes>>},
-    State=#state{handler_sup=undefined, sock=Socket, transport=Transport, ep_id=EpID}) ->
-    logger:log(debug, "~p recvd unexpected request from ~p as a client in ~p", [self(), EpID, ?MODULE]),
-    send_rst(Transport, Socket, EpID, MsgId),
-    {noreply, State};
-% incoming CON(0) or NON(1) request
-% server/client sharing socket with server would handle it
 handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, _TKL:4, 0:3, _CodeDetail:5, MsgId:16, _/bytes>>}, 
     State=#state{protocol_config=ProtoConfig}) ->
 	TrId = {in, MsgId},
@@ -244,7 +236,7 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgI
                     % 1. for separate client process, it may fetch reply_to_pid from the store, but it is problemtic to check whether the info is still valid 
                     % 2. for combined client process, it can directly invoke callback code.
                     % token was not recognized
-                    logger:log(debug, "~p recvd separate response with unrecognized token from ~p in ~p", [self(), EpID, ?MODULE]),
+                    logger:log(debug, "~p recvd separate response with unrecognized token from ~p in ~p~n", [self(), EpID, ?MODULE]),
                     send_rst(Transport, Socket, EpID, MsgId),
                     {noreply, State}
             end
@@ -342,7 +334,7 @@ handle_info({'EXIT', Pid, _Reason}, State=#state{receivers=Receivers, client_set
     end;
     
 handle_info(_Info, State) ->
-    logger:log(error, "~p recvd unexpected info ~p in ~p", [self(), _Info, ?MODULE]),
+    logger:log(error, "~p recvd unexpected info ~p in ~p~n", [self(), _Info, ?MODULE]),
 	{noreply, State}.
 
 terminate(_Reason, _State) ->
@@ -518,6 +510,10 @@ execute([{send, BinMessage}|Rest], Exchange, State=#state{sock=Socket, transport
     Transport:send(Socket, EpID, BinMessage),
     execute(Rest, Exchange, State).
 
+% standalone client can not handle incoming request
+handle_request(Message, State=#state{handler_sup=undefined}) ->
+    {ok, _} = send_response(self(), undefined, ecoap_request:rst(Message)),
+    State;
 handle_request(Message, State=#state{ep_id=EpID, protocol_config=ProtoConfig, handler_sup=HdlSupPid}) ->
     %io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
     HandlerID = ecoap_handler:handler_id(Message),
@@ -527,8 +523,7 @@ handle_request(Message, State=#state{ep_id=EpID, protocol_config=ProtoConfig, ha
             Pid ! {coap_request, EpID, self(), undefined, Message},
             State2;
         {error, _Error} ->
-            {ok, _} = ecoap_endpoint:send(self(),
-                ecoap_request:response({error, 'InternalServerError'}, Message)),
+            {ok, _} = send_response(self(), undefined, ecoap_request:response({error, 'InternalServerError'}, Message)),
             State
     end.
 
