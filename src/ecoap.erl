@@ -19,13 +19,14 @@ start_dtls(Name, TransOpts, Config) ->
 	case lists:keymember(cert, 1, TransOpts)
 			orelse lists:keymember(certfile, 1, TransOpts)
 			orelse lists:keymember(sni_fun, 1, TransOpts)
-			orelse lists:keymember(sni_hosts, 1, TransOpts) of
+			orelse lists:keymember(sni_hosts, 1, TransOpts) 
+			orelse lists:keymember(psk_identity, 1, TransOpts) of
 		true ->
 			TimeOut = maps:get(handshake_timeout, Config, 5000),
 			NumAcceptors = maps:get(num_acceptors, Config, 10),
 			start_listener(Name, dtls, TransOpts, supervisor, Config, [TimeOut, NumAcceptors]);
 		false ->
-			{error, no_cert}
+			{error, no_cert_or_psk}
 	end.
 
 -spec stop_udp(atom()) -> ok | {error, term()}.
