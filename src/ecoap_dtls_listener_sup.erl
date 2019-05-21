@@ -26,10 +26,8 @@ init([Name, TransOpts, ProtoConfig, TimeOut, NumAcceptors]) ->
 	ListenSocket = case ssl:listen(0, ecoap_socket:socket_opts(dtls, TransOpts)) of
 		{ok, Socket} -> 
 			Socket;
-		{error, Reason} -> 
-			logger:log(error, "Failed to start ecoap listener ~p in ~p:listen (~999999p) for reason ~p~n", 
-				[Name, ?MODULE, TransOpts, Reason]),
-			exit({listen_error, Name, Reason})
+		{error, Error} ->
+			listener_error(Name, TransOpts, Error)                                                                                                                                                                                                                                                                                                                                                                                                                                        
 	end,
 	ok = ecoap_registry:set_listener(Name, self()),
 	_ = start_acceptors(Name, NumAcceptors),
@@ -50,3 +48,13 @@ start_acceptor(Name) ->
 
 count_acceptors(Name) ->
     proplists:get_value(active, supervisor:count_children(Name), 0).
+
+-spec listener_error(atom(), any(), any()) -> no_return().
+listener_error(Name, TransOpts, Error) ->
+	Reason = format_error(Error),
+	logger:log(error, "Failed to start ecoap listener ~p in ~p:listen (~999999p) for reason ~p (~s)~n", 
+				[Name, ?MODULE, TransOpts, Reason, inet:format_error(Reason)]),
+	exit({listen_error, Name, Reason}).    
+
+format_error({shutdown, {error, Reason}}) -> Reason;
+format_error(Reason) -> Reason.

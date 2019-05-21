@@ -1,5 +1,5 @@
 -module(ecoap_socket).
--export([default_port/1, transport_module/1, socket_opts/2]).
+-export([default_port/1, listener_module/1, transport_module/1, socket_opts/2]).
 
 -define(READ_PACKETS, 1000).
 
@@ -19,6 +19,10 @@
 -spec default_port(atom()) -> inet:port_number().
 default_port(udp) -> 5683;
 default_port(dtls) -> 5684.
+
+-spec listener_module(atom()) -> module().
+listener_module(dtls) -> ecoap_dtls_listener_sup;
+listener_module(Transport) -> transport_module(Transport).
 
 -spec transport_module(atom()) -> module().
 transport_module(udp) -> ecoap_udp_socket;

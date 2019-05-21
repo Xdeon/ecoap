@@ -12,14 +12,10 @@
 
 -spec start_udp(atom(), [gen_udp:option()], config()) -> supervisor:startchild_ret().
 start_udp(Name, TransOpts, Config) ->
-	{Routes, ProtoConfig} = init_common_config(Config),
-	ok = ecoap_registry:register_handler(Routes),
-	ok = ecoap_registry:set_new_listener_config(Name, TransOpts, ProtoConfig),
-	ecoap_sup:start_server({ecoap_udp_socket, start_link, [Name, TransOpts, ProtoConfig]}, Name, worker).
+	start_listener(Name, udp, TransOpts, worker, Config, []).
 
 -spec start_dtls(atom(), [ssl:connect_option()], config()) -> supervisor:startchild_ret().
 start_dtls(Name, TransOpts, Config) ->
-	{Routes, ProtoConfig} = init_common_config(Config),
 	case lists:keymember(cert, 1, TransOpts)
 			orelse lists:keymember(certfile, 1, TransOpts)
 			orelse lists:keymember(sni_fun, 1, TransOpts)
@@ -27,23 +23,41 @@ start_dtls(Name, TransOpts, Config) ->
 		true ->
 			TimeOut = maps:get(handshake_timeout, Config, 5000),
 			NumAcceptors = maps:get(num_acceptors, Config, 10),
-			ok = ecoap_registry:register_handler(Routes),
-			ok = ecoap_registry:set_new_listener_config(Name, TransOpts, ProtoConfig),
-			ecoap_sup:start_server({ecoap_dtls_listener_sup, start_link, 
-				[Name, TransOpts, ProtoConfig, TimeOut, NumAcceptors]}, Name, supervisor);
+			start_listener(Name, dtls, TransOpts, supervisor, Config, [TimeOut, NumAcceptors]);
 		false ->
 			{error, no_cert}
 	end.
 
 -spec stop_udp(atom()) -> ok | {error, term()}.
 stop_udp(Name) ->
-    ecoap_sup:stop_server(Name).
+    stop_listener(Name).
 
 -spec stop_dtls(atom()) -> ok | {error, term()}.
 stop_dtls(Name) ->
+	stop_listener(Name).
+
+start_listener(Name, Transport, TransOpts, Type, Config, Args) ->
+	{Routes, ProtoConfig} = init_common_config(Config),
+	ok = ecoap_registry:register_handler(Routes),
+	ok = ecoap_registry:set_new_listener_config(Name, TransOpts, ProtoConfig),
+	maybe_started(ecoap_sup:start_server({ecoap_socket:listener_module(Transport), start_link, 
+		[Name, TransOpts, ProtoConfig|Args]}, Name, Type)).
+
+stop_listener(Name) ->
 	ecoap_sup:stop_server(Name).
 
 init_common_config(Config) ->
 	Routes = maps:get(routes, Config, []),
 	ProtoConfig = maps:get(protocol_config, Config, #{}),
 	{Routes, ProtoConfig}.
+
+maybe_started({error, {{shutdown, {failed_to_start_child, _, {listen_error, _, Reason}}}, _}}=Error) ->
+	start_error(Reason, Error);
+maybe_started(Res) ->
+	Res.
+
+start_error(E=eaddrinuse, _) -> {error, E};
+start_error(E=eacces, _) -> {error, E};
+start_error(E=no_cert, _) -> {error, E};
+start_error(_, Error) -> Error.	
+

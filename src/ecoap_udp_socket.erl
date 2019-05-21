@@ -90,10 +90,10 @@ init([SupPid, Name, TransOpts, ProtoConfig]) ->
 		{ok, State, _} -> 
 			ok = ecoap_registry:set_listener(Name, self()),
 			{ok, State#state{server_name=Name}, {continue, {init, SupPid}}};
-		{stop, {error, Reason}=Error} -> 
-			logger:log(error, "Failed to start ecoap listener ~p in ~p:listen (~999999p) for reason ~p~n", 
-				[Name, ?MODULE, TransOpts, Reason]),
-			{stop, Error}
+		{stop, {error, Reason}} -> 
+			logger:log(error, "Failed to start ecoap listener ~p in ~p:listen (~999999p) for reason ~p (~s)~n", 
+			[Name, ?MODULE, TransOpts, Reason, inet:format_error(Reason)]),
+			{stop, {listen_error, Name, Reason}}
 	end.
 
 handle_continue(init, State=#state{socket=Socket}) ->
