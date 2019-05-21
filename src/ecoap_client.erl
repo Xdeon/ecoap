@@ -464,6 +464,8 @@ start_connection(RawTransport, Transport, EpAddr, State0=#state{client_opts=Clie
 	ProtoConfig = maps:get(protocol_config, ClientOpts, #{}),
 	case Transport:connect(EpAddr, TransOpts, ProtoConfig, TimeOut) of
 		{ok, Socket} -> 
+			% since we already linked to socket process, we do not monitor it while waiting for it
+			ok = Transport:wait(Socket),
 			State = init_endpoint(RawTransport, EpAddr, State0#state{socket={internal_socket, Transport, Socket}}),
 			{noreply, State};
 		Other ->

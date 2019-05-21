@@ -3,7 +3,7 @@
 -behaviour(ecoap_socket).
 
 %% API.
--export([start_link/4, connect/4, close/1]).
+-export([start_link/4, connect/4, wait/1, close/1]).
 -export([get_endpoint/2, send/3]).
 
 %% gen_statem.
@@ -39,7 +39,7 @@ start_link(Name, ListenSocket, ProtoConfig, TimeOut) ->
 
 -spec connect(ecoap_endpoint:endpoint_addr(), [ssl:connect_option()], map(), timeout()) -> {ok, pid()} | {error, term()}.
 connect(EpAddr, TransOpts, ProtoConfig, TimeOut) ->
-	gen_statem:start_link(?MODULE, [connect, EpAddr, TransOpts, ProtoConfig, TimeOut], []).
+	gen_statem:start_link(?MODULE, [connect, self(), EpAddr, TransOpts, ProtoConfig, TimeOut], []).
 
 -spec get_endpoint(pid(), ecoap_endpoint:endpoint_addr()) -> {ok, pid()} | {error, term()}.
 get_endpoint(Pid, EpAddr) ->
@@ -53,6 +53,12 @@ send(Socket, _, Datagram) ->
 close(Pid) ->
 	gen_statem:stop(Pid).
 
+-spec wait(pid()) -> ok.
+wait(Pid) ->
+	receive 
+		{connected, Pid, '$client'} -> ok
+	end.
+
 %% gen_statem.
 
 callback_mode() ->
@@ -61,12 +67,12 @@ callback_mode() ->
 init([accept, Name, ListenSocket, ProtoConfig, TimeOut]) ->
 	StateData = #data{protocol_config=ProtoConfig, server_name=Name, lsocket=ListenSocket, timeout=TimeOut},
 	{ok, accept, StateData, [{next_event, internal, accept}]};
-init([connect, EpAddr={PeerIP, PeerPortNo}, TransOpts, ProtoConfig, TimeOut]) ->
+init([connect, Onwer, EpAddr={PeerIP, PeerPortNo}, TransOpts, ProtoConfig, TimeOut]) ->
 	case ssl:connect(PeerIP, PeerPortNo, ecoap_socket:socket_opts(dtls, TransOpts), TimeOut) of
 		{ok, Socket} ->
 			ok = ssl:setopts(Socket, [{active, ?ACTIVE_PACKETS}]),
 			EpID = {{dtls, self()}, EpAddr},
-			{ok, connected, #data{protocol_config=ProtoConfig, socket=Socket, ep_id=EpID, timeout=TimeOut}};
+			{ok, connected, #data{protocol_config=ProtoConfig, socket=Socket, ep_id=EpID, timeout=TimeOut}, [{next_event, internal, {connected, Onwer}}]};
 		{error, timeout} ->
 			{stop, connect_timeout};
 		{error, Reason} ->
@@ -93,6 +99,9 @@ accept(EventType, EventData, _StateData) ->
 	keep_state_and_data.
 
 % client
+connected(internal, {connected, Onwer}, _StateData=#data{server_name=Name}) ->
+	Onwer ! {connected, self(), Name},
+	keep_state_and_data;
 connected({call, From}, {get_endpoint, EpAddr}, 
 	StateData=#data{socket=Socket, ep_id=EpID={_, EpAddr}, server_name='$client', endpoint_pid=undefined, endpoint_ref=undefined, protocol_config=ProtoConfig}) ->
 	{ok, EpPid} = ecoap_endpoint:start_link(?MODULE, Socket, EpID, ProtoConfig),
