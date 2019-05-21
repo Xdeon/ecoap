@@ -245,7 +245,8 @@ handle_call(_Request, _From, State) ->
 handle_cast(shutdown, State=#state{observer=undefined}) ->
     {stop, normal, State};
 handle_cast(shutdown, State=#state{module=Module, obstate=ObState}) ->
-    ok = coap_unobserve(Module, ObState),
+    % ok = coap_unobserve(Module, ObState),
+    _ = invoke_callback(Module, coap_unobserve, 1, [ObState], ok),
     {stop, normal, cancel_observer(State)};
 handle_cast(_Msg, State) ->
     % error_logger:error_msg("unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
@@ -273,10 +274,12 @@ handle_info({coap_request, EpID, EndpointPid, _Receiver=undefined, Request}, Sta
 handle_info({coap_request, EpID, _EndpointPid, _Receiver=undefined, Request}, State) ->
     handle(EpID, Request, State);
 handle_info({coap_ack, _EpID, _EndpointPid, Ref}, State=#state{module=Module, obstate=ObState}) ->
-    {ok, ObState2} = coap_ack(Module, Ref, ObState),
+    % {ok, ObState2} = coap_ack(Module, Ref, ObState),
+    {ok, ObState2} = invoke_callback(Module, coap_ack, 2, [Ref, ObState], {ok, ObState}),
     {noreply, State#state{obstate=ObState2}};
 handle_info({coap_error, _EpID, _EndpointPid, _Ref, _Error}, State=#state{module=Module, obstate=ObState}) ->
-    ok = coap_unobserve(Module, ObState),
+    % ok = coap_unobserve(Module, ObState),
+    _ = invoke_callback(Module, coap_unobserve, 1, [ObState], ok),
     {stop, normal, cancel_observer(State)};
 handle_info({timeout, TRef, cache_expired}, State=#state{observer=undefined, timer=TRef}) ->
     {stop, normal, State};
@@ -311,7 +314,8 @@ handle_info(_Info, State=#state{observer=undefined}) ->
 %% TODO: how to safely invoke coap_unobserve and ensure only invoke once, no matter under sucess or failure
 
 handle_info(Info, State=#state{module=Module, observer=Observer, obstate=ObState}) ->
-    try case handle_info(Module, Info, Observer, ObState) of
+    % try case handle_info(Module, Info, Observer, ObState) of
+    try case invoke_callback(Module, handle_info, 3, [Info, Observer, ObState], {noreply, ObState}) of
         {notify, Resource, ObState2} -> 
             handle_notify(undefined, Resource, ObState2, Observer, State);
         {notify, Ref, Resource, ObState2} ->
@@ -430,7 +434,8 @@ try_check_resource(EpID, Request, State) ->
     end.
 
 check_resource(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
-    Result = case coap_get(Module, EpID, Prefix, Suffix, Request) of
+    % Result = case coap_get(Module, EpID, Prefix, Suffix, Request) of
+    Result = case invoke_callback(Module, coap_get, 4, [EpID, Prefix, Suffix, Request], {error, 'MethodNotAllowed'}) of
         {ok, Content} -> Content;
         Other -> Other
     end,
@@ -485,7 +490,8 @@ handle_method(_EpID, Request, _Content, State) ->
     return_response(Request, {error, 'MethodNotAllowed'}, State).
 
 handle_fetch(EpID, Request, State=#state{module=Module, prefix=Prefix, suffix=Suffix}) ->
-    case coap_fetch(Module, EpID, Prefix, Suffix, Request) of
+    % case coap_fetch(Module, EpID, Prefix, Suffix, Request) of
+    case invoke_callback(Module, coap_fetch, 4, [EpID, Prefix, Suffix, Request], {error, 'MethodNotAllowed'}) of
         {ok, Content2} ->
             check_observe(EpID, Request, Content2, State);
         {error, Error} ->
@@ -517,7 +523,8 @@ check_observe(EpID, Request, Content, State) ->
 handle_observe(EpID, Request, Content, 
         State=#state{endpoint_pid=EndpointPid, id=ID, prefix=Prefix, suffix=Suffix, uri=Uri, module=Module, observer=undefined}) ->
     % the first observe request from this user to this resource
-    case coap_observe(Module, EpID, Prefix, Suffix, Request) of
+    % case coap_observe(Module, EpID, Prefix, Suffix, Request) of
+    case invoke_callback(Module, coap_observe, 4, [EpID, Prefix, Suffix, Request], {error, 'MethodNotAllowed'}) of
         {ok, ObState} ->
             ecoap_endpoint:register_handler(EndpointPid, ID, self()),
             pg2:create({coap_observer, Uri}),
@@ -546,7 +553,8 @@ cancel_observe_and_send_response(Request, Response, State) ->
 cancel_observe_and_send_response(Ref, Request, Response, State=#state{module=Module, obstate=ObState}) ->
     % invoke user-defined callback first, so if it crashes, cancel_observer is not executed yet, 
     % and will be executed in send_server_error/2
-    ok = coap_unobserve(Module, ObState),
+    % ok = coap_unobserve(Module, ObState),
+    _ = invoke_callback(Module, coap_unobserve, 1, [ObState], ok),
     State2 = cancel_observer(State),
     case Response of
         {error, Code, Reason} ->
@@ -566,7 +574,8 @@ cancel_observer(State=#state{uri=Uri}) ->
     State#state{observer=undefined, obstate=undefined}.
 
 handle_post(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
-    case coap_post(Module, EpID, Prefix, Suffix, Request) of
+    % case coap_post(Module, EpID, Prefix, Suffix, Request) of
+    case invoke_callback(Module, coap_post, 4, [EpID, Prefix, Suffix, Request], {error, 'MethodNotAllowed'}) of
         {ok, Code, Content} ->
             return_resource(undefined, Request, {ok, Code}, Content, State);
         {error, Error} ->
@@ -576,7 +585,8 @@ handle_post(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=Mod
     end.
 
 handle_put(EpID, Request, Content, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
-    case coap_put(Module, EpID, Prefix, Suffix, Request) of
+    % case coap_put(Module, EpID, Prefix, Suffix, Request) of
+    case invoke_callback(Module, coap_put, 4, [EpID, Prefix, Suffix, Request], {error, 'MethodNotAllowed'}) of
         ok ->
             return_response(Request, created_or_changed(Content), State);
         {ok, Content} ->
@@ -588,7 +598,8 @@ handle_put(EpID, Request, Content, State=#state{prefix=Prefix, suffix=Suffix, mo
     end.
 
 handle_patch(EpID, Request, Content, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
-    case coap_patch(Module, EpID, Prefix, Suffix, Request) of
+    % case coap_patch(Module, EpID, Prefix, Suffix, Request) of
+    case invoke_callback(Module, coap_patch, 4, [EpID, Prefix, Suffix, Request], {error, 'MethodNotAllowed'}) of
         ok ->
             return_response(Request, created_or_changed(Content), State);
         {ok, Content} ->
@@ -600,7 +611,8 @@ handle_patch(EpID, Request, Content, State=#state{prefix=Prefix, suffix=Suffix, 
     end.
 
 handle_ipatch(EpID, Request, Content, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
-    case coap_ipatch(Module, EpID, Prefix, Suffix, Request) of
+    % case coap_ipatch(Module, EpID, Prefix, Suffix, Request) of
+    case invoke_callback(Module, coap_ipatch, 4, [EpID, Prefix, Suffix, Request], {error, 'MethodNotAllowed'}) of
         ok ->
             return_response(Request, created_or_changed(Content), State);
         {ok, Content} ->
@@ -617,7 +629,8 @@ created_or_changed(_Content) ->
     {ok, 'Changed'}.
 
 handle_delete(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
-    case coap_delete(Module, EpID, Prefix, Suffix, Request) of
+    % case coap_delete(Module, EpID, Prefix, Suffix, Request) of
+    case invoke_callback(Module, coap_delete, 4, [EpID, Prefix, Suffix, Request], {error, 'MethodNotAllowed'}) of
         ok ->
             return_response(Request, {ok, 'Deleted'}, State);
         {ok, Content} ->
@@ -701,81 +714,81 @@ get_etag(Options) ->
         undefined -> undefined
     end.
 
-coap_get(Module, EpID, Prefix, Suffix, Request) ->
-    case erlang:function_exported(Module, coap_get, 4) of
-        true -> Module:coap_get(EpID, Prefix, Suffix, Request);
-        false -> {error, 'MethodNotAllowed'}
-    end.
-
-coap_fetch(Module, EpID, Prefix, Suffix, Request) ->
-    case erlang:function_exported(Module, coap_fetch, 4) of
-        true -> Module:coap_fetch(EpID, Prefix, Suffix, Request);
-        false -> {error, 'MethodNotAllowed'}
-    end.
-
-coap_post(Module, EpID, Prefix, Suffix, Request) ->
-    case erlang:function_exported(Module, coap_post, 4) of
-        true -> Module:coap_post(EpID, Prefix, Suffix, Request);
-        false -> {error, 'MethodNotAllowed'}
-    end.
-
-coap_put(Module, EpID, Prefix, Suffix, Request) ->
-    case erlang:function_exported(Module, coap_put, 4) of
-        true -> Module:coap_put(EpID, Prefix, Suffix, Request);
-        false -> {error, 'MethodNotAllowed'}
-    end.
-
-coap_patch(Module, EpID, Prefix, Suffix, Request) ->
-    case erlang:function_exported(Module, coap_patch, 4) of
-        true -> Module:coap_patch(EpID, Prefix, Suffix, Request);
-        false -> {error, 'MethodNotAllowed'}
-    end.
-
-coap_ipatch(Module, EpID, Prefix, Suffix, Request) ->
-    case erlang:function_exported(Module, coap_ipatch, 4) of
-        true -> Module:coap_ipatch(EpID, Prefix, Suffix, Request);
-        false -> {error, 'MethodNotAllowed'}
-    end.
-
-coap_delete(Module, EpID, Prefix, Suffix, Request) ->
-    case erlang:function_exported(Module, coap_delete, 4) of
-        true -> Module:coap_delete(EpID, Prefix, Suffix, Request);
-        false -> {error, 'MethodNotAllowed'}
-    end.
-
-coap_observe(Module, EpID, Prefix, Suffix, Request) ->
-    case erlang:function_exported(Module, coap_observe, 4) of
-        true -> Module:coap_observe(EpID, Prefix, Suffix, Request);
-        false -> {error, 'MethodNotAllowed'}
-    end.
-
-coap_unobserve(Module, ObState) ->
-    case erlang:function_exported(Module, coap_unobserve, 1) of
-        true -> Module:coap_unobserve(ObState);
-        false -> ok
-    end.
-
-handle_info(Module, Info, ObsReq, ObState) ->
-    case erlang:function_exported(Module, handle_info, 3) of
-        true -> Module:handle_info(Info, ObsReq, ObState);
-        false ->
-            case Info of
-                {coap_notify, Msg} -> {notify, Msg, ObState};
-                _ -> {noreply, ObState}
-            end
-    end.
-
-coap_ack(Module, Ref, ObState) ->
-    case erlang:function_exported(Module, coap_ack, 2) of
-        true -> Module:coap_ack(Ref, ObState);
-        false -> {ok, ObState}
-    end.
-
-% invoke_callback(Module, Function, Arity, Args) ->
-%     case erlang:function_exported(Module, Function, Arity) of
-%         true -> erlang:apply(Module, Function, Args);
+% coap_get(Module, EpID, Prefix, Suffix, Request) ->
+%     case erlang:function_exported(Module, coap_get, 4) of
+%         true -> Module:coap_get(EpID, Prefix, Suffix, Request);
 %         false -> {error, 'MethodNotAllowed'}
 %     end.
+
+% coap_fetch(Module, EpID, Prefix, Suffix, Request) ->
+%     case erlang:function_exported(Module, coap_fetch, 4) of
+%         true -> Module:coap_fetch(EpID, Prefix, Suffix, Request);
+%         false -> {error, 'MethodNotAllowed'}
+%     end.
+
+% coap_post(Module, EpID, Prefix, Suffix, Request) ->
+%     case erlang:function_exported(Module, coap_post, 4) of
+%         true -> Module:coap_post(EpID, Prefix, Suffix, Request);
+%         false -> {error, 'MethodNotAllowed'}
+%     end.
+
+% coap_put(Module, EpID, Prefix, Suffix, Request) ->
+%     case erlang:function_exported(Module, coap_put, 4) of
+%         true -> Module:coap_put(EpID, Prefix, Suffix, Request);
+%         false -> {error, 'MethodNotAllowed'}
+%     end.
+
+% coap_patch(Module, EpID, Prefix, Suffix, Request) ->
+%     case erlang:function_exported(Module, coap_patch, 4) of
+%         true -> Module:coap_patch(EpID, Prefix, Suffix, Request);
+%         false -> {error, 'MethodNotAllowed'}
+%     end.
+
+% coap_ipatch(Module, EpID, Prefix, Suffix, Request) ->
+%     case erlang:function_exported(Module, coap_ipatch, 4) of
+%         true -> Module:coap_ipatch(EpID, Prefix, Suffix, Request);
+%         false -> {error, 'MethodNotAllowed'}
+%     end.
+
+% coap_delete(Module, EpID, Prefix, Suffix, Request) ->
+%     case erlang:function_exported(Module, coap_delete, 4) of
+%         true -> Module:coap_delete(EpID, Prefix, Suffix, Request);
+%         false -> {error, 'MethodNotAllowed'}
+%     end.
+
+% coap_observe(Module, EpID, Prefix, Suffix, Request) ->
+%     case erlang:function_exported(Module, coap_observe, 4) of
+%         true -> Module:coap_observe(EpID, Prefix, Suffix, Request);
+%         false -> {error, 'MethodNotAllowed'}
+%     end.
+
+% coap_unobserve(Module, ObState) ->
+%     case erlang:function_exported(Module, coap_unobserve, 1) of
+%         true -> Module:coap_unobserve(ObState);
+%         false -> ok
+%     end.
+
+% handle_info(Module, Info, ObsReq, ObState) ->
+%     case erlang:function_exported(Module, handle_info, 3) of
+%         true -> Module:handle_info(Info, ObsReq, ObState);
+%         false ->
+%             case Info of
+%                 {coap_notify, Msg} -> {notify, Msg, ObState};
+%                 _ -> {noreply, ObState}
+%             end
+%     end.
+
+% coap_ack(Module, Ref, ObState) ->
+%     case erlang:function_exported(Module, coap_ack, 2) of
+%         true -> Module:coap_ack(Ref, ObState);
+%         false -> {ok, ObState}
+%     end.
+
+invoke_callback(Module, Function, Arity, Args, Default) ->
+    case erlang:function_exported(Module, Function, Arity) of
+        true -> erlang:apply(Module, Function, Args);
+        false -> Default
+    end.
 
 send_server_error(Request, State) ->
     send_server_error(undefined, Request, State).
