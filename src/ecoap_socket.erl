@@ -16,6 +16,8 @@
 	EpAddr :: ecoap_endpoint:endpoint_addr(),
 	EpPid :: pid().
 
+-callback wait(Pid) -> ok when Pid :: pid().
+
 -spec default_port(atom()) -> inet:port_number().
 default_port(udp) -> 5683;
 default_port(dtls) -> 5684.

@@ -13,7 +13,7 @@
 
 %% API.
 -export([connect/4, start_link/4, close/1]).
--export([get_endpoint/2, get_all_endpoints/1, get_endpoint_count/1]).
+-export([get_endpoint/2, wait/1, get_all_endpoints/1, get_endpoint_count/1]).
 -export([send/3]).
 
 %% gen_server.
@@ -59,6 +59,9 @@ start_link(SupPid, Name, TransOpts, ProtoConfig) when is_pid(SupPid) ->
 -spec get_endpoint(pid(), ecoap_endpoint:endpoint_addr()) -> {ok, pid()} | {error, term()}.
 get_endpoint(Pid, EpAddr) ->
     gen_server:call(Pid, {get_endpoint, EpAddr}).
+
+-spec wait(pid()) -> ok.
+wait(_) -> ok.
 
 %% utility function
 -spec get_all_endpoints(pid()) -> [pid()].
