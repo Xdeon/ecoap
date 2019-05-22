@@ -690,7 +690,7 @@ handle_error(Ref, Request, Error,
 	#request{origin_ref=OriginRef, block_key=BlockKey, observe_key=ObsKey} = Request,
 	send_response(Request, format_response(Error)),
 	RequestMapping2 = maps:remove(OriginRef, RequestMapping),
-	Requests2 = maps:remove(Ref, maps:remove(OriginRef, Requests)),
+	Requests2 = remove_request(Ref, remove_request(OriginRef, Requests)),
 	OngoingBlocks2 = maps:remove(BlockKey, OngoingBlocks),
 	ObsRegs2 = maps:remove(ObsKey, ObsRegs),
 	{noreply, State#state{requests=Requests2, ongoing_blocks=OngoingBlocks2, 
@@ -763,14 +763,14 @@ check_and_cancel_request(Ref, State=#state{endpoint_pid=EndpointPid, requests=Re
 		%  ordinary request
 		{{ok, #request{origin_ref=Ref, observe_key=ObsKey}}, error} ->
 			do_cancel_request(EndpointPid, Ref),
-			Requests2 = maps:remove(Ref, Requests),
+			Requests2 = remove_request(Ref, Requests),
 			ObsRegs2 = maps:remove(ObsKey, ObsRegs),
 			State#state{requests=Requests2, observe_regs=ObsRegs2};
 		% ongoging blockwise transfer of ordinary request where the origin request has been acked and removed from state
 		{error, {ok, BlockRef}} -> 
 			#request{origin_ref=Ref, block_key=BlockKey} = maps:get(BlockRef, Requests),
 			do_cancel_request(EndpointPid, BlockRef),
-			Requests2 = maps:remove(BlockRef, Requests),
+			Requests2 = remove_request(BlockRef, Requests),	
 			OngoingBlocks2 = maps:remove(BlockKey, OngoingBlocks),
 			RequestMapping2 = maps:remove(Ref, RequestMapping),
 			State#state{requests=Requests2, ongoing_blocks=OngoingBlocks2, request_mapping=RequestMapping2};
@@ -779,7 +779,7 @@ check_and_cancel_request(Ref, State=#state{endpoint_pid=EndpointPid, requests=Re
 	    	#request{origin_ref=Ref, block_key=BlockKey} = maps:get(BlockRef, Requests),
 	    	do_cancel_request(EndpointPid, Ref),
 	    	do_cancel_request(EndpointPid, BlockRef),
-			Requests2 = maps:remove(Ref, maps:remove(BlockRef, Requests)),
+			Requests2 = remove_request(Ref, remove_request(BlockRef, Requests)),
 			OngoingBlocks2 = maps:remove(BlockKey, OngoingBlocks),
 			RequestMapping2 = maps:remove(Ref, RequestMapping),
 			ObsRegs2 = maps:remove(ObsKey, ObsRegs),
@@ -809,7 +809,6 @@ check_and_cancel_request(Ref, State=#state{endpoint_pid=EndpointPid, requests=Re
 % 	end.
 
 do_cancel_request(EndpointPid, Ref) ->
-	_ = erlang:demonitor(Ref, [flush]),
 	ecoap_endpoint:cancel_request(EndpointPid, Ref).
 
 is_observe(ObsSeq, ObsKey) when is_integer(ObsSeq), is_tuple(ObsKey) -> true;
