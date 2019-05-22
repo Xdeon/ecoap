@@ -7,6 +7,8 @@
 
 -include("coap_message.hrl").
 
+-define(DEFAULT_MAX_BLOCK_SIZE, 1024).
+
 -type block_opt() :: {non_neg_integer(), boolean(), non_neg_integer()}.
 
 -spec ping_msg() -> coap_message:coap_message().
@@ -36,11 +38,11 @@ requires_ack(#coap_message{}) -> false.
 
 -spec request(coap_message:coap_type(), coap_message:coap_method()) -> coap_message:coap_message().
 request(Type, Code) ->
-    request(Type, Code, #{}, <<>>).
+    #coap_message{type=Type, code=Code, id=0}.
 
 -spec request(coap_message:coap_type(), coap_message:coap_method(), coap_message:optionset()) -> coap_message:coap_message().
 request(Type, Code, Options) ->
-    request(Type, Code, Options, <<>>).
+    #coap_message{type=Type, code=Code, id=0, options=Options}.
 
 -spec request(coap_message:coap_type(), coap_message:coap_method(), coap_message:optionset(), binary()) -> coap_message:coap_message().
 request(Type, Code, Options, Payload) when is_binary(Payload) ->
@@ -64,11 +66,12 @@ response(#coap_message{type=Type, id=MsgId, token=Token}) ->
 
 -spec response(undefined | coap_message:coap_success() | coap_message:coap_error(), coap_message:coap_message()) -> coap_message:coap_message().
 response(Code, Request) ->
-    coap_message:set_code(Code, response(Request)).
+    Response = response(Request), 
+    Response#coap_message{code=Code}.
 
 -spec response(undefined | coap_message:coap_success() | coap_message:coap_error(), binary(), coap_message:coap_message()) -> coap_message:coap_message().
 response(Code, Payload, Request) when is_binary(Payload) ->
-    coap_message:set_code(Code, set_payload(Payload, response(Request))).
+    set_payload(Payload, response(Code, Request)).
 
 -spec set_payload(binary(), coap_message:coap_message()) -> coap_message:coap_message().
 set_payload(Payload, Msg) ->
@@ -76,15 +79,15 @@ set_payload(Payload, Msg) ->
 
 -spec set_payload(binary(), undefined | block_opt(), coap_message:coap_message()) -> coap_message:coap_message().
 set_payload(Payload, Block, Msg) ->
-    set_payload(Payload, Block, Msg, ecoap_config:default_max_block_size()).
+    set_payload(Payload, Block, Msg, ?DEFAULT_MAX_BLOCK_SIZE).
 
 -spec set_payload(binary(), undefined | block_opt(), coap_message:coap_message(), non_neg_integer()) -> coap_message:coap_message().
 % segmentation not requested and not required
 set_payload(Payload, undefined, Msg, MaxBlockSize) when byte_size(Payload) =< MaxBlockSize ->
-	coap_message:set_payload(Payload, Msg);
+    Msg#coap_message{payload=Payload};
 % segmentation not requested, but required (late negotiation)
 set_payload(Payload, undefined, Msg, MaxBlockSize) ->
-	set_payload(Payload, {0, true, MaxBlockSize}, Msg, MaxBlockSize);
+    set_payload_block(Payload, {0, true, MaxBlockSize}, Msg);
 % segmentation requested (early negotiation)
 set_payload(Payload, Block, Msg, _) ->
 	set_payload_block(Payload, Block, Msg).
@@ -96,12 +99,10 @@ set_payload_block(Content, Block, Msg=#coap_message{}) ->
     set_payload_block(Content, 'Block2', Block, Msg).
 
 -spec set_payload_block(binary(), 'Block1' | 'Block2', block_opt(), coap_message:coap_message()) -> coap_message:coap_message().
-set_payload_block(Content, BlockId, {Num, _, Size}, Msg) when byte_size(Content) > (Num+1)*Size ->
-    coap_message:set_option(BlockId, {Num, true, Size},
-        coap_message:set_payload(part(Content, Num*Size, Size), Msg));
-set_payload_block(Content, BlockId, {Num, _, Size}, Msg) ->
-    coap_message:set_option(BlockId, {Num, false, Size},
-        coap_message:set_payload(part(Content, Num*Size, byte_size(Content)-Num*Size), Msg)).
+set_payload_block(Content, BlockId, {Num, _, Size}, Msg=#coap_message{options=Options}) when byte_size(Content) > (Num+1)*Size ->
+    Msg#coap_message{options=Options#{BlockId => {Num, true, Size}}, payload=part(Content, Num*Size, Size)};
+set_payload_block(Content, BlockId, {Num, _, Size}, Msg=#coap_message{options=Options}) ->
+    Msg#coap_message{options=Options#{BlockId => {Num, false, Size}}, payload=part(Content, Num*Size, byte_size(Content)-Num*Size)}.
 
 % In case peer requested a non-existing block we just respond with an empty payload instead of crash
 % e.g. request with a block number and size that indicate a block beyond the actual size of the resource

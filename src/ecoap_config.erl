@@ -1,5 +1,5 @@
 -module(ecoap_config).
--export([default_protocol_config/0, merge_protocol_config/1, handler_config/1, default_max_block_size/0]).
+-export([default_protocol_config/0, merge_protocol_config/1, handler_config/1]).
 
 -type protocol_config() :: #{
 	token_length := 0..8, 
@@ -46,9 +46,6 @@ merge_protocol_config(CustomConfig) ->
 -spec handler_config(protocol_config()) -> handler_config().
 handler_config(Config) ->
 	maps:with([endpoint_pid, exchange_lifetime, max_body_size, max_block_size], Config).
-
--spec default_max_block_size() -> non_neg_integer().
-default_max_block_size() -> 1024.
 
 native_time(Time) ->
     erlang:convert_time_unit(Time, millisecond, native).
