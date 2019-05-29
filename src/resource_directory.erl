@@ -43,8 +43,6 @@ filter(Links, Querys) ->
         end
     end, Links, Querys).
 
-%% TODO: need to be fix after OTP22 where query with key + no value is allowed
-%% currently can be worked around using cow_qs:parse_qs in spite that this function will crash instead of return error
 parse_query(Query) ->
     case uri_string:dissect_query(Query) of
         [{Name0, Value0}] ->
@@ -58,8 +56,8 @@ parse_query(Query) ->
         _ -> {error, bad_query}
     end.
 
-% wildcard_value(true) ->
-%     {global, true};
+wildcard_value(true) ->
+    {global, true};
 wildcard_value(<<>>) ->
     {global, true};
 wildcard_value(Value) ->
@@ -104,7 +102,7 @@ attribute_query_test_() ->
     [?_assertEqual(TempSensor, core_link:encode(filter(Link, make_query("bar=one&if=sensor")))),
     ?_assertEqual(TempSensor, core_link:encode(filter(Link, make_query("bar=one&foo")))),
     % test for query with key + no value
-    % ?_assertEqual(Sensors, core_link:encode(filter(Link, make_query("foo")))),
+    ?_assertEqual(Sensors, core_link:encode(filter(Link, make_query("foo")))),
     ?_assertEqual(TempSensor, core_link:encode(filter(Link, make_query("if=sensor&bar=one")))),
     ?_assertEqual(TempSensor, core_link:encode(filter(Link, make_query("foo&bar=one")))),
     ?_assertEqual(TempSensor, core_link:encode(filter(Link, make_query("bar=one&bar=two")))),

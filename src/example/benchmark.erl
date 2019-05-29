@@ -38,14 +38,7 @@ coap_get(_EpID, [<<"benchmark">>], _Suffix, _Request) ->
     {ok, coap_content:new(<<"hello world">>)};
 
 coap_get(_EpID, [<<"fibonacci">>], _Suffix, Request) ->
-    Query = ecoap_request:query(Request),
-    % could use cow_lib to parse query 
-    Num = lists:foldl(fun(Q, Acc) -> 
-            case uri_string:dissect_query(Q) of
-                [{<<"n">>, N}] -> binary_to_integer(N);
-                _ -> Acc 
-            end 
-        end, 20, Query),
+    Num = get_fib_arg(ecoap_request:query(Request), 20),
     Payload = <<"fibonacci(", (integer_to_binary(Num))/binary, ") = ", (integer_to_binary(fib((Num))))/binary>>,
     {ok, coap_content:new(Payload, #{'Content-Format' => <<"text/plain">>})};
 
@@ -80,6 +73,18 @@ coap_post(_EpID, _Prefix, _Suffix, _Request) ->
 % handle_info(_Info, _ObsReq, State) -> {noreply, State}.
 
 % coap_ack(_Ref, State) -> {ok, State}.
+
+% could use cow_lib to parse query 
+get_fib_arg(Query, Default) ->   
+    lists:foldl(fun(Q, Acc) -> 
+            case uri_string:dissect_query(Q) of
+                [{<<"n">>, N}] -> 
+                    try binary_to_integer(N) 
+                    catch _:_ -> Acc
+                    end;
+                _ -> Acc 
+            end 
+    end, Default, Query).
 
 % we consider non-tail-recursive fibonacci function as a CPU intensive task
 % thus when we do benchmarking, it should be tested combined with ordinary resource
