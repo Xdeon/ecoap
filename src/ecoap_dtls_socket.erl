@@ -95,7 +95,7 @@ accept(_, accept, StateData=#data{server_name=Name, lsocket=ListenSocket}) ->
 			{keep_state_and_data, [{next_event, internal, accept}]}
 	end;
 accept(EventType, EventData, _StateData) ->
-    logger:log(error, "~p recvd unexpected event ~p in state ~p in ~p~n", [self(), {EventType, EventData}, ?FUNCTION_NAME, ?MODULE]),
+    logger:log(error, "~p received unexpected event ~p in state ~p in ~p~n", [self(), {EventType, EventData}, ?FUNCTION_NAME, ?MODULE]),
 	keep_state_and_data.
 
 % client
@@ -120,10 +120,11 @@ connected({call, From}, {get_endpoint, EpAddr}, #data{ep_id={_, EpAddr}, endpoin
 connected({call, From}, {get_endpoint, _EpAddr}, _StateData) ->
 	{keep_state_and_data, [{reply, From, {error, unmatched_endpoint_id}}]};
 % ssl message
-connected(info, {ssl, Socket, Bin}, StateData=#data{socket=Socket, server_name=Name, ep_id=EpID, endpoint_pid=undefined}) ->
+connected(info, {ssl, Socket, Bin}, StateData=#data{socket=Socket, server_name=Name, ep_id=EpID={_, EpAddr}, endpoint_pid=undefined}) ->
 	case Name of
 		'$client' -> 
 			% ignore unexpected message received by a client
+			logger:log(debug, "~p received unexpected packet ~p from ~p as a client in ~p~n", [self(), Bin, EpAddr, ?MODULE]),
 			_ = ecoap_endpoint:maybe_send_rst(?MODULE, Socket, EpID, Bin),
 			keep_state_and_data;
 		_ ->
@@ -149,11 +150,11 @@ connected(info, {'DOWN', Ref, process, _Pid, Reason}, StateData=#data{endpoint_r
 	%% TODO: whether to terminate after endpoint process goes downn as a server? if not, when to?
 	{stop, Reason, StateData};
 connected(EventType, EventData, _StateData) ->
-    logger:log(error, "~p recvd unexpected event ~p in state ~p in ~p~n", [self(), {EventType, EventData}, ?FUNCTION_NAME, ?MODULE]),
+    logger:log(error, "~p received unexpected event ~p in state ~p in ~p~n", [self(), {EventType, EventData}, ?FUNCTION_NAME, ?MODULE]),
 	keep_state_and_data.
 
 handle_event(EventType, EventData, StateName, StateData) ->
-    logger:log(error, "~p recvd unexpected event ~p in state ~p in ~p~n", [self(), {EventType, EventData}, StateName, ?MODULE]),
+    logger:log(error, "~p received unexpected event ~p in state ~p in ~p~n", [self(), {EventType, EventData}, StateName, ?MODULE]),
 	{next_state, StateName, StateData}.
 
 terminate(_Reason, _StateName, #data{socket=undefined}) ->

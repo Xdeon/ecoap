@@ -177,7 +177,7 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin},
 			end;
 		error ->
 			% ignore unexpected message received by a client
-		    logger:log(debug, "~p recvd unexpected packet ~p from ~p as a client in ~p~n", [self(), Bin, EpAddr, ?MODULE]),
+			logger:log(debug, "~p received unexpected packet ~p from ~p as a client in ~p~n", [self(), Bin, EpAddr, ?MODULE]),
 		    EpID = {{udp, self()}, EpAddr},
 			_ = ecoap_endpoint:maybe_send_rst(?MODULE, Socket, EpID, Bin),
 			{noreply, State}
