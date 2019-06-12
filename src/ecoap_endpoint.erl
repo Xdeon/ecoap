@@ -113,12 +113,14 @@ cancel_request(EndpointPid, Ref) ->
 
 -spec maybe_send_rst(module(), inet:socket(), ecoap_endpoint_id(), binary()) -> ok | {error, term()}.
 maybe_send_rst(Transport, Socket, EpID, <<?VERSION:2, 0:1, _:1, _TKL:4, _Code:8, MsgId:16, _/bytes>>) ->
-    send_rst(Transport, Socket, EpID, MsgId);
+    % spawn another process to not clog the socket process
+    spawn_link(fun() -> send_rst(Transport, Socket, EpID, MsgId) end),
+    ok;
 maybe_send_rst(_, _, _, _) -> 
     ok.
  
-send_rst(Transport, Socket, EpID, MsgId) ->
-    logger:log(debug, "sending RST~n", []),
+send_rst(Transport, Socket, EpID={_, EpAddr}, MsgId) ->
+    logger:log(debug, "sending RST to ~p~n", [EpAddr]),
     BinRST = coap_message:encode(ecoap_request:rst(MsgId)),
     Transport:send(Socket, EpID, BinRST).
 
@@ -164,7 +166,7 @@ handle_continue({init, SupPid}, State) ->
 handle_call(activate, {Pid, _}, State=#state{client_set=CSet}) ->
     {reply, ok, State#state{client_set=update_client_set(Pid, CSet)}};
 handle_call(_Request, _From, State) ->
-    logger:log(error, "~p recvd unexpected call ~p in ~p~n", [self(), _Request, ?MODULE]),
+    logger:log(error, "~p received unexpected call ~p in ~p~n", [self(), _Request, ?MODULE]),
 	{noreply, State}.
 
 % outgoing CON(0) or NON(1) request
@@ -185,7 +187,7 @@ handle_cast({cancel_request, Receiver}, State=#state{receivers=Receivers}) ->
             {noreply, State}
     end;
 handle_cast(_Msg, State) ->
-    logger:log(error, "~p recvd unexpected cast ~p in ~p~n", [self(), _Msg, ?MODULE]),
+    logger:log(error, "~p received unexpected cast ~p in ~p~n", [self(), _Msg, ?MODULE]),
 	{noreply, State}.
 
 %% CoAP Message Format
@@ -236,7 +238,7 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgI
                     % 1. for separate client process, it may fetch reply_to_pid from the store, but it is problemtic to check whether the info is still valid 
                     % 2. for combined client process, it can directly invoke callback code.
                     % token was not recognized
-                    logger:log(debug, "~p recvd separate response with unrecognized token from ~p in ~p~n", [self(), EpID, ?MODULE]),
+                    logger:log(debug, "~p received separate response with unrecognized token from ~p in ~p~n", [self(), EpID, ?MODULE]),
                     send_rst(Transport, Socket, EpID, MsgId),
                     {noreply, State}
             end
@@ -251,7 +253,7 @@ handle_info({datagram, BinMessage = <<?VERSION:2, _:2, 0:4, _Code:8, MsgId:16>>}
     end;
 % incoming ACK(2) to an outgoing request
 handle_info({datagram, BinMessage = <<?VERSION:2, 2:2, TKL:4, _Code:8, MsgId:16, Token:TKL/bytes, _/bytes>>},
-    State=#state{trans=Trans, tokens=Tokens, protocol_config=ProtoConfig}) ->
+    State=#state{trans=Trans, tokens=Tokens, ep_id=EpID, protocol_config=ProtoConfig}) ->
     TrId = {out, MsgId},
     case maps:find(TrId, Trans) of
         {ok, TrState} ->
@@ -259,12 +261,10 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 2:2, TKL:4, _Code:8, MsgId:16,
                 true ->
                     update_state(State, TrId, ecoap_exchange:received(BinMessage, ProtoConfig, TrState));
                 false ->
-                    % logger:log(info, "ACK response with unrecognized token received by ~p as ~p~n", [self(), ?MODULE]),
+                    logger:log(debug, "~p received ACK response with unrecognized token from ~p in ~p~n", [self(), EpID, ?MODULE]),
                     {noreply, State}
             end;
-        error ->
-            % ignore unexpected responses;
-            {noreply, State}
+        error -> {noreply, State} % ignore unexpected responses
     end;
 % silently ignore other versions
 handle_info({datagram, <<Ver:2, _/bytes>>}, State) when Ver /= ?VERSION ->
@@ -334,7 +334,7 @@ handle_info({'EXIT', Pid, _Reason}, State=#state{receivers=Receivers, client_set
     end;
     
 handle_info(_Info, State) ->
-    logger:log(error, "~p recvd unexpected info ~p in ~p~n", [self(), _Info, ?MODULE]),
+    logger:log(error, "~p received unexpected info ~p in ~p~n", [self(), _Info, ?MODULE]),
 	{noreply, State}.
 
 terminate(_Reason, _State) ->
