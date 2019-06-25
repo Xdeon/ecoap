@@ -82,8 +82,8 @@ send(Socket, {_, {PeerIP, PeerPortNo}}, Datagram) ->
 init([TransOpts, ProtoConfig]) ->
 	case gen_udp:open(0, ecoap_socket:socket_opts(udp, TransOpts)) of
 		{ok, Socket} ->
-			% logger:log(info, "socket setting: ~p~n", [inet:getopts(Socket, [recbuf, sndbuf, buffer])]),
-			logger:log(info, "ecoap listen on *:~p", [inet:port(Socket)]),
+			{ok, {Addr, Port}} = inet:sockname(Socket),
+			logger:log(info, "ecoap listen on UDP ~s:~p", [inet:ntoa(Addr), Port]),
 			{ok, #state{socket=Socket, protocol_config=ProtoConfig}, {continue, init}};
 		Error ->
 			{stop, Error}

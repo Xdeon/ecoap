@@ -149,6 +149,7 @@ init([Transport, Socket, EpID, ProtoConfig0]) ->
     process_flag(trap_exit, true),
     ProtoConfig = ecoap_config:merge_protocol_config(ProtoConfig0#{endpoint_pid=>self()}),
     Timer = endpoint_timer:start_timer(?SCAN_INTERVAL, start_scan),
+    logger:log(info, "endpoint process ~p started for EpID: ~p~n", [self(), EpID]),
     {ok, #state{transport=Transport, sock=Socket, ep_id=EpID, nextmid=ecoap_message_id:first_mid(), timer=Timer, protocol_config=ProtoConfig}};
 % server
 init([SupPid, Transport, Socket, EpID, Name]) ->
@@ -157,6 +158,7 @@ init([SupPid, Transport, Socket, EpID, Name]) ->
     ProtoConfig0 = ecoap_registry:get_protocol_config(Name),
     ProtoConfig = ecoap_config:merge_protocol_config(ProtoConfig0#{endpoint_pid=>self()}),
     Timer = endpoint_timer:start_timer(?SCAN_INTERVAL, start_scan),
+    logger:log(info, "endpoint process ~p started for EpID: ~p~n", [self(), EpID]),
     {ok, #state{transport=Transport, sock=Socket, ep_id=EpID, nextmid=ecoap_message_id:first_mid(), timer=Timer, protocol_config=ProtoConfig}, {continue, {init, SupPid}}}.
 
 handle_continue({init, SupPid}, State) ->

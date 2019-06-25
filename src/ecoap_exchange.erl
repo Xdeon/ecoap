@@ -94,12 +94,13 @@ in_non({in, BinMessage}, _, Exchange) ->
             {[{handle_respone, Message}], Exchange#exchange{stage=got_non}}
     catch _C:_R ->
             % shall we send reset?
-            logger:log(warning, "~p received corrupted msg ~p~n", [self(), BinMessage]),
+            logger:log(debug, "~p received corrupted msg ~p in stage ~p~n", [self(), BinMessage, ?FUNCTION_NAME]),
             {[], Exchange#exchange{stage=got_non}}
     end.
 
-got_non({in, _Message}, _, Exchange) ->
+got_non({in, BinMessage}, _, Exchange) ->
     % ignore retransmission
+    logger:log(debug, "~p received repeated NON msg MID=~p~n", [self(), coap_message:get_id(BinMessage)]),
     {[], Exchange#exchange{stage=got_non}}.
 
 % --- outgoing NON
@@ -118,12 +119,12 @@ sent_non({in, BinMessage}, _, Exchange) ->
             logger:log(debug, "~p received irrelevant msg ~p~n", [self(), Message]),
             {[], Exchange#exchange{stage=sent_non}}
     catch _C:_R ->
-            logger:log(warning, "~p received corrupted msg ~p~n", [self(), BinMessage]),
+            logger:log(debug, "~p received corrupted msg ~p in stage ~p~n", [self(), BinMessage, ?FUNCTION_NAME]),
             {[], Exchange#exchange{stage=sent_non}}
     end.
             
-got_rst({in, _BinMessage}, _, Exchange)->
-    logger:log(debug, "~p received repeated RST msg~n", [self()]),
+got_rst({in, BinMessage}, _, Exchange)->
+    logger:log(debug, "~p received repeated RST msg MID=~p~n", [self(), coap_message:get_id(BinMessage)]),
     {[], Exchange#exchange{stage=got_rst}}.
 
 % --- incoming CON->ACK|RST
@@ -143,7 +144,7 @@ in_con({in, BinMessage}, ProtoConfig, Exchange) ->
             {[{handle_response, Message} | Actions], NewExchange}
     catch 
         _C:_R ->
-            logger:log(warning, "~p received corrupted msg ~p~n", [self(), BinMessage]),
+            logger:log(debug, "~p received corrupted msg ~p in stage ~p~n", [self(), BinMessage, ?FUNCTION_NAME]),
             go_pack_sent(ecoap_request:rst(coap_message:get_id(BinMessage)), Exchange)
     end.
 
@@ -152,9 +153,9 @@ go_await_aack(Message, ProtoConfig, Exchange) ->
     BinAck = coap_message:encode(ecoap_request:ack(Message)),
     {[{start_timer, ?PROCESSING_DELAY(ProtoConfig)}], Exchange#exchange{stage=await_aack, msgbin=BinAck}}.
 
-await_aack({in, _BinMessage}, _, Exchange) ->
+await_aack({in, BinMessage}, _, Exchange) ->
     % ignore retransmission
-    logger:log(debug, "~p received repeated CON msg~n", [self()]),
+    logger:log(debug, "~p received repeated CON msg MID=~p~n", [self(), coap_message:get_id(BinMessage)]),
     {[], Exchange#exchange{stage=await_aack}};
 
 await_aack({timeout, await_aack}, _, Exchange=#exchange{msgbin=BinAck}) ->
@@ -175,9 +176,9 @@ go_pack_sent(Ack, Exchange) ->
     BinAck = coap_message:encode(Ack),
     {[{send, BinAck}], Exchange#exchange{stage=pack_sent, msgbin=BinAck}}.
 
-pack_sent({in, _BinMessage}, _, Exchange=#exchange{msgbin=BinAck}) ->
+pack_sent({in, BinMessage}, _, Exchange=#exchange{msgbin=BinAck}) ->
     % retransmit the ack
-    logger:log(debug, "~p re-send ACK/RST msg~n", [self()]),
+    logger:log(debug, "~p re-send ACK/RST msg MID=~p~n", [self(), coap_message:get_id(BinMessage)]),
     {[{send, BinAck}], Exchange#exchange{stage=pack_sent}};
 pack_sent({timeout, await_aack}, _, Exchange) ->
 	% in case the timeout msg was sent before we cancel the timer
@@ -228,7 +229,7 @@ await_pack({in, BinAck}, _, Exchange) ->
             {[cancel_timer, {handle_response, Message}], Exchange#exchange{msgbin= <<>>, stage=aack_sent}}
     catch _C:_R ->
             % shall we inform the receiver the error?
-            logger:log(warning, "~p received corrupted msg ~p~n", [self(), BinAck]),
+            logger:log(debug, "~p received corrupted msg ~p in stage ~p~n", [self(), BinAck, ?FUNCTION_NAME]),
             {[], Exchange#exchange{stage=await_pack}}
     end;
 

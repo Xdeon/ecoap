@@ -29,6 +29,8 @@ init([Name, TransOpts, ProtoConfig, TimeOut, NumAcceptors]) ->
 		{error, Error} ->
 			listener_error(Name, TransOpts, Error)                                                                                                                                                                                                                                                                                                                                                                                                                                        
 	end,
+	{ok, {Addr, Port}} = ssl:sockname(ListenSocket),
+	logger:log(info, "ecoap listen on DTLS ~s:~p", [inet:ntoa(Addr), Port]),
 	ok = ecoap_registry:set_listener(Name, self()),
 	_ = start_acceptors(Name, NumAcceptors),
 	Procs = [
