@@ -89,6 +89,7 @@ decode_code({4, 12}) -> {error, 'PreconditionFailed'};
 decode_code({4, 13}) -> {error, 'RequestEntityTooLarge'};
 decode_code({4, 15}) -> {error, 'UnsupportedContentFormat'};
 decode_code({4, 22}) -> {error, 'UnprocessableEntity'};
+decode_code({4, 29}) -> {error, 'TooManyRequests'};
 decode_code({5, 00}) -> {error, 'InternalServerError'};
 decode_code({5, 01}) -> {error, 'NotImplemented'};
 decode_code({5, 02}) -> {error, 'BadGateway'};
@@ -124,6 +125,7 @@ encode_code({error, 'PreconditionFailed'}) -> {4, 12};
 encode_code({error, 'RequestEntityTooLarge'}) -> {4, 13};
 encode_code({error, 'UnsupportedContentFormat'}) -> {4, 15};
 encode_code({error, 'UnprocessableEntity'}) -> {4, 22};
+encode_code({error, 'TooManyRequests'}) -> {4, 29};
 encode_code({error, 'InternalServerError'}) -> {5, 00};
 encode_code({error, 'NotImplemented'}) -> {5, 01};
 encode_code({error, 'BadGateway'}) -> {5, 02};
@@ -206,6 +208,7 @@ code() ->
 	    {{4, 13}, {error, 'RequestEntityTooLarge'}},
 	    {{4, 15}, {error, 'UnsupportedContentFormat'}},
 	    {{4, 22}, {error, 'UnprocessableEntity'}},
+		{{4, 29}, {error, 'TooManyRequests'}},
 	    {{5, 00}, {error, 'InternalServerError'}},
 	    {{5, 01}, {error, 'NotImplemented'}},
 	    {{5, 02}, {error, 'BadGateway'}},
