@@ -1,6 +1,6 @@
 -module(benchmark).
 -export([coap_discover/1, coap_get/4, coap_post/4]).
--export([start/0, stop/0]).
+-export([start/0, start_dtls/1, stop/0, psk_ciphers/0]).
 -export([fib/1]).
 
 -behaviour(ecoap_handler).
@@ -8,24 +8,63 @@
 start() ->
     _ = application:stop(ecoap),
     {ok, _} = application:ensure_all_started(ecoap),
-    Routes = [
+    ecoap:start_udp(benchmark_udp, [{port, 5683}, {recbuf, 1048576}, {sndbuf, 1048576}],
+        #{routes => routes(), protocol_config => #{exchange_lifetime => 1500}}).
+
+start_dtls(psk) ->
+    _ = application:stop(ecoap),
+    {ok, _} = application:ensure_all_started(ecoap),
+    ecoap:start_dtls(benchmark_dtls, [
+        {port, 5684}, 
+        {recbuf, 1048576}, 
+        {sndbuf, 1048576}
+    ] ++ psk_options("ecoap.id", #{<<"ecoap.id">> => <<"ecoap.pwd">>}), #{routes => routes()});
+start_dtls(cert) ->
+    _ = application:stop(ecoap),
+    {ok, _} = application:ensure_all_started(ecoap),
+    ecoap:start_dtls(benchmark_dtls, [
+        {port, 5684}, 
+        {recbuf, 1048576}, 
+        {sndbuf, 1048576},
+        {keyfile, "./cert/server.key"}, 
+        {certfile, "./cert/server.crt"}, 
+        {cacertfile, "./cert/cowboy-ca.crt"},
+        {ciphers, ssl:cipher_suites(all, 'dtlsv1.2') ++ 
+                    ssl:cipher_suites(anonymous, 'dtlsv1.2') ++ 
+                    ssl:cipher_suites(anonymous, 'tlsv1.2')}
+    ], #{routes => routes()}).
+
+routes() ->
+    [
             {[<<"benchmark">>], ?MODULE},
             {[<<"fibonacci">>], ?MODULE},
             {[<<"helloWorld">>], ?MODULE},
             {[<<"shutdown">>], ?MODULE}
-    ],
-    {ok, _} = ecoap:start_udp(benchmark_udp, [{port, 5683}, {recbuf, 1048576}, {sndbuf, 1048576}],
-        #{routes => Routes, protocol_config => #{exchange_lifetime => 1500}}),
-    {ok, _} = ecoap:start_dtls(benchmark_dtls, [
-        {port, 5684}, 
-        {recbuf, 1048576}, 
-        {sndbuf, 1048576}, 
-        {keyfile, "./cert/server.key"}, 
-        {certfile, "./cert/server.crt"}, 
-        {cacertfile, "./cert/cowboy-ca.crt"}
-    ], #{routes => Routes
-        % protocol_config => #{exchange_lifetime => 1500},
-    }).
+    ].
+
+psk_options(ServerHint, UserState) -> 
+    [
+     {verify, verify_none},
+     {protocol, dtls},
+     {versions, [dtlsv1, 'dtlsv1.2']},
+     {ciphers, psk_ciphers()},
+     {psk_identity, ServerHint},
+     {user_lookup_fun,
+       {fun user_lookup/3, UserState}}
+].
+
+psk_ciphers() ->
+    ssl:filter_cipher_suites(
+        ssl:cipher_suites(anonymous, 'dtlsv1.2') ++ ssl:cipher_suites(anonymous, 'tlsv1.2'), 
+        [{key_exchange, fun(psk) -> true; 
+                    (dhe_psk) -> true; 
+                    (ecdhe_psk) -> true;
+                    (_) -> false end}]).
+
+user_lookup(psk, ClientPSKID, _UserState = PSKs) ->
+    ServerPickedPSK = maps:get(ClientPSKID, PSKs, <<"ecoap.pwd">>),
+    io:format("ClientPSKID: ~p, ServerPickedPSK: ~p~n", [ClientPSKID, ServerPickedPSK]),
+    {ok, ServerPickedPSK}.
 
 stop() ->
     application:stop(ecoap).
