@@ -239,7 +239,7 @@ init([ID={_, Uri, _}, HandlerConfig]) ->
 
 handle_call(_Request, _From, State) ->
     % error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
-    logger:log(error, "~p recvd unexpected call ~p in ~p~n", [self(), _Request, ?MODULE]),
+    logger:log(error, "~p received unexpected call ~p in ~p~n", [self(), _Request, ?MODULE]),
     {noreply, State}.
 
 handle_cast(shutdown, State=#state{observer=undefined}) ->
@@ -250,7 +250,7 @@ handle_cast(shutdown, State=#state{module=Module, obstate=ObState}) ->
     {stop, normal, cancel_observer(State)};
 handle_cast(_Msg, State) ->
     % error_logger:error_msg("unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
-    logger:log(error, "~p recvd unexpected cast ~p in ~p~n", [self(), _Msg, ?MODULE]),
+    logger:log(error, "~p received unexpected cast ~p in ~p~n", [self(), _Msg, ?MODULE]),
     {noreply, State}.
 
 %% TODO:
@@ -277,6 +277,11 @@ handle_info({coap_ack, _EpID, _EndpointPid, Ref}, State=#state{module=Module, ob
     % {ok, ObState2} = coap_ack(Module, Ref, ObState),
     {ok, ObState2} = invoke_callback(Module, coap_ack, 2, [Ref, ObState], {ok, ObState}),
     {noreply, State#state{obstate=ObState2}};
+% coap_error can be timeout or RST
+handle_info({coap_error, _, _, _, _}, State=#state{observer=undefined}) ->
+    % client is not in an observe relation
+    % might be seen during the first block-wise transfer of a separate response
+    {stop, normal, State};
 handle_info({coap_error, _EpID, _EndpointPid, _Ref, _Error}, State=#state{module=Module, obstate=ObState}) ->
     % ok = coap_unobserve(Module, ObState),
     _ = invoke_callback(Module, coap_unobserve, 1, [ObState], ok),
@@ -288,7 +293,7 @@ handle_info({timeout, TRef, cache_expired}, State=#state{timer=TRef}) ->
     {noreply, State#state{last_response=undefined}};
 handle_info(_Info, State=#state{observer=undefined}) ->
     % ignore unexpected notification
-    logger:log(error, "~p recvd unexpected info ~p in ~p~n", [self(), _Info, ?MODULE]),
+    logger:log(error, "~p received unexpected info ~p in ~p~n", [self(), _Info, ?MODULE]),
     {noreply, State};
 
 % 1. handle_info succeeds, 
@@ -303,7 +308,7 @@ handle_info(_Info, State=#state{observer=undefined}) ->
 % when will we call coap_unobserve?
 % 1. client send unobserve request, we should cleanup, return response to GET request if no exception occurrs, otherwise return internal error
 % 2. call shutdown of ecoap_handler, we should cleanup and not return anything to client(?)
-% 3. recvd client rst on observe, we should cleanup and not return anything
+% 3. received client rst on observe, we should cleanup and not return anything
 % 4. handle_info returns {stop, ...}, we should cleanup and not return anything to client(?)
 % 5. handle_info returns {error, ...}, we should cleanup return {error, ...} to client 
 
@@ -551,8 +556,6 @@ cancel_observe_and_send_response(Request, Response, State) ->
     cancel_observe_and_send_response(undefined, Request, Response, State).
 
 cancel_observe_and_send_response(Ref, Request, Response, State=#state{module=Module, obstate=ObState}) ->
-    % invoke user-defined callback first, so if it crashes, cancel_observer is not executed yet, 
-    % and will be executed in send_server_error/2
     % ok = coap_unobserve(Module, ObState),
     _ = invoke_callback(Module, coap_unobserve, 1, [ObState], ok),
     State2 = cancel_observer(State),
@@ -565,12 +568,11 @@ cancel_observe_and_send_response(Ref, Request, Response, State=#state{module=Mod
 
 cancel_observer(State=#state{uri=Uri}) ->
     ok = pg2:leave({coap_observer, Uri}, self()),
-    % TODO: will the belowing cause race condition?
     % will the last observer to leave this group please turn out the lights
-    % case pg2:get_members({coap_observer, Uri}) of
-    %     [] -> pg2:delete({coap_observer, Uri});
-    %     _Else -> ok
-    % end,
+    case pg2:get_members({coap_observer, Uri}) of
+        [] -> pg2:delete({coap_observer, Uri});
+        _Else -> ok
+    end,
     State#state{observer=undefined, obstate=undefined}.
 
 handle_post(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
@@ -702,11 +704,8 @@ set_timeout0(State, Timeout) ->
     TRef = erlang:start_timer(Timeout, self(), cache_expired),
     {noreply, State#state{timer=TRef}}.
 
-next_seq(Seq) ->
-    if
-        Seq < 16#0FFF -> Seq+1;
-        true -> 0
-    end.
+next_seq(Seq) when Seq < 16#0FFF -> Seq + 1;
+next_seq(_) -> 0.
 
 get_etag(Options) ->
     case coap_message:get_option('ETag', Options) of
@@ -793,12 +792,9 @@ invoke_callback(Module, Function, Arity, Args, Default) ->
 send_server_error(Request, State) ->
     send_server_error(undefined, Request, State).
 
-send_server_error(Ref, Request, State=#state{endpoint_pid=EndpointPid, observer=Observer}) ->
+send_server_error(Ref, Request, #state{endpoint_pid=EndpointPid}) ->
     {ok, _} = ecoap_endpoint:send_response(EndpointPid, Ref, ecoap_request:response({error, 'InternalServerError'}, <<>>, Request)),
-    case Observer of
-        undefined -> ok;
-        _ -> _ = cancel_observer(State), ok
-    end.
+    ok.
 
 error_terminate(Class, {case_clause, BadReply}, Stacktrace) ->
     erlang:raise(Class, {bad_return_value, BadReply}, Stacktrace);
