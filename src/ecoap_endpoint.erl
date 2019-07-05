@@ -145,21 +145,22 @@ get_peer_info(port, {_, {_, PeerPortNo}}) -> PeerPortNo.
 
 % client
 init([Transport, Socket, EpID, ProtoConfig0]) ->
-    % we would like to terminate as well when upper layer socket process terminates
-    process_flag(trap_exit, true),
-    ProtoConfig = ecoap_config:merge_protocol_config(ProtoConfig0#{endpoint_pid=>self()}),
-    Timer = endpoint_timer:start_timer(?SCAN_INTERVAL, start_scan),
-    logger:log(info, "endpoint process ~p started for EpID: ~p~n", [self(), EpID]),
-    {ok, #state{transport=Transport, sock=Socket, ep_id=EpID, nextmid=ecoap_message_id:first_mid(), timer=Timer, protocol_config=ProtoConfig}};
+    {ok, do_init(Transport, Socket, EpID, ProtoConfig0)};
 % server
 init([SupPid, Transport, Socket, EpID, Name]) ->
-    % need this also in server mode to avoid termination with ecoap_client 
-    process_flag(trap_exit, true),
     ProtoConfig0 = ecoap_registry:get_protocol_config(Name),
+    {ok, do_init(Transport, Socket, EpID, ProtoConfig0), {continue, {init, SupPid}}}.
+
+do_init(Transport, Socket, EpID, ProtoConfig0) ->
+    % we need trap exit in both client and server cases
+    % as a standalone client, the endpoint process is not stated under any supervisor
+    % we would like to terminate as well when upper layer socket process (likely a gen_server) terminates
+    % while in server mode, we would like to avoid the endpoint process exiting together with any ecoap_client that links to it
+    process_flag(trap_exit, true),
     ProtoConfig = ecoap_config:merge_protocol_config(ProtoConfig0#{endpoint_pid=>self()}),
     Timer = endpoint_timer:start_timer(?SCAN_INTERVAL, start_scan),
     logger:log(info, "endpoint process ~p started for EpID: ~p~n", [self(), EpID]),
-    {ok, #state{transport=Transport, sock=Socket, ep_id=EpID, nextmid=ecoap_message_id:first_mid(), timer=Timer, protocol_config=ProtoConfig}, {continue, {init, SupPid}}}.
+    #state{transport=Transport, sock=Socket, ep_id=EpID, nextmid=ecoap_message_id:first_mid(), timer=Timer, protocol_config=ProtoConfig}.
 
 handle_continue({init, SupPid}, State) ->
     {ok, HdlSupPid} = endpoint_sup:start_handler_sup(SupPid),
