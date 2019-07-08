@@ -47,8 +47,6 @@
 -opaque state() :: #state{}.
 -export_type([state/0]).
 
--include("ecoap.hrl").
-
 %% API.
 
 -spec start_link() -> {ok, pid()}.

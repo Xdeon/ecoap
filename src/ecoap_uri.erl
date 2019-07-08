@@ -3,7 +3,8 @@
 -export([decode_uri/1, encode_uri/1, get_uri_parms/1, get_peer_addr/1]).
 -export([default_transport/1, default_port/1]).
 
--include("ecoap.hrl").
+-define(DEFAULT_COAP_PORT, 5683).
+-define(DEFAULT_COAPS_PORT, 5684).
 
 -type uri() :: iodata().
 -type scheme() :: coap | coaps.
@@ -97,6 +98,7 @@ atom_to_scheme(coap) ->
 atom_to_scheme(coaps) ->
     <<"coaps">>.
 
+-spec default_port(atom()) -> inet:port_number().
 default_port(coap) -> ?DEFAULT_COAP_PORT;
 default_port(coaps) -> ?DEFAULT_COAPS_PORT.
 

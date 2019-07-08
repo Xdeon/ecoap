@@ -1,2 +1,0 @@
--define(DEFAULT_COAP_PORT, 5683).
--define(DEFAULT_COAPS_PORT, 5684).
