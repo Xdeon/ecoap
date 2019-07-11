@@ -87,7 +87,6 @@ get_uri_params(Uri) ->
 
 -spec dissect_pq(map()) -> map().
 dissect_pq(UriMap) ->
-    io:format("urimap: ~p~n", [UriMap]),
     Path = split_path(maps:get(path, UriMap, <<>>)),
     Query = split_query(maps:get('query', UriMap, <<>>)),
     UriMap#{path => Path, 'query' => Query}.
