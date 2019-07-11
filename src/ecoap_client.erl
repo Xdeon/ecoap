@@ -510,7 +510,7 @@ handle_command({request, Sync, Method, Uri, Content, Options}, {Pid, _}=From, St
 			{reply, {ok, Ref}, State#state{requests=maps:put(Ref, Request, Requests)}}
 	end;
 handle_command({observe, Uri, Options}, {Pid, _}, State=#state{endpoint_pid=EndpointPid, requests=Requests, observe_regs=ObsRegs, host=Host, ep_id=EpID}) ->
-	#{path:=Path} = ecoap_uri:get_uri_parms(Uri),
+	#{path:=Path} = ecoap_uri:get_uri_params(Uri),
 	Options2 = make_options(Host, EpID, Uri, Options),
 	ObsKey = {EpID, Path, coap_message:get_option('Accept', Options2)},
 	Ref = case maps:find(ObsKey, ObsRegs) of 
@@ -698,7 +698,7 @@ handle_error(Ref, Request, Error,
 
 make_options(Host, EpID, Uri, Options) ->
 	PortNo = ecoap_endpoint:get_peer_info(port, EpID),
-	#{path:=Path, 'query':=Query} = ecoap_uri:get_uri_parms(Uri),
+	#{path:=Path, 'query':=Query} = ecoap_uri:get_uri_params(Uri),
 	coap_message:add_option('Uri-Host', Host, 
 		coap_message:add_option('Uri-Port', PortNo, Options#{'Uri-Path'=>Path, 'Uri-Query'=>Query})).
 

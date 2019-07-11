@@ -1,6 +1,6 @@
 -module(ecoap_uri).
 
--export([decode_uri/1, encode_uri/1, get_uri_parms/1, get_peer_addr/1]).
+-export([decode_uri/1, encode_uri/1, get_uri_params/1, get_peer_addr/1]).
 -export([default_transport/1, default_port/1]).
 
 -define(DEFAULT_COAP_PORT, 5683).
@@ -30,26 +30,28 @@ decode_uri(Uri) when is_list(Uri) ->
     decode_uri(list_to_binary(Uri));
 decode_uri(Uri) ->
     case parse_uri(Uri) of 
-        {error, _, _} = Error -> 
-            Error;
-        UriMap -> 
-            transform_urimap(UriMap)
+        UriMap when is_map(UriMap) -> format_urimap(UriMap);
+        Error -> Error
     end.
 
 parse_uri(Uri) ->
-    uri_string:parse(uri_string:normalize(Uri)).
+    case uri_string:parse(Uri) of
+        UriMap when is_map(UriMap) ->
+            uri_string:normalize(UriMap, [return_map]);
+        Error -> Error
+    end.
 
-transform_urimap(UriMap0=#{host:=RawHost, scheme:=RawScheme}) ->
+format_urimap(UriMap0=#{host:=RawHost, scheme:=RawScheme}) ->
     case get_peer_addr(RawHost) of
         {error, Reason} ->
             {error, Reason};
         {ok, Host, IP} ->
-            UriMap = get_uri_parms(UriMap0),
+            UriMap = dissect_pq(UriMap0),
             Scheme = scheme_to_atom(RawScheme),
             Port = maps:get(port, UriMap, default_port(Scheme)),
             UriMap#{scheme => Scheme, host => Host, port => Port, ip => IP}
     end;
-transform_urimap(_) ->
+format_urimap(_) ->
     {error, invalid_uri}.
 
 -spec get_peer_addr(binary() | list() | tuple()) -> {ok, undefined | binary(), inet:ip_addres()} | {error, term()}.
@@ -72,21 +74,23 @@ get_peer_addr(Host) ->
             end
     end. 
 
--spec get_uri_parms(map()) -> map();
-                   (list() | binary()) -> map() | {error, _, _}.
-get_uri_parms(UriMap) when is_map(UriMap) ->
+% "/a/b/c?d=1&e=%E4%B8%8A%E6%B5%B7" -> 
+% #{path => [<<"a">>, <<"b">>, <<"c">>], query => [<<"d=1">>, <<"e=上海"/utf8>>], ...}
+-spec get_uri_params(list() | binary()) -> map() | {error, _, _}.
+get_uri_params(Uri) when is_list(Uri) ->
+    get_uri_params(list_to_binary(Uri));
+get_uri_params(Uri) ->
+    case parse_uri(Uri) of 
+        UriMap when is_map(UriMap) -> dissect_pq(UriMap);
+        Error -> Error
+    end.
+
+-spec dissect_pq(map()) -> map().
+dissect_pq(UriMap) ->
+    io:format("urimap: ~p~n", [UriMap]),
     Path = split_path(maps:get(path, UriMap, <<>>)),
     Query = split_query(maps:get('query', UriMap, <<>>)),
-    UriMap#{path => Path, 'query' => Query};
-get_uri_parms("/" ++ _ = Uri) ->
-    get_uri_parms(list_to_binary(Uri));
-get_uri_parms(Uri) when is_list(Uri) ->
-    get_uri_parms(list_to_binary("/" ++ Uri));
-get_uri_parms(Uri) ->
-    case parse_uri(Uri) of
-        {error, _, _} = Error -> Error;
-        UriMap -> get_uri_parms(UriMap)
-    end.
+    UriMap#{path => Path, 'query' => Query}.
 
 scheme_to_atom(<<"coap">>) ->
     coap;
@@ -110,7 +114,8 @@ split_query(Path) -> split_segments(Path, <<"&">>).
 
 split_path(<<>>) -> [];
 split_path(<<"/">>) -> [];
-split_path(<<"/", Path/binary>>) -> split_segments(Path, <<"/">>).
+split_path(<<"/", Path/binary>>) -> split_segments(Path, <<"/">>);
+split_path(Path) -> split_segments(Path, <<"/">>).
 
 % split_query([]) -> [];
 % split_query([$? | Path]) -> split_segments(Path, "&", []).
