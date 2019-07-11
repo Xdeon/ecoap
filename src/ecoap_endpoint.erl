@@ -157,10 +157,10 @@ do_init(Transport, Socket, EpID, ProtoConfig0) ->
     % we would like to terminate as well when upper layer socket process (likely a gen_server) terminates
     % while in server mode, we would like to avoid the endpoint process exiting together with any ecoap_client that links to it
     process_flag(trap_exit, true),
-    ProtoConfig = ecoap_config:merge_protocol_config(ProtoConfig0#{endpoint_pid=>self()}),
+    ProtoConfig = ecoap_config:merge_protocol_config(ProtoConfig0),
     Timer = endpoint_timer:start_timer(?SCAN_INTERVAL, start_scan),
     logger:log(info, "endpoint process ~p started for EpID: ~p~n", [self(), EpID]),
-    #state{transport=Transport, sock=Socket, ep_id=EpID, nextmid=ecoap_message_id:first_mid(), timer=Timer, protocol_config=ProtoConfig}.
+    #state{transport=Transport, sock=Socket, ep_id=EpID, nextmid=ecoap_message_id:first_mid(), timer=Timer, protocol_config=ProtoConfig#{endpoint_pid=>self()}}.
 
 handle_continue({init, SupPid}, State) ->
     {ok, HdlSupPid} = endpoint_sup:start_handler_sup(SupPid),

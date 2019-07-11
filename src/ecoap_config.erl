@@ -39,9 +39,9 @@ default_protocol_config() ->
 
 -spec merge_protocol_config(map()) -> protocol_config().
 merge_protocol_config(CustomConfig) ->
-    maps:update_with(non_lifetime, fun native_time/1, 
-    	maps:update_with(exchange_lifetime,  fun native_time/1, 
-    		maps:merge(default_protocol_config(), CustomConfig))).
+	Config = maps:merge(default_protocol_config(), CustomConfig),
+	#{non_lifetime:=Val1, exchange_lifetime:=Val2} = Config,
+	Config#{non_lifetime:=native_time(Val1), exchange_lifetime:=native_time(Val2)}.
 
 -spec handler_config(protocol_config()) -> handler_config().
 handler_config(Config) ->
