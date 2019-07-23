@@ -82,6 +82,7 @@ send(Socket, {_, {PeerIP, PeerPortNo}}, Datagram) ->
 init([TransOpts, ProtoConfig]) ->
 	case gen_udp:open(0, ecoap_socket:socket_opts(udp, TransOpts)) of
 		{ok, Socket} ->
+			process_flag(trap_exit, true),
 			{ok, {Addr, Port}} = inet:sockname(Socket),
 			logger:log(info, "ecoap listen on UDP ~s:~p", [inet:ntoa(Addr), Port]),
 			{ok, #state{socket=Socket, protocol_config=ProtoConfig}, {continue, init}};
@@ -103,7 +104,7 @@ handle_continue(init, State=#state{socket=Socket}) ->
 	_ = inet:setopts(Socket, [{active, ?ACTIVE_PACKETS}]),
 	{noreply, State};
 handle_continue({init, SupPid}, State=#state{socket=Socket}) ->
-	{ok, PoolPid} = ecoap_server_sup:start_endpoint_sup_sup(SupPid),
+	PoolPid = ecoap_server_sup:find_child(SupPid, endpoint_sup_sup),
 	ok = inet:setopts(Socket, [{active, ?ACTIVE_PACKETS}]),
 	{noreply, State#state{endpoint_pool=PoolPid}}.
 
