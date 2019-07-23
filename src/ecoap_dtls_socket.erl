@@ -65,11 +65,15 @@ callback_mode() ->
 	state_functions.
 
 init([accept, Name, ListenSocket, ProtoConfig, TimeOut]) ->
+	%% the following line can not be set at present because the socket process blocks when accepting 
+	%% setting trap_exit turns supervisor terminate signal into message, which can not be seen by a blocked process
+	% process_flag(trap_exit, true),
 	StateData = #data{protocol_config=ProtoConfig, server_name=Name, lsocket=ListenSocket, timeout=TimeOut},
 	{ok, accept, StateData, [{next_event, internal, accept}]};
 init([connect, Onwer, EpAddr={PeerIP, PeerPortNo}, TransOpts, ProtoConfig, TimeOut]) ->
 	case ssl:connect(PeerIP, PeerPortNo, ecoap_socket:socket_opts(dtls, TransOpts), TimeOut) of
 		{ok, Socket} ->
+			process_flag(trap_exit, true),
 			ok = ssl:setopts(Socket, [{active, ?ACTIVE_PACKETS}]),
 			EpID = {{dtls, self()}, EpAddr},
 			{ok, connected, #data{protocol_config=ProtoConfig, socket=Socket, ep_id=EpID, timeout=TimeOut}, [{next_event, internal, {connected, Onwer}}]};
