@@ -113,21 +113,26 @@
 	external_socket => ecoap_socket:socket_id()
 }.
 
+-type host() :: inet:hostname() | inet:ip_address() | binary().
+-type port_number() :: inet:port_number().
+
 -export_type([client_opts/0]).
 
 %% API.
--spec open(inet:hostname() | inet:ip_address(), inet:port_number()) -> {ok, pid()} | {error, term()}.
+-spec open(host(), port_number()) -> {ok, pid()} | {error, term()}.
 open(Host, Port) ->
 	open(Host, Port, #{}).
 
--spec open(inet:hostname() | inet:ip_address(), inet:port_number(), client_opts()) -> {ok, pid()} | {error, term()}.
-open(Host, Port, ClientOpts=#{owner:=_}) when is_list(Host); is_atom(Host); is_tuple(Host) ->
+-spec open(host(), port_number(), client_opts()) -> {ok, pid()} | {error, term()}.
+open(Host, Port, ClientOpts=#{owner:=_}) when is_binary(Host); is_list(Host); is_atom(Host); is_tuple(Host) ->
 	case check_options(ClientOpts) of
 		ok -> start_link(Host, Port, ClientOpts);
 		CheckError -> CheckError
 	end;
-open(Host, Port, ClientOpts) ->
-	open(Host, Port, ClientOpts#{owner=>self()}).
+open(Host, Port, ClientOpts) when is_binary(Host); is_list(Host); is_atom(Host); is_tuple(Host) ->
+	open(Host, Port, ClientOpts#{owner=>self()});
+open(_, _, _) ->
+	{error, invalid_args}.
 
 -spec close(pid()) -> ok.
 close(Pid) ->
