@@ -21,4 +21,4 @@ test/*.beam
 # Project specific
 src/core_link_parser.erl
 src/core_link_scanner.erl
-
+.vscode
