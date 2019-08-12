@@ -642,6 +642,11 @@ api_test_() ->
             coap_message:remove_options(['Uri-Path', 'Block2'], OptionExample))
     ].
 
+case_0_test() ->
+    Raw = <<64,1,0,0,177,97,1,98,1,99>>,
+    Msg = #coap_message{type = 'CON', code = 'GET', id = 0, token = <<>>, options = #{'Uri-Path' => [<<"a">>,<<"b">>,<<"c">>]}, payload = <<>>},
+    test_codec(Raw, Msg).
+
 case1_test_() ->
     Raw = <<64,1,45,91,183,115,101,110,115,111,114,115,4,116,101,109,112,193,2>>, 
     Msg = #coap_message{type='CON', code='GET', id=11611, options=#{'Block2' => {0,false,64}, 'Uri-Path' => [<<"sensors">>,<<"temp">>]}},
