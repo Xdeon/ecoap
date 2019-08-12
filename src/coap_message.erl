@@ -324,10 +324,10 @@ decode(<<?VERSION:2, Type:2, TKL:4, Class:3, DetailedCode:5, MsgId:16, Token:TKL
 % https://gist.github.com/azdle/b2d477ff183b8bbb0aa0
 
 decode_option_list(<<>>, _LastNum, OptionList) ->
-    {OptionList, <<>>};
+    {normalize_last_option(OptionList), <<>>};
 % RFC7252: The presence of a marker followed by a zero-length payload MUST be processed as a message format error.
 decode_option_list(<<16#FF:8/integer, Payload/binary>>, _LastNum, OptionList) when byte_size(Payload) > 0 ->
-    {OptionList, Payload};
+    {normalize_last_option(OptionList), Payload};
 decode_option_list(<<Delta:4, Len:4, Tail/binary>>, LastNum, OptionList) ->
     {Tail1, OptNum} = if
         Delta =< 12 ->
@@ -403,8 +403,8 @@ decode_option_list(<<Delta:4, Len:4, Tail/binary>>, LastNum, OptionList) ->
 % put options of the same id into one list
 append_option({SameOptId, OptVal2}, [{SameOptId, OptVal1} | OptionList]) ->
     case is_repeatable_option(SameOptId) of
-        % we must keep the order
-        true -> [{SameOptId, lists:append(OptVal1, [OptVal2])} | OptionList];
+        true -> [{SameOptId, [OptVal2 | OptVal1]} | OptionList];
+        % simplified impl:
         % each supernumerary option occurrence that appears subsequently in the message will overwrite existing one
         % false -> [{SameOptId, OptVal2} | OptionList]
         false ->
@@ -416,11 +416,19 @@ append_option({SameOptId, OptVal2}, [{SameOptId, OptVal1} | OptionList]) ->
                 false -> [{SameOptId, OptVal1} | OptionList]
             end
     end;
-append_option({OptId2, OptVal2}, OptionList) ->
+append_option({OptId2, OptVal2}, OptionList0) ->
+    OptionList = normalize_last_option(OptionList0),
     case is_repeatable_option(OptId2) of
         true -> [{OptId2, [OptVal2]} | OptionList];
         false -> [{OptId2, OptVal2} | OptionList]
     end.
+
+% honor the original order of option values of the last repeatable option in the list 
+normalize_last_option([{OptId, [_, _|_]=OptVal} | Rest]) ->
+    % we must keep the order
+    [{OptId, lists:reverse(OptVal)} | Rest];
+normalize_last_option(OptionList) ->
+    OptionList.
 
 %% TODO: Shall we follow the specification strictly and react to unrecognized options (including repeated non-repeatable ones)?
 
