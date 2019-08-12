@@ -642,7 +642,7 @@ api_test_() ->
             coap_message:remove_options(['Uri-Path', 'Block2'], OptionExample))
     ].
 
-case_0_test() ->
+case0_test() ->
     Raw = <<64,1,0,0,177,97,1,98,1,99>>,
     Msg = #coap_message{type = 'CON', code = 'GET', id = 0, token = <<>>, options = #{'Uri-Path' => [<<"a">>,<<"b">>,<<"c">>]}, payload = <<>>},
     test_codec(Raw, Msg).
