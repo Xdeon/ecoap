@@ -2,7 +2,7 @@
 
 ecoap is a variation of [gen_coap](https://github.com/gotthardp/gen_coap.git) with lots of modifications.
 
-ecoap aims to be a general purpose CoAP framework, but is under heavy development and experiment. Therefore it is **only for personal use** currently. For the same reason, it may not strictly comply with all license requirements (if any) for a while.
+ecoap aims to be a general purpose CoAP framework, but is under heavy development and experiment. Therefore it is **only for personal and experimental use** currently. For the same reason, it may not strictly comply with all license requirements (if any) for a while.
 
 ## Usage
 ### general configurations
@@ -18,6 +18,7 @@ ecoap aims to be a general purpose CoAP framework, but is under heavy developmen
 	external_socket => ecoap_socket:socket_id()
 }.
 
+%% in ecoap_socket.erl
 -type socket_id() -> {udp | dtls, pid()}.
 
 %% for server
@@ -28,6 +29,7 @@ ecoap aims to be a general purpose CoAP framework, but is under heavy developmen
 	num_acceptors => integer()
 }.
 
+%% in ecoap_registry.erl
 -type route_rule() :: {[binary()], module()}.
 
 %% for protocol
@@ -40,16 +42,19 @@ ecoap aims to be a general purpose CoAP framework, but is under heavy developmen
 	ack_random_factor := non_neg_integer(),
 	ack_timeout := non_neg_integer(),
 	max_block_size := non_neg_integer(),
-	max_body_size := non_neg_integer()
+	max_body_size := non_neg_integer(),
+	endpoint_pid => pid()
 }.
-
 ```
 
 ### client
 ```erlang
-%% ecoap_client module
--spec open(inet:hostname() | inet:ip_address(), inet:port_number()) -> {ok, pid()} | {error, term()}.
--spec open(inet:hostname() | inet:ip_address(), inet:port_number(), client_opts()) -> {ok, pid()} | {error, term()}.
+%% in ecoap_client.erl
+-spec open(host(), port_number()) -> {ok, pid()} | {error, term()}.
+-spec open(host(), port_number(), client_opts()) -> {ok, pid()} | {error, term()}.
+
+-type host() :: inet:hostname() | inet:ip_address() | binary().
+-type port_number() :: inet:port_number().
 ```
 
 Example:
@@ -64,7 +69,7 @@ end.
 
 ### server
 ```erlang
-%% ecoap module
+%% in ecoap.erl
 -spec start_udp(atom(), [gen_udp:option()], config()) -> supervisor:startchild_ret().
 -spec start_dtls(atom(), [ssl:connect_option()], config()) -> supervisor:startchild_ret().
 ```
@@ -88,8 +93,9 @@ Routes = [
         {port, 5684}, 
         {keyfile, ...}, 
         {certfile, ...}, 
-        {cacertfile, ...}
+        {cacertfile, ...}, 
+		...
     ], #{routes => Routes}).
 ```
 
-See /example for more details.
+See /src/example for more details.
