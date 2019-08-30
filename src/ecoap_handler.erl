@@ -697,12 +697,12 @@ send_response(Ref, Response, State=#state{endpoint_pid=EndpointPid, cache_timeou
 set_timeout(Timeout, State=#state{timer=undefined}) ->
     set_timeout0(State, Timeout);
 set_timeout(Timeout, State=#state{timer=Timer}) ->
-    _ = erlang:cancel_timer(Timer),
+    _ = endpoint_timer:cancel_timer(Timer),
     set_timeout0(State, Timeout).
 
 set_timeout0(State, Timeout) ->
-    TRef = erlang:start_timer(Timeout, self(), cache_expired),
-    {noreply, State#state{timer=TRef}}.
+    Timer = endpoint_timer:start_standard(Timeout, self(), cache_expired),
+    {noreply, State#state{timer=Timer}}.
 
 next_seq(Seq) when Seq < 16#0FFF -> Seq + 1;
 next_seq(_) -> 0.

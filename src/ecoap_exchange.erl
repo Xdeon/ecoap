@@ -259,7 +259,7 @@ check_next_state(#exchange{expire_time=0, stage=Stage}) when Stage =/= await_aac
 check_next_state(Exchange) -> Exchange.
 
 timeout_after(Time, EndpointPid, #exchange{trid=TrId, stage=Stage}) ->
-    erlang:send_after(Time, EndpointPid, {timeout, TrId, Stage}).
+    endpoint_timer:start_simple(Time, EndpointPid, {timeout, TrId, Stage}).
 
 cancel_timer(#exchange{timer=Timer}) ->
-    erlang:cancel_timer(Timer, [{async, true}, {info, false}]).
+    endpoint_timer:cancel_timer(Timer).

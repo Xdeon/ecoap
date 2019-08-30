@@ -158,7 +158,7 @@ do_init(Transport, Socket, EpID, ProtoConfig0) ->
     % while in server mode, we would like to avoid the endpoint process exiting together with any ecoap_client that links to it
     process_flag(trap_exit, true),
     ProtoConfig = ecoap_config:merge_protocol_config(ProtoConfig0),
-    Timer = endpoint_timer:start_timer(?SCAN_INTERVAL, start_scan),
+    Timer = endpoint_timer:start_kick(?SCAN_INTERVAL, start_scan),
     logger:log(info, "endpoint process ~p started for EpID: ~p~n", [self(), EpID]),
     #state{transport=Transport, sock=Socket, ep_id=EpID, nextmid=ecoap_message_id:first_mid(), timer=Timer, protocol_config=ProtoConfig#{endpoint_pid=>self()}}.
 
@@ -469,7 +469,7 @@ purge_handler_regs(ID, Regs) ->
 
 update_state(State=#state{trans=Trans, timer=Timer}, TrId, {Actions, Exchange}) ->
     {Exchange2, State2} = execute(Actions, Exchange, State),
-    {noreply, State2#state{trans=update_trans(TrId, Exchange2, Trans), timer=endpoint_timer:kick_timer(Timer)}}.
+    {noreply, State2#state{trans=update_trans(TrId, Exchange2, Trans), timer=endpoint_timer:kick(Timer)}}.
 
 update_trans(TrId, undefined, Trans) ->
     maps:remove(TrId, Trans);
@@ -592,6 +592,6 @@ purge_state(State=#state{tokens=Tokens, trans=Trans, rescnt=Count, client_set=CS
         {0, false} -> 
             {stop, normal, State};
         _ -> 
-            Timer2 = endpoint_timer:restart_timer(Timer),
+            Timer2 = endpoint_timer:restart_kick(Timer),
             {noreply, State#state{timer=Timer2}}
     end.
