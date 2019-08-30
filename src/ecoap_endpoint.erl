@@ -71,7 +71,7 @@ ping(EndpointPid) ->
 
 -spec ping(pid(), Ref) -> {ok, Ref}.
 ping(EndpointPid, Ref) ->
-    send_message(EndpointPid, Ref, {ping, ecoap_request:ping_msg()}).
+    send_message(EndpointPid, Ref, ecoap_request:ping_msg()).
 
 -spec send(pid(), coap_message:coap_message()) -> {ok, reference()}.
 send(EndpointPid, Message) ->
@@ -97,9 +97,9 @@ send_request(EndpointPid, Ref, Message) ->
     gen_server:cast(EndpointPid, {send_request, Message, {self(), Ref}}),
     {ok, Ref}.
 
--spec send_message(pid(), Ref, {ping | message, coap_message:coap_message()}) -> {ok, Ref}.
-send_message(EndpointPid, Ref, {Tag, Message}) ->
-    gen_server:cast(EndpointPid, {send_message, {Tag, Message}, {self(), Ref}}),
+-spec send_message(pid(), Ref, coap_message:coap_message()) -> {ok, Ref}.
+send_message(EndpointPid, Ref, Message) ->
+    gen_server:cast(EndpointPid, {send_message, Message, {self(), Ref}}),
     {ok, Ref}.
 
 -spec send_response(pid(), Ref, coap_message:coap_message()) -> {ok, Ref}.
@@ -376,23 +376,18 @@ code_change(_OldVsn, State, _Extra) ->
 % change a msg from NON to CON periodically & limit data rate according to some congestion control strategy (e.g. cocoa)
 % problem: What should we do when queue overflows? Should we inform the req/resp sender?
 
-make_new_request(Message, Receiver, State=#state{receivers=Receivers, protocol_config=#{token_length:=TKL}}) ->
+make_new_request(Message, Receiver, State=#state{nextmid=MsgId, tokens=Tokens, receivers=Receivers, protocol_config=#{token_length:=TKL}}) ->
     Token = case maps:find(Receiver, Receivers) of
         {ok, {OldToken, _, _}} -> OldToken;
         error -> ecoap_message_token:generate_token(TKL)
     end,
-    go_make_new_request(Message, Token, Receiver, State).
-
-go_make_new_request(Message, Token, Receiver={ClientPid, _}, State=#state{nextmid=MsgId, tokens=Tokens, receivers=Receivers, client_set=CSet}) ->
     Tokens2 = maps:put(Token, Receiver, Tokens),
     Receivers2 = maps:put(Receiver, {Token, {out, MsgId}, coap_message:get_option('Observe', Message)}, Receivers),
+    make_new_message(coap_message:set_token(Token, Message), Receiver, State#state{tokens=Tokens2, receivers=Receivers2}).
+   
+make_new_message(Message, Receiver={ClientPid, _}, State=#state{nextmid=MsgId, client_set=CSet}) ->
     CSet2 = update_client_set(ClientPid, CSet),
-    make_new_message({message, coap_message:set_token(Token, Message)}, Receiver, State#state{tokens=Tokens2, receivers=Receivers2, client_set=CSet2}).
-
-make_new_message({ping, Message}, Receiver, State) ->
-    go_make_new_request(Message, <<>>, Receiver, State);
-make_new_message({message, Message}, Receiver, State=#state{nextmid=MsgId}) ->
-    make_message({out, MsgId}, coap_message:set_id(MsgId, Message), Receiver, State#state{nextmid=ecoap_message_id:next_mid(MsgId)}).
+    make_message({out, MsgId}, coap_message:set_id(MsgId, Message), Receiver, State#state{client_set=CSet2, nextmid=ecoap_message_id:next_mid(MsgId)}).
 
 make_message(TrId, Message, Receiver, State=#state{protocol_config=ProtoConfig}) ->
     update_state(State, TrId,
@@ -419,14 +414,14 @@ make_new_response(Message, Receiver, State=#state{trans=Trans, protocol_config=P
                     % 1. we are going to send a NON response whose original NON request has not expired yet
                     % 2. ... send a separate response whose original request has been empty acked and not expired yet
                     % 3. ... send an observe notification whose original request has been responded and not expired yet
-                    make_new_message({message, Message}, Receiver, State)
+                    make_new_message(Message, Receiver, State)
             end;
         error ->
             % no TrState is found, which implies the original request has expired
             % 1. we are going to send a NON response whose original NON request has expired
             % 2. ... send a separate response whose original request has been empty acked and expired
             % 3. ... send an observe notification whose original request has been responded and expired
-            make_new_message({message, Message}, Receiver, State)
+            make_new_message(Message, Receiver, State)
     end.
 
 % find or initialize a new exchange
