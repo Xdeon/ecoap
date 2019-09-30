@@ -17,7 +17,7 @@
 ERLANG_MK_FILENAME := $(realpath $(lastword $(MAKEFILE_LIST)))
 export ERLANG_MK_FILENAME
 
-ERLANG_MK_VERSION = 8217957
+ERLANG_MK_VERSION = f007daa
 ERLANG_MK_WITHOUT = 
 
 # Make 3.81 and 3.82 are deprecated.
@@ -1236,9 +1236,9 @@ pkg_elixir_commit = master
 PACKAGES += elli
 pkg_elli_name = elli
 pkg_elli_description = Simple, robust and performant Erlang web server
-pkg_elli_homepage = https://github.com/knutin/elli
+pkg_elli_homepage = https://github.com/elli-lib/elli
 pkg_elli_fetch = git
-pkg_elli_repo = https://github.com/knutin/elli
+pkg_elli_repo = https://github.com/elli-lib/elli
 pkg_elli_commit = master
 
 PACKAGES += elvis
