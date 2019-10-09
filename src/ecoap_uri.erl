@@ -6,41 +6,40 @@
 -define(DEFAULT_COAP_PORT, 5683).
 -define(DEFAULT_COAPS_PORT, 5684).
 
--type uri() :: iodata().
--type scheme() :: coap | coaps.
--type host() :: binary().
--type path() :: [binary()].
--type 'query'() :: [binary()].
+-type coap_uri() :: iodata().
+-type coap_scheme() :: coap | coaps.
+-type coap_host() :: binary().
+-type coap_path() :: [binary()].
+-type coap_query() :: [binary()].
 
--type uri_map() :: #{
-    scheme := scheme(),
-    host := undefined | host(),
+-type coap_uri_map() :: #{
+    scheme := coap_scheme(),
+    host := undefined | coap_host(),
     port := inet:port_number(),
     ip := inet:ip_address(),
-    path := path(),
-    'query' := 'query'()
+    path := coap_path(),
+    'query' := coap_query()
 }.
 
--export_type([uri/0, scheme/0, host/0, path/0, 'query'/0, uri_map/0]).
+-export_type([coap_uri/0, coap_scheme/0, coap_host/0, coap_path/0, coap_query/0, coap_uri_map/0]).
 
--spec decode_uri(Uri) -> UriMap | {error, _, _} | {error, _} when
-    Uri :: uri(),
-    UriMap :: uri_map().
+-spec decode_uri(coap_uri()) -> coap_uri_map() | uri_string:error() | {error, inet:posix()}.
 decode_uri(Uri) when is_list(Uri) ->
     decode_uri(list_to_binary(Uri));
 decode_uri(Uri) ->
     case parse_uri(Uri) of 
-        UriMap when is_map(UriMap) -> format_urimap(UriMap);
-        Error -> Error
+        {error, _, _}=Error -> Error;
+        UriMap -> format_urimap(UriMap)
     end.
 
+-spec parse_uri(coap_uri()) -> uri_string:uri_map() | uri_string:error().
 parse_uri(Uri) ->
     case uri_string:parse(Uri) of
-        UriMap when is_map(UriMap) ->
-            uri_string:normalize(UriMap, [return_map]);
-        Error -> Error
+        {error, _, _}=Error -> Error;
+        UriMap -> uri_string:normalize(UriMap, [return_map])
     end.
 
+-spec format_urimap(uri_string:uri_map()) -> coap_uri_map() | {error, inet:posix() | invalid_uri}.
 format_urimap(UriMap0=#{host:=RawHost, scheme:=RawScheme}) ->
     case get_peer_addr(RawHost) of
         {error, Reason} ->
@@ -54,7 +53,7 @@ format_urimap(UriMap0=#{host:=RawHost, scheme:=RawScheme}) ->
 format_urimap(_) ->
     {error, invalid_uri}.
 
--spec get_peer_addr(binary() | list() | tuple()) -> {ok, undefined | binary(), inet:ip_addres()} | {error, term()}.
+-spec get_peer_addr(binary() | list() | tuple()) -> {ok, undefined | binary(), inet:ip_addres()} | {error, inet:posix()}.
 get_peer_addr(Host) when is_binary(Host) ->
     get_peer_addr(binary_to_list(Host));
 get_peer_addr(Host) ->
@@ -76,13 +75,13 @@ get_peer_addr(Host) ->
 
 % "/a/b/c?d=1&e=%E4%B8%8A%E6%B5%B7" -> 
 % #{path => [<<"a">>, <<"b">>, <<"c">>], query => [<<"d=1">>, <<"e=上海"/utf8>>], ...}
--spec get_uri_params(list() | binary()) -> map() | {error, _, _}.
+-spec get_uri_params(coap_uri()) -> map() | uri_string:error().
 get_uri_params(Uri) when is_list(Uri) ->
     get_uri_params(list_to_binary(Uri));
 get_uri_params(Uri) ->
     case parse_uri(Uri) of 
-        UriMap when is_map(UriMap) -> dissect_pq(UriMap);
-        Error -> Error
+        {error, _, _}=Error -> Error;
+        UriMap-> dissect_pq(UriMap)
     end.
 
 -spec dissect_pq(map()) -> map().
@@ -101,7 +100,6 @@ atom_to_scheme(coap) ->
 atom_to_scheme(coaps) ->
     <<"coaps">>.
 
--spec default_port(atom()) -> inet:port_number().
 default_port(coap) -> ?DEFAULT_COAP_PORT;
 default_port(coaps) -> ?DEFAULT_COAPS_PORT.
 
@@ -134,7 +132,7 @@ split_segments(Path, Char) ->
 make_segment(Seg) ->
     http_uri:decode(Seg).
 
--spec encode_uri(uri_map()) -> uri().
+-spec encode_uri(coap_uri_map()) -> coap_uri().
 encode_uri(#{scheme:=Scheme, host:=Host, port:=_, ip:=IP, path:=Path, 'query':=Query}=UriMap0) ->
     UriMap1 = UriMap0#{scheme=>atom_to_scheme(Scheme),
         host=>build_host(Host, IP),
