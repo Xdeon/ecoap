@@ -37,11 +37,11 @@ start_dtls(cert) ->
 
 % client sample code for dtls connection
 start_dtls_client(Host, Port, psk) ->
-    application:ensure_all_started(ssl),
+    _ = application:ensure_all_started(ssl),
     ecoap_client:open(Host, Port, 
         #{transport_opts => psk_options("ecoap.id", #{<<"ecoap.id">> => <<"ecoap.pwd">>})});
 start_dtls_client(Host, Port, cert) ->
-    application:ensure_all_started(ssl),
+    _ = application:ensure_all_started(ssl),
     ecoap_client:open(Host, Port, #{transport_opts => 
         [{ciphers, ssl:cipher_suites(all, 'dtlsv1.2') ++ 
                     ssl:cipher_suites(anonymous, 'dtlsv1.2') ++ 
@@ -80,11 +80,11 @@ user_lookup(psk, ClientPSKID, _UserState = PSKs) ->
     {ok, ServerPickedPSK}.
 
 stop() ->
-    ecoap:stop_udp(benchmark_udp),
+    _ = ecoap:stop_udp(benchmark_udp),
     application:stop(ecoap).
 
 stop_dtls() ->
-    ecoap:stop_dtls(benchmark_dtls),
+    _ = ecoap:stop_dtls(benchmark_dtls),
     application:stop(ecoap).
 
 % resource operations
