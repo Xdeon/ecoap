@@ -1,7 +1,7 @@
 -module(ecoap_dtls_listener_sup).
 -behaviour(supervisor).
 
--export([start_link/6]).
+-export([start_link/6, close/1]).
 -export([init/1]).
 -export([start_acceptor/1]).
 -export([count_acceptors/1]).
@@ -29,6 +29,9 @@ init([Name, TransOpts, ProtoConfig, TimeOut, NumAcceptors]) ->
 		{error, Error} ->
 			listener_error(Name, TransOpts, Error)                                                                                                                                                                                                                                                                                                                                                                                                                                        
 	end,
+	% temporary fix to: when listen socket holder process crashes the socket is not closed properly
+	persistent_term:put({?MODULE, Name}, ListenSocket),
+	% end of fix
 	{ok, {Addr, Port}} = ssl:sockname(ListenSocket),
 	logger:log(info, "ecoap listen on DTLS ~s:~p", [inet:ntoa(Addr), Port]),
 	ok = ecoap_registry:set_listener(Name, self()),
@@ -50,6 +53,17 @@ start_acceptor(Name) ->
 
 count_acceptors(Name) ->
     proplists:get_value(active, supervisor:count_children(Name), 0).
+
+% temporary fix to: when listen socket holder process crashes the socket is not closed properly
+close(Name) ->
+    case catch persistent_term:get({?MODULE, Name}) of
+        {'EXIT', _} -> 
+			ok;
+        Sock ->
+			persistent_term:erase({?MODULE, Name}),
+            ssl:close(Sock)
+    end.
+% end of fix
 
 -spec listener_error(atom(), any(), any()) -> no_return().
 listener_error(Name, TransOpts, Error) ->

@@ -35,7 +35,14 @@ stop_udp(Name) ->
 
 -spec stop_dtls(atom()) -> ok | {error, term()}.
 stop_dtls(Name) ->
-	stop_listener(Name).
+	% temporary fix to: when listen socket holder process crashes the socket is not closed properly
+	case stop_listener(Name) of
+		ok -> 
+			(ecoap_socket:listener_module(dtls)):close(Name);
+		Error ->
+			Error
+	end.
+	% end of fix
 
 start_listener(Name, Transport, TransOpts, Type, Config, Args) ->
 	{Routes, ProtoConfig} = init_common_config(Config),
