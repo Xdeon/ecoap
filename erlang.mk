@@ -17,7 +17,7 @@
 ERLANG_MK_FILENAME := $(realpath $(lastword $(MAKEFILE_LIST)))
 export ERLANG_MK_FILENAME
 
-ERLANG_MK_VERSION = 4508aa0
+ERLANG_MK_VERSION = ca9f494
 ERLANG_MK_WITHOUT = 
 
 # Make 3.81 and 3.82 are deprecated.
@@ -2811,11 +2811,11 @@ pkg_myproto_commit = master
 
 PACKAGES += mysql
 pkg_mysql_name = mysql
-pkg_mysql_description = Erlang MySQL Driver (from code.google.com)
-pkg_mysql_homepage = https://github.com/dizzyd/erlang-mysql-driver
+pkg_mysql_description = MySQL client library for Erlang/OTP
+pkg_mysql_homepage = https://github.com/mysql-otp/mysql-otp
 pkg_mysql_fetch = git
-pkg_mysql_repo = https://github.com/dizzyd/erlang-mysql-driver
-pkg_mysql_commit = master
+pkg_mysql_repo = https://github.com/mysql-otp/mysql-otp
+pkg_mysql_commit = 1.5.1
 
 PACKAGES += n2o
 pkg_n2o_name = n2o
@@ -6232,7 +6232,7 @@ app:: $(C_SRC_ENV) $(C_SRC_OUTPUT_FILE)
 test-build:: $(C_SRC_ENV) $(C_SRC_OUTPUT_FILE)
 
 $(C_SRC_OUTPUT_FILE): $(OBJECTS)
-	$(verbose) mkdir -p priv/
+	$(verbose) mkdir -p $(dir $@)
 	$(link_verbose) $(CC) $(OBJECTS) \
 		$(LDFLAGS) $(if $(filter $(C_SRC_TYPE),shared),-shared) $(LDLIBS) \
 		-o $(C_SRC_OUTPUT_FILE)
