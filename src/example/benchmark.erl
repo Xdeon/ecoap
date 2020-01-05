@@ -15,15 +15,21 @@ start() ->
 start_dtls(psk) ->
     _ = application:stop(ecoap),
     {ok, _} = application:ensure_all_started(ecoap),
-    ecoap:start_dtls(benchmark_dtls, [
+    ecoap:start_dtls(benchmark_dtls, 
+    [
         {port, 5684}, 
         {recbuf, 1048576}, 
         {sndbuf, 1048576}
-    ] ++ psk_options("ecoap.id", #{<<"ecoap.id">> => <<"ecoap.pwd">>}), #{routes => routes()});
+    ] ++ psk_options("plz_use_ecoap_id_a", 
+                    fun server_user_lookup/3, 
+                    #{<<"ecoap_id_a">> => <<"ecoap_pwd_a">>, 
+                    <<"ecoap_id_b">> => <<"ecoap_pwd_b">>}), 
+    #{routes => routes()});
 start_dtls(cert) ->
     _ = application:stop(ecoap),
     {ok, _} = application:ensure_all_started(ecoap),
-    ecoap:start_dtls(benchmark_dtls, [
+    ecoap:start_dtls(benchmark_dtls, 
+    [
         {port, 5684}, 
         {recbuf, 1048576}, 
         {sndbuf, 1048576},
@@ -33,13 +39,25 @@ start_dtls(cert) ->
         {ciphers, ssl:cipher_suites(all, 'dtlsv1.2') ++ 
                     ssl:cipher_suites(anonymous, 'dtlsv1.2') ++ 
                     ssl:cipher_suites(anonymous, 'tlsv1.2')}
-    ], #{routes => routes()}).
+    ], 
+    #{routes => routes()}).
+
+stop() ->
+    _ = ecoap:stop_udp(benchmark_udp),
+    application:stop(ecoap).
+
+stop_dtls() ->
+    _ = ecoap:stop_dtls(benchmark_dtls),
+    application:stop(ecoap).
 
 % client sample code for dtls connection
 start_dtls_client(Host, Port, psk) ->
     _ = application:ensure_all_started(ssl),
     ecoap_client:open(Host, Port, 
-        #{transport_opts => psk_options("ecoap.id", #{<<"ecoap.id">> => <<"ecoap.pwd">>})});
+        #{transport_opts => psk_options("ecoap_id_b", 
+                                fun client_user_lookup/3, 
+                                #{<<"ecoap_id_a">> => <<"ecoap_pwd_a">>, 
+                                <<"ecoap_id_b">> => <<"ecoap_pwd_b">>})});
 start_dtls_client(Host, Port, cert) ->
     _ = application:ensure_all_started(ssl),
     ecoap_client:open(Host, Port, #{transport_opts => 
@@ -47,6 +65,7 @@ start_dtls_client(Host, Port, cert) ->
                     ssl:cipher_suites(anonymous, 'dtlsv1.2') ++ 
                     ssl:cipher_suites(anonymous, 'tlsv1.2')}]}).
 
+% utility functions
 routes() ->
     [
             {[<<"benchmark">>], ?MODULE},
@@ -55,15 +74,15 @@ routes() ->
             {[<<"shutdown">>], ?MODULE}
     ].
 
-psk_options(ServerHint, UserState) -> 
+psk_options(Identity, LookupFun, UserState) -> 
     [
      {verify, verify_none},
      {protocol, dtls},
      {versions, [dtlsv1, 'dtlsv1.2']},
      {ciphers, psk_ciphers()},
-     {psk_identity, ServerHint},
+     {psk_identity, Identity},
      {user_lookup_fun,
-       {fun user_lookup/3, UserState}}
+       {LookupFun, UserState}}
 ].
 
 psk_ciphers() ->
@@ -74,18 +93,21 @@ psk_ciphers() ->
                     (ecdhe_psk) -> true;
                     (_) -> false end}]).
 
-user_lookup(psk, ClientPSKID, _UserState = PSKs) ->
-    ServerPickedPSK = maps:get(ClientPSKID, PSKs, <<"ecoap.pwd">>),
+server_user_lookup(psk, ClientPSKID, _UserState = PSKs) ->
+    ServerPickedPSK = maps:get(<<"ecoap_id_a">>, PSKs),
     io:format("ClientPSKID: ~p, ServerPickedPSK: ~p~n", [ClientPSKID, ServerPickedPSK]),
     {ok, ServerPickedPSK}.
 
-stop() ->
-    _ = ecoap:stop_udp(benchmark_udp),
-    application:stop(ecoap).
+client_user_lookup(psk, ServerHint, _UserState = PSKs) ->
+    ServerPskId = server_suggested_psk_id(ServerHint),
+    ClientPsk = maps:get(ServerPskId, PSKs),
+    io:format("ServerHint:~p, ServerSuggestedPSKID:~p, ClientPickedPSK: ~p~n",
+              [ServerHint, ServerPskId, ClientPsk]),
+    {ok, ClientPsk}.
 
-stop_dtls() ->
-    _ = ecoap:stop_dtls(benchmark_dtls),
-    application:stop(ecoap).
+server_suggested_psk_id(ServerHint) ->
+    [_, Psk] = binary:split(ServerHint, <<"plz_use_">>),
+    Psk.
 
 % resource operations
 coap_discover(Prefix) ->
