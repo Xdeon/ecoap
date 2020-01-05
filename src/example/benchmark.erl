@@ -54,16 +54,18 @@ stop_dtls() ->
 start_dtls_client(Host, Port, psk) ->
     _ = application:ensure_all_started(ssl),
     ecoap_client:open(Host, Port, 
-        #{transport_opts => psk_options("ecoap_id_b", 
+        #{transport => dtls,
+        transport_opts => psk_options("ecoap_id_b", 
                                 fun client_user_lookup/3, 
                                 #{<<"ecoap_id_a">> => <<"ecoap_pwd_a">>, 
                                 <<"ecoap_id_b">> => <<"ecoap_pwd_b">>})});
 start_dtls_client(Host, Port, cert) ->
     _ = application:ensure_all_started(ssl),
-    ecoap_client:open(Host, Port, #{transport_opts => 
-        [{ciphers, ssl:cipher_suites(all, 'dtlsv1.2') ++ 
-                    ssl:cipher_suites(anonymous, 'dtlsv1.2') ++ 
-                    ssl:cipher_suites(anonymous, 'tlsv1.2')}]}).
+    ecoap_client:open(Host, Port, 
+        #{transport => dtls,
+        transport_opts => [{ciphers, ssl:cipher_suites(all, 'dtlsv1.2') ++ 
+                                    ssl:cipher_suites(anonymous, 'dtlsv1.2') ++ 
+                                    ssl:cipher_suites(anonymous, 'tlsv1.2')}]}).
 
 % utility functions
 routes() ->
@@ -87,11 +89,7 @@ psk_options(Identity, LookupFun, UserState) ->
 
 psk_ciphers() ->
     ssl:filter_cipher_suites(
-        ssl:cipher_suites(anonymous, 'dtlsv1.2') ++ ssl:cipher_suites(anonymous, 'tlsv1.2'), 
-        [{key_exchange, fun(psk) -> true; 
-                    (dhe_psk) -> true; 
-                    (ecdhe_psk) -> true;
-                    (_) -> false end}]).
+        ssl:cipher_suites(anonymous, 'dtlsv1.2'), [{cipher, fun(aes_128_ccm_8) -> true; (_) -> false end}]).
 
 server_user_lookup(psk, ClientPSKID, _UserState = PSKs) ->
     ServerPickedPSK = maps:get(<<"ecoap_id_a">>, PSKs),
