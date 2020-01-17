@@ -1,4 +1,4 @@
--module(ecoap_message_token).
+-module(coap_message_token).
 -export([generate_token/1]).
 
 -spec generate_token(non_neg_integer()) -> coap_message:token().

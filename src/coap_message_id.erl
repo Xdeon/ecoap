@@ -1,4 +1,4 @@
--module(ecoap_message_id).
+-module(coap_message_id).
 -export([first_mid/0, next_mid/1]).
 
 -define(MAX_MESSAGE_ID, 65535). % 16-bit number

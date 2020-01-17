@@ -85,7 +85,7 @@ send(EndpointPid, _Type, _Code, Message) ->
 % -spec send_request(pid(), Ref, coap_message:coap_message()) -> {ok, Ref}.
 % send_request(EndpointPid, Ref, Message=#coap_message{token= <<>>}) ->
 %     % when no token is assigned then generate one
-%     gen_server:cast(EndpointPid, {send_request, Message#coap_message{token=ecoap_message_token:generate_token()}, {self(), Ref}}),
+%     gen_server:cast(EndpointPid, {send_request, Message#coap_message{token=coap_message_token:generate_token()}, {self(), Ref}}),
 %     {ok, Ref};
 % send_request(EndpointPid, Ref, Message) ->
 %     % use user defined token
@@ -160,7 +160,7 @@ do_init(Transport, Socket, EpID, ProtoConfig0) ->
     ProtoConfig = ecoap_config:merge_protocol_config(ProtoConfig0),
     Timer = endpoint_timer:start_kick(?SCAN_INTERVAL, start_scan),
     logger:log(info, "endpoint process ~p started for EpID: ~p~n", [self(), EpID]),
-    #state{transport=Transport, sock=Socket, ep_id=EpID, nextmid=ecoap_message_id:first_mid(), timer=Timer, protocol_config=ProtoConfig#{endpoint_pid=>self()}}.
+    #state{transport=Transport, sock=Socket, ep_id=EpID, nextmid=coap_message_id:first_mid(), timer=Timer, protocol_config=ProtoConfig#{endpoint_pid=>self()}}.
 
 handle_continue({init, SupPid}, State) ->
     {ok, HdlSupPid} = endpoint_sup:start_handler_sup(SupPid),
@@ -379,7 +379,7 @@ code_change(_OldVsn, State, _Extra) ->
 make_new_request(Message, Receiver, State=#state{nextmid=MsgId, tokens=Tokens, receivers=Receivers, protocol_config=#{token_length:=TKL}}) ->
     Token = case maps:find(Receiver, Receivers) of
         {ok, {OldToken, _, _}} -> OldToken;
-        error -> ecoap_message_token:generate_token(TKL)
+        error -> coap_message_token:generate_token(TKL)
     end,
     Tokens2 = maps:put(Token, Receiver, Tokens),
     Receivers2 = maps:put(Receiver, {Token, {out, MsgId}, coap_message:get_option('Observe', Message)}, Receivers),
@@ -387,7 +387,7 @@ make_new_request(Message, Receiver, State=#state{nextmid=MsgId, tokens=Tokens, r
    
 make_new_message(Message, Receiver={ClientPid, _}, State=#state{nextmid=MsgId, client_set=CSet}) ->
     CSet2 = update_client_set(ClientPid, CSet),
-    make_message({out, MsgId}, coap_message:set_id(MsgId, Message), Receiver, State#state{client_set=CSet2, nextmid=ecoap_message_id:next_mid(MsgId)}).
+    make_message({out, MsgId}, coap_message:set_id(MsgId, Message), Receiver, State#state{client_set=CSet2, nextmid=coap_message_id:next_mid(MsgId)}).
 
 make_message(TrId, Message, Receiver, State=#state{protocol_config=ProtoConfig}) ->
     update_state(State, TrId,
