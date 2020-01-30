@@ -23,6 +23,9 @@ start_link(_ServerSupPid, Name, TransOpts, ProtoConfig, TimeOut, NumAcceptors) -
 	supervisor:start_link({local, Name}, ?MODULE, [Name, TransOpts, ProtoConfig, TimeOut, NumAcceptors]).
 
 init([Name, TransOpts, ProtoConfig, TimeOut, NumAcceptors]) ->
+	% temporary fix to: when listen socket holder process crashes the socket is not closed properly
+	_ = close(Name),
+	% end of fix
 	ListenSocket = case ssl:listen(0, ecoap_socket:socket_opts(dtls, TransOpts)) of
 		{ok, Socket} -> 
 			Socket;
