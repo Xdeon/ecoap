@@ -7,16 +7,21 @@
 -behaviour(ecoap_handler).
 
 start() ->
-    _ = application:stop(ecoap),
     {ok, _} = application:ensure_all_started(ecoap),
-    ecoap:start_udp(benchmark_udp, [{port, 5683}, {recbuf, 1048576}, {sndbuf, 1048576}],
+    ecoap:start_udp(benchmark_udp, 
+        [
+            {ip, {0,0,0,0}}, 
+            {port, 5683}, 
+            {recbuf, 1048576}, 
+            {sndbuf, 1048576}
+        ],
         #{routes => routes(), protocol_config => #{exchange_lifetime => 1500}}).
 
 start_dtls(psk) ->
-    _ = application:stop(ecoap),
     {ok, _} = application:ensure_all_started(ecoap),
     ecoap:start_dtls(benchmark_dtls, 
     [
+        {ip, {0,0,0,0}},
         {port, 5684}, 
         {recbuf, 1048576}, 
         {sndbuf, 1048576}
@@ -26,10 +31,10 @@ start_dtls(psk) ->
                     <<"ecoap_id_b">> => <<"ecoap_pwd_b">>}), 
     #{routes => routes()});
 start_dtls(cert) ->
-    _ = application:stop(ecoap),
     {ok, _} = application:ensure_all_started(ecoap),
     ecoap:start_dtls(benchmark_dtls, 
     [
+        {ip, {0,0,0,0}},
         {port, 5684}, 
         {recbuf, 1048576}, 
         {sndbuf, 1048576},
