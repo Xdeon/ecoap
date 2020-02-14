@@ -199,12 +199,10 @@ close(Pid) ->
 
 -spec notify(ecoap_uri:path(), term()) -> ok.
 notify(Uri, Info) ->
-    case pg2:get_members({coap_observer, Uri}) of
-        {error, _} -> ok;
-        List -> lists:foreach(fun(Pid) -> Pid ! {coap_notify, Info} end, List)
-        % Maybe the following is better
-        % List -> lists:foreach(fun(Pid) -> erlang:send(Pid, {coap_notify, Info}, [noconnect]) end, List)
-    end.
+    List = spg:get_members({coap_observer, Uri}),
+    lists:foreach(fun(Pid) -> Pid ! {coap_notify, Info} end, List).
+    % Maybe the following is better
+    % List -> lists:foreach(fun(Pid) -> erlang:send(Pid, {coap_notify, Info}, [noconnect]) end, List)
 
 -spec handler_id(coap_message:coap_message()) -> handler_id().
 handler_id(Message=#coap_message{code=Method}) ->
@@ -532,8 +530,8 @@ handle_observe(EpID, Request, Content,
     case invoke_callback(Module, coap_observe, 4, [EpID, Prefix, Suffix, Request], {error, 'MethodNotAllowed'}) of
         {ok, ObState} ->
             ecoap_endpoint:register_handler(EndpointPid, ID, self()),
-            pg2:create({coap_observer, Uri}),
-            ok = pg2:join({coap_observer, Uri}, self()),
+            % pg2:create({coap_observer, Uri}),
+            ok = spg:join({coap_observer, Uri}, self()),
             return_resource(Request, Content, State#state{observer=Request, obstate=ObState});
         {error, 'MethodNotAllowed'} ->
             % observe is not supported, fallback to standard get
@@ -567,12 +565,12 @@ cancel_observe_and_send_response(Ref, Request, Response, State=#state{module=Mod
     end.
 
 cancel_observer(State=#state{uri=Uri}) ->
-    ok = pg2:leave({coap_observer, Uri}, self()),
+    ok = spg:leave({coap_observer, Uri}, self()),
     % will the last observer to leave this group please turn out the lights
-    case pg2:get_members({coap_observer, Uri}) of
-        [] -> pg2:delete({coap_observer, Uri});
-        _Else -> ok
-    end,
+    % case pg2:get_members({coap_observer, Uri}) of
+    %     [] -> pg2:delete({coap_observer, Uri});
+    %     _Else -> ok
+    % end,
     State#state{observer=undefined, obstate=undefined}.
 
 handle_post(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
