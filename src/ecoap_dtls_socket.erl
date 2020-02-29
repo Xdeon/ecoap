@@ -95,7 +95,8 @@ accept(_, accept, StateData=#data{server_name=Name, lsocket=ListenSocket}) ->
 		{error, closed} ->
 			{stop, closed};
 		%% Continue otherwise.
-		{error, _} ->
+		{error, Reason} ->
+			logger:log(warning, "DTLS acceptor failed accepting and stay waiting: ~p~n", [Reason]),
 			{keep_state_and_data, [{next_event, internal, accept}]}
 	end;
 accept(EventType, EventData, _StateData) ->
@@ -151,7 +152,7 @@ connected(info, {ssl_error, Socket, Reason}, StateData=#data{socket=Socket}) ->
     {stop, {shutdown, Reason}, StateData};
 % handle endpoint process down
 connected(info, {'DOWN', Ref, process, _Pid, Reason}, StateData=#data{endpoint_ref=Ref}) ->
-	%% TODO: whether to terminate after endpoint process goes downn as a server? if not, when to?
+	%% TODO: whether to terminate after endpoint process goes down as a server? if not, when to?
 	{stop, Reason, StateData};
 connected(EventType, EventData, _StateData) ->
     logger:log(error, "~p received unexpected event ~p in state ~p in ~p~n", [self(), {EventType, EventData}, ?FUNCTION_NAME, ?MODULE]),
