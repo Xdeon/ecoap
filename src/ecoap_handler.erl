@@ -1,6 +1,7 @@
 -module(ecoap_handler).
 -behaviour(gen_server).
 
+%% API.
 -export([start_link/2, close/1, notify/2, handler_id/1]).
 
 %% gen_server.
@@ -44,7 +45,8 @@
 
 -export_type([reason/0, handler_id/0]).
 
-%% TODO: consider method to specify type of sperate response
+%% TODO: 
+%% consider method to specify type of sperate response
 %% e.g. CON -> Empty ACK -> CON -> Empty ACK, or
 %% CON -> Empty ACK -> NON
 
@@ -223,7 +225,6 @@ handler_id(Message=#coap_message{code=Method}) ->
 
 init([ID={_, Uri, _}, HandlerConfig]) ->
     #{endpoint_pid:=EndpointPid, exchange_lifetime:=Timeout, max_body_size:=MaxBodySize, max_block_size:=MaxBlockSize} = HandlerConfig,
-    % ok = ecoap_endpoint:monitor_handler(EndpointPid, self()),
     State = #state{insegs={orddict:new(), undefined},
                     endpoint_pid=EndpointPid, 
                     cache_timeout=Timeout, 
@@ -236,7 +237,6 @@ init([ID={_, Uri, _}, HandlerConfig]) ->
     {ok, State}.
 
 handle_call(_Request, _From, State) ->
-    % error_logger:error_msg("unexpected call ~p received by ~p as ~p~n", [_Request, self(), ?MODULE]),
     logger:log(error, "~p received unexpected call ~p in ~p~n", [self(), _Request, ?MODULE]),
     {noreply, State}.
 
@@ -247,7 +247,6 @@ handle_cast(shutdown, State=#state{module=Module, obstate=ObState}) ->
     _ = invoke_callback(Module, coap_unobserve, 1, [ObState], ok),
     {stop, normal, cancel_observer(State)};
 handle_cast(_Msg, State) ->
-    % error_logger:error_msg("unexpected cast ~p received by ~p as ~p~n", [_Msg, self(), ?MODULE]),
     logger:log(error, "~p received unexpected cast ~p in ~p~n", [self(), _Msg, ?MODULE]),
     {noreply, State}.
 
@@ -261,7 +260,6 @@ handle_info({coap_request, EpID, EndpointPid, _Receiver=undefined, Request}, Sta
     % the receiver will be determined based on the URI
     case ecoap_registry:match_handler(Uri) of
         {{Prefix, Module}, Suffix} ->
-            % io:fwrite("Prefix:~p Uri:~p~n", [Prefix, Uri]),
             handle(EpID, Request, State#state{prefix=Prefix, suffix=Suffix, module=Module});
         undefined ->
             {ok, _} = ecoap_endpoint:send(EndpointPid,
@@ -314,10 +312,10 @@ handle_info(_Info, State=#state{observer=undefined}) ->
 % 2, 3 is not in the chain
 % 4, 5 need more considering
 
-%% TODO: how to safely invoke coap_unobserve and ensure only invoke once, no matter under sucess or failure
+%% TODO: 
+%% how to safely invoke coap_unobserve and ensure only invoke once, no matter under sucess or failure
 
 handle_info(Info, State=#state{module=Module, observer=Observer, obstate=ObState}) ->
-    % try case handle_info(Module, Info, Observer, ObState) of
     try case invoke_callback(Module, handle_info, 3, [Info, Observer, ObState], {noreply, ObState}) of
         {notify, Resource, ObState2} -> 
             handle_notify(undefined, Resource, ObState2, Observer, State);
@@ -366,7 +364,6 @@ handle(EpID, Request, State=#state{id=ID, cache_timeout=TimeOut, endpoint_pid=En
     Block1 = coap_message:get_option('Block1', Request),
     try assemble_payload(Request, Block1, State) of
         {'Continue', State2} ->
-            % io:format("Has Block1~n"),
             ecoap_endpoint:register_handler(EndpointPid, ID, self()),
             {ok, _} = ecoap_endpoint:send_response(EndpointPid, undefined,
                 coap_message:set_option('Block1', Block1,
@@ -437,7 +434,6 @@ try_check_resource(EpID, Request, State) ->
     end.
 
 check_resource(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
-    % Result = case coap_get(Module, EpID, Prefix, Suffix, Request) of
     Result = case invoke_callback(Module, coap_get, 4, [EpID, Prefix, Suffix, Request], {error, 'MethodNotAllowed'}) of
         {ok, Content} -> Content;
         Other -> Other
@@ -493,7 +489,6 @@ handle_method(_EpID, Request, _Content, State) ->
     return_response(Request, {error, 'MethodNotAllowed'}, State).
 
 handle_fetch(EpID, Request, State=#state{module=Module, prefix=Prefix, suffix=Suffix}) ->
-    % case coap_fetch(Module, EpID, Prefix, Suffix, Request) of
     case invoke_callback(Module, coap_fetch, 4, [EpID, Prefix, Suffix, Request], {error, 'MethodNotAllowed'}) of
         {ok, Content2} ->
             check_observe(EpID, Request, Content2, State);
@@ -515,7 +510,8 @@ check_observe(EpID, Request, Content, State) ->
             return_response(Request, {error, 'BadOption'}, State)
     end.
 
-% TODO: when there is a cluster of servers, it is likely a load balancer that does not use sticky mode
+% TODO: 
+% when there is a cluster of servers, it is likely a load balancer that does not use sticky mode
 % dispatches observe requests from a single client to different server instances, which creates duplicate 
 % observer handler instances
 % This can be avoided using another type of group which looks like {EpID, Uri} consisting of only one member 
@@ -526,11 +522,9 @@ check_observe(EpID, Request, Content, State) ->
 handle_observe(EpID, Request, Content, 
         State=#state{endpoint_pid=EndpointPid, id=ID, prefix=Prefix, suffix=Suffix, uri=Uri, module=Module, observer=undefined}) ->
     % the first observe request from this user to this resource
-    % case coap_observe(Module, EpID, Prefix, Suffix, Request) of
     case invoke_callback(Module, coap_observe, 4, [EpID, Prefix, Suffix, Request], {error, 'MethodNotAllowed'}) of
         {ok, ObState} ->
             ecoap_endpoint:register_handler(EndpointPid, ID, self()),
-            % pg2:create({coap_observer, Uri}),
             ok = spg:join({coap_observer, Uri}, self()),
             return_resource(Request, Content, State#state{observer=Request, obstate=ObState});
         {error, 'MethodNotAllowed'} ->
@@ -554,7 +548,6 @@ cancel_observe_and_send_response(Request, Response, State) ->
     cancel_observe_and_send_response(undefined, Request, Response, State).
 
 cancel_observe_and_send_response(Ref, Request, Response, State=#state{module=Module, obstate=ObState}) ->
-    % ok = coap_unobserve(Module, ObState),
     _ = invoke_callback(Module, coap_unobserve, 1, [ObState], ok),
     State2 = cancel_observer(State),
     case Response of
@@ -566,15 +559,9 @@ cancel_observe_and_send_response(Ref, Request, Response, State=#state{module=Mod
 
 cancel_observer(State=#state{uri=Uri}) ->
     ok = spg:leave({coap_observer, Uri}, self()),
-    % will the last observer to leave this group please turn out the lights
-    % case pg2:get_members({coap_observer, Uri}) of
-    %     [] -> pg2:delete({coap_observer, Uri});
-    %     _Else -> ok
-    % end,
     State#state{observer=undefined, obstate=undefined}.
 
 handle_post(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
-    % case coap_post(Module, EpID, Prefix, Suffix, Request) of
     case invoke_callback(Module, coap_post, 4, [EpID, Prefix, Suffix, Request], {error, 'MethodNotAllowed'}) of
         {ok, Code, Content} ->
             return_resource(undefined, Request, {ok, Code}, Content, State);
@@ -585,7 +572,6 @@ handle_post(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=Mod
     end.
 
 handle_put(EpID, Request, Content, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
-    % case coap_put(Module, EpID, Prefix, Suffix, Request) of
     case invoke_callback(Module, coap_put, 4, [EpID, Prefix, Suffix, Request], {error, 'MethodNotAllowed'}) of
         ok ->
             return_response(Request, created_or_changed(Content), State);
@@ -598,7 +584,6 @@ handle_put(EpID, Request, Content, State=#state{prefix=Prefix, suffix=Suffix, mo
     end.
 
 handle_patch(EpID, Request, Content, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
-    % case coap_patch(Module, EpID, Prefix, Suffix, Request) of
     case invoke_callback(Module, coap_patch, 4, [EpID, Prefix, Suffix, Request], {error, 'MethodNotAllowed'}) of
         ok ->
             return_response(Request, created_or_changed(Content), State);
@@ -611,7 +596,6 @@ handle_patch(EpID, Request, Content, State=#state{prefix=Prefix, suffix=Suffix, 
     end.
 
 handle_ipatch(EpID, Request, Content, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
-    % case coap_ipatch(Module, EpID, Prefix, Suffix, Request) of
     case invoke_callback(Module, coap_ipatch, 4, [EpID, Prefix, Suffix, Request], {error, 'MethodNotAllowed'}) of
         ok ->
             return_response(Request, created_or_changed(Content), State);
@@ -629,7 +613,6 @@ created_or_changed(_Content) ->
     {ok, 'Changed'}.
 
 handle_delete(EpID, Request, State=#state{prefix=Prefix, suffix=Suffix, module=Module}) ->
-    % case coap_delete(Module, EpID, Prefix, Suffix, Request) of
     case invoke_callback(Module, coap_delete, 4, [EpID, Prefix, Suffix, Request], {error, 'MethodNotAllowed'}) of
         ok ->
             return_response(Request, {ok, 'Deleted'}, State);
@@ -674,7 +657,6 @@ return_response(Ref, Request, Code, Reason, State) ->
     send_response(Ref, ecoap_request:response(Code, Reason, Request), State#state{last_response=Code}).
 
 send_response(Ref, Response, State=#state{endpoint_pid=EndpointPid, cache_timeout=TimeOut, observer=Observer, id=ID}) ->
-    % io:fwrite("<- ~p~n", [Response]),
     {ok, _} = ecoap_endpoint:send_response(EndpointPid, Ref, Response),
     case coap_message:get_option('Block2', Response) of
         {_, true, _} ->

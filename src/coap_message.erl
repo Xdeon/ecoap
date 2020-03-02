@@ -1,5 +1,4 @@
-%% Decoding/encoding based on emqttd_coap https://github.com/emqtt/emqttd_coap 
-%% & gen_coap https://github.com/gotthardp/gen_coap
+%% Decoding/encoding based on gen_coap https://github.com/gotthardp/gen_coap
 -module(coap_message).
 
 -export([decode/1, encode/1]).
@@ -355,50 +354,6 @@ decode_option_list(<<Delta:4, Len:4, Tail/binary>>, LastNum, OptionList) ->
         <<>> ->
             decode_option_list(<<>>, OptNum, append_option(decode_option({OptNum, <<>>}), OptionList))
     end.
-
-% decode_option_list(<<>>, _, Options) ->
-%     {Options, <<>>};
-% decode_option_list(<<16#FF, Payload/binary>>, _, Options) ->
-%     {Options, Payload};
-% decode_option_list(<<Delta:4, OptLen:4, Bin/binary>>, OptNum, Options) when Delta =< 12 ->
-%     parse_option({OptLen, Bin}, OptNum + Delta, Options);
-% decode_option_list(<<13:4, OptLen:4, Delta:8, Bin/binary>>, OptNum, Options) ->
-%     parse_option({OptLen, Bin}, OptNum + Delta + 13, Options);
-% decode_option_list(<<14:4, OptLen:4, Delta:16/big-integer, Bin/binary>>, OptNum, Options) ->
-%     parse_option({OptLen, Bin}, OptNum + Delta + 269, Options).
-
-% parse_option({OptLen, Bin}, OptNum, Options) when OptLen =< 12 ->
-%     parse_next({OptLen, Bin}, OptNum, Options);
-% parse_option({13, <<Len:8, Bin/binary>>}, OptNum, Options) ->
-%     OptLen = Len + 13,
-%     parse_next({OptLen, Bin}, OptNum, Options);
-% parse_option({14, <<Len:16/big-integer, Bin/binary>>}, OptNum, Options) ->
-%     OptLen = Len + 269,
-%     parse_next({OptLen, Bin}, OptNum, Options).
-
-% parse_next({_OptLen, <<>>}, OptNum, Options) ->
-%     decode_option_list(<<>>, OptNum, append_option(decode_option({OptNum, <<>>}), Options));
-% parse_next({OptLen, Bin}, OptNum, Options) ->
-%     <<OptVal:OptLen/binary, Left/binary>> = Bin,
-%     decode_option_list(Left, OptNum, append_option(decode_option({OptNum, OptVal}), Options)).
-
-% put options of the same id into one list
-% append_option({SameOptId, OptVal2}, OptionList0=[{SameOptId, OptVal1} | OptionList]) ->
-%     case is_repeatable_option(SameOptId) of
-%         true ->
-%             % we must keep the order
-%             [{SameOptId, lists:append(OptVal1, [OptVal2])} | OptionList];
-%         false ->
-%             case is_critical_option(SameOptId) of
-%                 true -> throw({error, atom_to_list(SameOptId)++" is not repeatable"});
-%                 false -> OptionList0
-%             end
-%     end;
-% append_option({OptId2, OptVal2}, OptionList) ->
-%     case is_repeatable_option(OptId2) of
-%         true -> [{OptId2, [OptVal2]} | OptionList];
-%         false -> [{OptId2, OptVal2} | OptionList]
-%     end.
 
 % put options of the same id into one list
 append_option({SameOptId, OptVal2}, [{SameOptId, OptVal1} | OptionList]) ->

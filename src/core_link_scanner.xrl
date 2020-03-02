@@ -1,4 +1,3 @@
-% PLACE FOR LICENSE
 
 Definitions.
 

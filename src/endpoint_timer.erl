@@ -1,4 +1,5 @@
 -module(endpoint_timer).
+
 -export([start_simple/3, start_standard/3, start_kick/2, cancel_timer/1, restart_kick/1, kick/1, is_kicked/1]).
 
 % This timer is intended to be used when NODEDUP is set or EXCHANGE_LIFETIME is strongly reduced.

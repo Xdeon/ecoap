@@ -203,10 +203,8 @@ pack_sent({timeout, await_aack}, _, Exchange) ->
 
 % --- outgoing CON->ACK|RST
 out_con({out, Message}, ProtoConfig, Exchange) ->
-    %io:fwrite("~p send outgoing con msg ~p~n", [self(), Message]),
     logger:log(debug, "~p send outgoing CON msg ~p~n", [self(), Message]),
     BinMessage = coap_message:encode(Message),
-    % _ = rand:seed(exs1024),
     TimeOut = ?ACK_TIMEOUT(ProtoConfig)+rand:uniform(?ACK_RANDOM_FACTOR(ProtoConfig)),
     {[{send, BinMessage}, {start_timer, TimeOut}], Exchange#exchange{msgbin=BinMessage, retry_count=0, retry_time=TimeOut, stage=await_pack}}.
 
@@ -215,7 +213,6 @@ await_pack({in, BinAck}, _, Exchange) ->
     try coap_message:decode(BinAck) of
         #coap_message{type='ACK', code=undefined}=Message ->
             % this is an empty ack for separate response or observe notification
-            % handle_ack(Message, ProtoConfig, Exchange),
             % since we can confirm when an outgoing confirmable message
             % has been acknowledged or reset, we can safely clean the msgbin 
             % which won't be used again from this moment

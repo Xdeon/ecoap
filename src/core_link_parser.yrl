@@ -1,4 +1,3 @@
-% PLACE FOR LICENSE
 
 Nonterminals LINKLIST LINK URI PARAMS PARAM.
 Terminals '<' '/' '>' ';' ',' '=' segment string.

@@ -1,4 +1,5 @@
 -module(ecoap).
+
 -export([start_udp/3, stop_udp/1, start_dtls/3, stop_dtls/1]).
 
 -type config() :: #{

@@ -2,8 +2,8 @@
 -behaviour(gen_server).
 -behaviour(ecoap_socket).
 
-%% TODO: add supoort for multicast
-%% can be done by:
+%% TODO: 
+%% add supoort for multicast, can be done as:
 %% 1. add one more param to get_endpoint API to specify if the message to send to a multicast address
 %% 2. start endpoint process with EpID set to something like 'multicast' instead of {IP, Port}
 %% 3. when receiving a response that can not match an endpoint using {IP, Port}, forward it to the multicast endpoint

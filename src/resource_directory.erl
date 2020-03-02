@@ -1,8 +1,7 @@
 -module(resource_directory).
+-behaviour(ecoap_handler).
 
 -export([coap_discover/1, coap_get/4]).
-
--behaviour(ecoap_handler).
 
 coap_discover(Prefix) ->
     [{absolute, Prefix, []}].

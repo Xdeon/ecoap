@@ -82,16 +82,6 @@ send(EndpointPid, Type, Code, Message) when is_tuple(Code); Type=='ACK'; Type=='
 send(EndpointPid, _Type, _Code, Message) ->
     send_request(EndpointPid, make_ref(), Message).
 
-% -spec send_request(pid(), Ref, coap_message:coap_message()) -> {ok, Ref}.
-% send_request(EndpointPid, Ref, Message=#coap_message{token= <<>>}) ->
-%     % when no token is assigned then generate one
-%     gen_server:cast(EndpointPid, {send_request, Message#coap_message{token=coap_message_token:generate_token()}, {self(), Ref}}),
-%     {ok, Ref};
-% send_request(EndpointPid, Ref, Message) ->
-%     % use user defined token
-%     gen_server:cast(EndpointPid, {send_request, Message, {self(), Ref}}),
-%     {ok, Ref}.
-
 -spec send_request(pid(), Ref, coap_message:coap_message()) -> {ok, Ref}.
 send_request(EndpointPid, Ref, Message) ->
     gen_server:cast(EndpointPid, {send_request, Message, {self(), Ref}}),
@@ -124,9 +114,6 @@ send_rst(Transport, Socket, EpID={_, EpAddr}, MsgId) ->
     BinRST = coap_message:encode(ecoap_request:rst(MsgId)),
     Transport:send(Socket, EpID, BinRST).
 
-% monitor_handler(EndpointPid, Pid) ->
-%     EndpointPid ! {handler_started, Pid}, ok.
-
 -spec register_handler(pid(), ecoap_handler:handler_id(), pid()) -> ok.
 register_handler(EndpointPid, ID, Pid) ->
     EndpointPid ! {register_handler, ID, Pid}, ok.
@@ -137,9 +124,6 @@ register_handler(EndpointPid, ID, Pid) ->
 get_peer_info(transport, {RawTransport, _}) -> RawTransport;
 get_peer_info(ip, {_, {PeerIP, _}}) -> PeerIP;
 get_peer_info(port, {_, {_, PeerPortNo}}) -> PeerPortNo.
-
-% request_complete(EndpointPid, Receiver, ResponseType) ->
-%     EndpointPid ! {request_complete, Receiver, ResponseType}, ok. 
 
 %% gen_server.
 
@@ -272,29 +256,13 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 2:2, TKL:4, _Code:8, MsgId:16,
 % silently ignore other versions
 handle_info({datagram, <<Ver:2, _/bytes>>}, State) when Ver /= ?VERSION ->
     {noreply, State};
-
 handle_info(start_scan, State) ->
     scan_state(State);
-
 handle_info({timeout, TrId, Event}, State=#state{trans=Trans, protocol_config=ProtoConfig}) ->
     case maps:find(TrId, Trans) of
         {ok, TrState} -> update_state(State, TrId, ecoap_exchange:timeout(Event, ProtoConfig, TrState));
         error -> {noreply, State} % ignore unexpected responses
     end;
-
-% handle_info({request_complete, Receiver, ResObserve}, State=#state{receivers=Receivers}) ->
-%     %io:format("request_complete~n"),
-%     case maps:find(Receiver, Receivers) of
-%         {ok, {Token, _, ReqObserve}} ->
-%             {noreply, maybe_complete_request(ReqObserve, ResObserve, Receiver, Token, State)};
-%         error ->
-%             {noreply, State}
-%     end;
- 
-% handle_info({handler_started, Pid}, State=#state{rescnt=Count, handler_refs=Refs}) ->
-%     erlang:monitor(process, Pid),
-%     {noreply, State#state{rescnt=Count+1, handler_refs=maps:put(Pid, undefined, Refs)}};
-
 % Only record pid of possible observe/blockwise handlers instead of every new spawned handler
 % so that we have better parallelism
 handle_info({register_handler, ID, Pid}, State=#state{handler_regs=Regs}) ->
@@ -312,7 +280,6 @@ handle_info({register_handler, ID, Pid}, State=#state{handler_regs=Regs}) ->
             Regs2 = update_handler_regs(ID, Pid, Regs),
             {noreply, State#state{handler_regs=Regs2}}
     end;
-
 handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{rescnt=Count, handler_regs=Regs, handler_refs=Refs}) ->
     case maps:find(Ref, Refs) of
         {ok, ID} -> 
@@ -321,7 +288,6 @@ handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{rescnt=Count, ha
         error -> 
             {noreply, State}
     end;
-
 handle_info({'EXIT', Pid, _Reason}, State=#state{receivers=Receivers, client_set=CSet}) ->
     % if this exit signal comes from an embedded client which shares the same socket process with the server
     % we should ensure all requests the client issued that have not been completed yet are cancelled
@@ -335,7 +301,6 @@ handle_info({'EXIT', Pid, _Reason}, State=#state{receivers=Receivers, client_set
         false ->
             {noreply, State}
     end;
-    
 handle_info(_Info, State) ->
     logger:log(error, "~p received unexpected info ~p in ~p~n", [self(), _Info, ?MODULE]),
 	{noreply, State}.
@@ -476,7 +441,6 @@ update_trans(TrId, undefined, Trans) ->
 update_trans(TrId, Exchange, Trans) ->
     maps:put(TrId, Exchange, Trans).
 
-
 execute([], Exchange, State) ->
     {ecoap_exchange:check_next_state(Exchange), State};
 
@@ -513,7 +477,7 @@ handle_request(Message, State=#state{handler_sup=undefined}) ->
     {ok, _} = send_response(self(), undefined, ecoap_request:rst(Message)),
     State;
 handle_request(Message, State=#state{ep_id=EpID, protocol_config=ProtoConfig, handler_sup=HdlSupPid}) ->
-    %io:fwrite("handle_request called from ~p with ~p~n", [self(), Message]),
+    % logger:log(debug, "handle_request called from ~p with ~p~n", [self(), Message]),
     HandlerID = ecoap_handler:handler_id(Message),
     HandlerConfig = ecoap_config:handler_config(ProtoConfig),
     case get_handler(HdlSupPid, HandlerID, HandlerConfig, State) of
@@ -581,12 +545,6 @@ do_cancel_msg(TrId, State=#state{trans=Trans}) ->
             State 
     end.
 
-% update_state(State=#state{trans=Trans, timer=Timer}, TrId, undefined) ->
-%     Trans2 = maps:remove(TrId, Trans),
-%     {noreply, State#state{trans=Trans2, timer=endpoint_timer:kick_timer(Timer)}};
-% update_state(State=#state{trans=Trans, timer=Timer}, TrId, TrState) ->
-%     Trans2 = maps:put(TrId, TrState, Trans),
-%     {noreply, State#state{trans=Trans2, timer=endpoint_timer:kick_timer(Timer)}}.
 purge_state(State=#state{tokens=Tokens, trans=Trans, rescnt=Count, client_set=CSet, timer=Timer}) ->
     case {maps:size(Tokens) + maps:size(Trans) + Count + client_set_size(CSet), endpoint_timer:is_kicked(Timer)} of
         {0, false} -> 

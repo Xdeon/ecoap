@@ -1,4 +1,5 @@
 -module(ecoap_request).
+
 -export([ping_msg/0, method/1, path/1, query/1, accept/1, requires_ack/1]).
 -export([request/2, request/3, request/4]).
 -export([response/2, response/3]).

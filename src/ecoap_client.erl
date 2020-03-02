@@ -1,8 +1,8 @@
 -module(ecoap_client).
 -behaviour(gen_server).
 
-%% TODO: add support for configure request type
-%% can be done by:
+%% TODO: 
+%% add support for configure request type, can be done as:
 %% 1. change request API from multiple params to using a map of params
 %% 2. specify request type in the map
 %% 3. return {error, _} when synchronously sending a 'NON' request (which should be send asynchronously)

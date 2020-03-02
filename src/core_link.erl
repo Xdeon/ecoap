@@ -1,4 +1,3 @@
-% PALCE FOR LICIENSE
 -module(core_link).
 
 -export([decode/1, encode/1]).
@@ -82,6 +81,7 @@ process_content_type(Values) when is_list(Values) ->
 
 mapjoin(Fun, Sep, List) ->
     lists:join(Sep, lists:map(Fun, List)).
+
 % mapjoin(_, _, []) -> [];
 % mapjoin(Fun, Sep, [H | T]) -> [Fun(H) | join_prepend(Fun, Sep, T)].
 

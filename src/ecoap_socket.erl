@@ -1,4 +1,5 @@
 -module(ecoap_socket).
+
 -export([listener_module/1, transport_module/1, socket_opts/2]).
 
 -define(READ_PACKETS, 1000).
