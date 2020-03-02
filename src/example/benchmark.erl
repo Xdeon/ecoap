@@ -1,10 +1,10 @@
 -module(benchmark).
+-behaviour(ecoap_handler).
+
 -export([coap_discover/1, coap_get/4, coap_post/4]).
 -export([start/0, start_dtls/1, stop/0, stop_dtls/0]).
 -export([start_dtls_client/3]).
 -export([fib/1]).
-
--behaviour(ecoap_handler).
 
 start() ->
     {ok, _} = application:ensure_all_started(ecoap),
