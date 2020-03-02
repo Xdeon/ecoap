@@ -79,7 +79,7 @@ end.
 Example:
 
 ```erlang
-%% Assume current module implemets ecoap_handler behaviour
+%% Assume current module implements ecoap_handler behaviour
 Routes = [
         {[<<"benchmark">>], ?MODULE},
         {[<<"fibonacci">>], ?MODULE},
