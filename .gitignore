@@ -19,6 +19,6 @@ relx
 test/*.beam
 
 # Project specific
-src/core_link_parser.erl
-src/core_link_scanner.erl
+src/ecoap_core_link_parser.erl
+src/ecoap_core_link_scanner.erl
 .vscode

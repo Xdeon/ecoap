@@ -115,7 +115,7 @@ connected({call, From}, {get_endpoint, EpAddr},
 % server
 connected({call, From}, {get_endpoint, EpAddr}, 
 	StateData=#data{socket=Socket, ep_id=EpID={_, EpAddr}, server_name=Name, endpoint_pid=undefined, endpoint_ref=undefined}) ->
-	{ok, EpSupPid, EpPid} = endpoint_sup:start_link([?MODULE, Socket, EpID, Name]),
+	{ok, EpSupPid, EpPid} = ecoap_endpoint_sup:start_link([?MODULE, Socket, EpID, Name]),
 	Ref = erlang:monitor(process, EpPid),
 	{keep_state, StateData#data{endpoint_pid=EpPid, endpoint_sup_pid=EpSupPid, endpoint_ref=Ref}, [{reply, From, {ok, EpPid}}]};
 % in general
@@ -133,7 +133,7 @@ connected(info, {ssl, Socket, Bin}, StateData=#data{socket=Socket, server_name=N
 			_ = ecoap_endpoint:maybe_send_rst(?MODULE, Socket, EpID, Bin),
 			keep_state_and_data;
 		_ ->
-			{ok, EpSupPid, EpPid} = endpoint_sup:start_link([?MODULE, Socket, EpID, Name]),
+			{ok, EpSupPid, EpPid} = ecoap_endpoint_sup:start_link([?MODULE, Socket, EpID, Name]),
 			EpPid ! {datagram, Bin},
 			Ref = erlang:monitor(process, EpPid),
 			{keep_state, StateData#data{endpoint_pid=EpPid, endpoint_sup_pid=EpSupPid, endpoint_ref=Ref}}

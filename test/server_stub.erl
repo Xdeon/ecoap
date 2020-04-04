@@ -15,7 +15,7 @@
 
 -record(state, {
 	socket = undefined :: inet:socket(),
-	inbound = undefined :: undefined | coap_message:coap_message(),
+	inbound = undefined :: undefined | ecoap_message:ecoap_message(),
 	peer_addr = undefined :: undefined | {inet:ip_address(), inet:port_number()}
 }).
 
@@ -25,7 +25,7 @@
 start_link(Port) ->
 	gen_server:start_link(?MODULE, [Port], []).
 
--spec expect_request(pid(), coap_message:coap_message()) -> {match, non_neg_integer(), binary()} | nomatch.
+-spec expect_request(pid(), ecoap_message:ecoap_message()) -> {match, non_neg_integer(), binary()} | nomatch.
 expect_request(Pid, ExpectReq) -> 
 	gen_server:call(Pid, {expect_request, ExpectReq}).
 
@@ -33,7 +33,7 @@ expect_request(Pid, ExpectReq) ->
 expect_empty(Pid, Type, MsgId) ->
 	gen_server:call(Pid, {expect_empty, Type, MsgId}).
 
--spec send_response(pid(), coap_message:coap_message()) -> ok.
+-spec send_response(pid(), ecoap_message:ecoap_message()) -> ok.
 send_response(Pid, Response) ->
 	gen_server:cast(Pid, {send_response, Response}).
 
@@ -63,17 +63,17 @@ handle_call(_Request, _From, State) ->
 	{noreply, State}.
 
 handle_cast({send_empty, Type, MsgId}, #state{socket=Socket, peer_addr={PeerIP, PeerPortNo}}=State) ->
-	Response = coap_message:new(#{type=>Type, id=>MsgId}),
-	ok = gen_udp:send(Socket, PeerIP, PeerPortNo, coap_message:encode(Response)),
+	Response = ecoap_message:new(#{type=>Type, id=>MsgId}),
+	ok = gen_udp:send(Socket, PeerIP, PeerPortNo, ecoap_message:encode(Response)),
 	{noreply, State};
 handle_cast({send_response, Response}, #state{socket=Socket, peer_addr={PeerIP, PeerPortNo}}=State) ->
-	ok = gen_udp:send(Socket, PeerIP, PeerPortNo, coap_message:encode(Response)),
+	ok = gen_udp:send(Socket, PeerIP, PeerPortNo, ecoap_message:encode(Response)),
 	{noreply, State};
 handle_cast(_Msg, State) ->
 	{noreply, State}.
 
 handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, #state{socket=Socket}=State) ->
-	Message = coap_message:decode(Bin),
+	Message = ecoap_message:decode(Bin),
 	{noreply, State#state{inbound=Message, peer_addr={PeerIP, PeerPortNo}}};
 
 handle_info(_Info, State) ->
@@ -90,13 +90,13 @@ match(ExpectReq, InBound) ->
 	ReqInfo = get_info(ExpectReq),
 	InBoundInfo = get_info(InBound),
 	case InBoundInfo of
-		ReqInfo -> {match, coap_message:get_id(InBound), coap_message:get_token(InBound)};
+		ReqInfo -> {match, ecoap_message:get_id(InBound), ecoap_message:get_token(InBound)};
 		_ -> nomatch
 	end.
 
 get_info(Message) ->
-	Type = coap_message:get_type(Message),
-	Code = coap_message:get_code(Message),
-	Options = coap_message:get_options(Message),
-	Payload = coap_message:get_payload(Message),
+	Type = ecoap_message:get_type(Message),
+	Code = ecoap_message:get_code(Message),
+	Options = ecoap_message:get_options(Message),
+	Payload = ecoap_message:get_payload(Message),
 	{Type, Code, Options, Payload}.

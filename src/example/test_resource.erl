@@ -31,13 +31,13 @@ coap_get(_EpID, Prefix, Name, Request) ->
     end.
 
 coap_post(_EpID, Prefix, Name, Request) -> 
-    Content = coap_content:get_content(Request),
+    Content = ecoap_content:get_content(Request),
     io:format("post ~p ~p ~p~n", [Prefix, Name, Content]),
     {error, 'MethodNotAllowed'}.
-    % {ok, 'Created', coap_content:set_options(#{'Location-Path' => Prefix++Name}, coap_content:new())}.
+    % {ok, 'Created', ecoap_content:set_options(#{'Location-Path' => Prefix++Name}, ecoap_content:new())}.
 
 coap_put(_EpID, Prefix, Name, Request) ->
-    Content = coap_content:get_content(Request),
+    Content = ecoap_content:get_content(Request),
     io:format("put ~p ~p ~p~n", [Prefix, Name, Content]),
     mnesia:dirty_write(resources, {resources, Name, Content}),
     ecoap_handler:notify(Prefix++Name, Content),

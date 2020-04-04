@@ -104,7 +104,7 @@ handle_continue(init, State=#state{socket=Socket}) ->
 	_ = inet:setopts(Socket, [{active, ?ACTIVE_PACKETS}]),
 	{noreply, State};
 handle_continue({init, SupPid}, State=#state{socket=Socket}) ->
-	PoolPid = ecoap_server_sup:find_child(SupPid, endpoint_sup_sup),
+	PoolPid = ecoap_server_sup:find_child(SupPid, ecoap_endpoint_sup_sup),
 	ok = inet:setopts(Socket, [{active, ?ACTIVE_PACKETS}]),
 	{noreply, State#state{endpoint_pool=PoolPid}}.
 
@@ -133,7 +133,7 @@ handle_call({get_endpoint, EpAddr}, _From,
 			{reply, {ok, EpPid}, State};
 		error ->
 			EpID = {{udp, self()}, EpAddr},
-			case endpoint_sup_sup:start_endpoint(PoolPid, [?MODULE, Socket, EpID, Name]) of
+			case ecoap_endpoint_sup_sup:start_endpoint(PoolPid, [?MODULE, Socket, EpID, Name]) of
 		        {ok, EpSupPid, EpPid} ->
 					store_endpoint(EpAddr, EpPid),
 					store_endpoint(erlang:monitor(process, EpPid), {EpAddr, EpSupPid}),
@@ -165,7 +165,7 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin},
 			{noreply, State};
 		error when is_pid(PoolPid) ->
 			EpID = {{udp, self()}, EpAddr},
-			case endpoint_sup_sup:start_endpoint(PoolPid, [?MODULE, Socket, EpID, Name]) of
+			case ecoap_endpoint_sup_sup:start_endpoint(PoolPid, [?MODULE, Socket, EpID, Name]) of
 				{ok, EpSupPid, EpPid} -> 
 					% logger:log(debug, "~p start endpoint as a server in ~p~n", [self(), ?MODULE]),
 					EpPid ! {datagram, Bin},
@@ -223,7 +223,7 @@ erase_endpoint(Key) ->
 	erase(Key).
 
 delete_endpoint(PoolPid, EpSupPid) when is_pid(EpSupPid) ->
-	endpoint_sup_sup:delete_endpoint(PoolPid, EpSupPid);
+	ecoap_endpoint_sup_sup:delete_endpoint(PoolPid, EpSupPid);
 delete_endpoint(_, _) -> 
  	ok.
 

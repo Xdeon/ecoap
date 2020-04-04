@@ -77,8 +77,8 @@
 }).
 
 -record(request, {
-	method = undefined :: undefined | coap_message:coap_method(),
-	options = #{} :: coap_message:optionset(), 
+	method = undefined :: undefined | ecoap_message:coap_method(),
+	options = #{} :: ecoap_message:optionset(), 
 	content = <<>> :: binary(),
 	origin_ref = undefined :: reference(),
 	block_key = undefined :: undefined | block_key(),
@@ -97,7 +97,7 @@
 -type observe_key() :: {ecoap_endpoint:ecoap_endpoint_id(), [binary()], atom() | non_neg_integer()}.
 
 -type response() ::
-	{ok, coap_message:success_code() | coap_message:error_code(), coap_content:coap_content()} |
+	{ok, ecoap_message:success_code() | ecoap_message:error_code(), ecoap_content:ecoap_content()} |
 	{error, _}.
 
 -type observe_response() :: 
@@ -190,11 +190,11 @@ discover_async(Pid) ->
 get(Pid, Uri) ->
 	request(Pid, 'GET', Uri, <<>>, #{}, infinity).
 
--spec get(pid(), iodata(), coap_message:optionset()) -> response().
+-spec get(pid(), iodata(), ecoap_message:optionset()) -> response().
 get(Pid, Uri, Options) ->
 	request(Pid, 'GET', Uri, <<>>, Options, infinity).
 
--spec get(pid(), iodata(), coap_message:optionset(), non_neg_integer() | infinity) -> response() | no_return().
+-spec get(pid(), iodata(), ecoap_message:optionset(), non_neg_integer() | infinity) -> response() | no_return().
 get(Pid, Uri, Options, TimeOut) ->
 	request(Pid, 'GET', Uri, <<>>, Options, TimeOut).
 
@@ -202,7 +202,7 @@ get(Pid, Uri, Options, TimeOut) ->
 get_async(Pid, Uri) ->
 	request_async(Pid, 'GET', Uri, <<>>, #{}).
 
--spec get_async(pid(), iodata(), coap_message:optionset()) -> {ok, reference()}.
+-spec get_async(pid(), iodata(), ecoap_message:optionset()) -> {ok, reference()}.
 get_async(Pid, Uri, Options) ->
 	request_async(Pid, 'GET', Uri, <<>>, Options).
 
@@ -210,11 +210,11 @@ get_async(Pid, Uri, Options) ->
 put(Pid, Uri, Content) ->
 	request(Pid, 'PUT', Uri, Content, #{}, infinity).
 
--spec put(pid(), iodata(), binary(), coap_message:optionset()) -> response().
+-spec put(pid(), iodata(), binary(), ecoap_message:optionset()) -> response().
 put(Pid, Uri, Content, Options) ->
 	request(Pid, 'PUT', Uri, Content, Options, infinity).
 
--spec put(pid(), iodata(), binary(), coap_message:optionset(), non_neg_integer() | infinity) -> response() | no_return().
+-spec put(pid(), iodata(), binary(), ecoap_message:optionset(), non_neg_integer() | infinity) -> response() | no_return().
 put(Pid, Uri, Content, Options, TimeOut) ->
 	request(Pid, 'PUT', Uri, Content, Options, TimeOut).
 
@@ -222,7 +222,7 @@ put(Pid, Uri, Content, Options, TimeOut) ->
 put_async(Pid, Uri, Content) ->
 	request_async(Pid, 'PUT', Uri, Content, #{}).
 
--spec put_async(pid(), iodata(), binary(), coap_message:optionset()) -> {ok, reference()}.
+-spec put_async(pid(), iodata(), binary(), ecoap_message:optionset()) -> {ok, reference()}.
 put_async(Pid, Uri, Content, Options) ->
 	request_async(Pid, 'PUT', Uri, Content, Options).
 
@@ -230,11 +230,11 @@ put_async(Pid, Uri, Content, Options) ->
 post(Pid, Uri, Content) ->
 	request(Pid, 'POST', Uri, Content, #{}, infinity).
 
--spec post(pid(), iodata(), binary(), coap_message:optionset()) -> response().
+-spec post(pid(), iodata(), binary(), ecoap_message:optionset()) -> response().
 post(Pid, Uri, Content, Options) ->
 	request(Pid, 'POST', Uri, Content, Options, infinity).
 
--spec post(pid(), iodata(), binary(), coap_message:optionset(), non_neg_integer() | infinity) -> response() | no_return().
+-spec post(pid(), iodata(), binary(), ecoap_message:optionset(), non_neg_integer() | infinity) -> response() | no_return().
 post(Pid, Uri, Content, Options, TimeOut) ->
 	request(Pid, 'POST', Uri, Content, Options, TimeOut).
 
@@ -242,7 +242,7 @@ post(Pid, Uri, Content, Options, TimeOut) ->
 post_async(Pid, Uri, Content) ->
 	request_async(Pid, 'POST', Uri, Content, #{}).
 
--spec post_async(pid(), iodata(), binary(), coap_message:optionset()) -> {ok, reference()}.
+-spec post_async(pid(), iodata(), binary(), ecoap_message:optionset()) -> {ok, reference()}.
 post_async(Pid, Uri, Content, Options) ->
 	request_async(Pid, 'POST', Uri, Content, Options).
 
@@ -250,11 +250,11 @@ post_async(Pid, Uri, Content, Options) ->
 delete(Pid, Uri) ->
 	request(Pid, 'DELETE', Uri, <<>>, #{}, infinity).
 
--spec delete(pid(), iodata(), coap_message:optionset()) -> response().
+-spec delete(pid(), iodata(), ecoap_message:optionset()) -> response().
 delete(Pid, Uri, Options) ->
 	request(Pid, 'DELETE', Uri, <<>>, Options, infinity).
 
--spec delete(pid(), iodata(), coap_message:optionset(), non_neg_integer() | infinity) -> response() | no_return().
+-spec delete(pid(), iodata(), ecoap_message:optionset(), non_neg_integer() | infinity) -> response() | no_return().
 delete(Pid, Uri, Options, TimeOut) ->
 	request(Pid, 'DELETE', Uri, <<>>, Options, TimeOut).
 
@@ -262,51 +262,51 @@ delete(Pid, Uri, Options, TimeOut) ->
 delete_async(Pid, Uri) ->
 	request_async(Pid, 'DELETE', Uri, <<>>, #{}).
 
--spec delete_async(pid(), iodata(), coap_message:optionset()) -> {ok, reference()}.
+-spec delete_async(pid(), iodata(), ecoap_message:optionset()) -> {ok, reference()}.
 delete_async(Pid, Uri, Options) ->
 	request_async(Pid, 'DELETE', Uri, <<>>, Options).
 
--spec fetch(pid(), iodata(), binary(), coap_message:optionset()) -> response().
+-spec fetch(pid(), iodata(), binary(), ecoap_message:optionset()) -> response().
 fetch(Pid, Uri, Content, Options) ->
 	request(Pid, 'FETCH', Uri, Content, Options, infinity).
 
--spec fetch(pid(), iodata(), binary(), coap_message:optionset(), non_neg_integer() | infinity) -> response() | no_return().
+-spec fetch(pid(), iodata(), binary(), ecoap_message:optionset(), non_neg_integer() | infinity) -> response() | no_return().
 fetch(Pid, Uri, Content, Options, TimeOut) ->
 	request(Pid, 'FETCH', Uri, Content, Options, TimeOut).
 
--spec fetch_async(pid(), iodata(), binary(), coap_message:optionset()) -> {ok, reference()}.
+-spec fetch_async(pid(), iodata(), binary(), ecoap_message:optionset()) -> {ok, reference()}.
 fetch_async(Pid, Uri, Content, Options) ->
 	request_async(Pid, 'FETCH', Uri, Content, Options).
 
--spec patch(pid(), iodata(), binary(), coap_message:optionset()) -> response().
+-spec patch(pid(), iodata(), binary(), ecoap_message:optionset()) -> response().
 patch(Pid, Uri, Content, Options) ->
 	request(Pid, 'PATCH', Uri, Content, Options, infinity).
 
--spec patch(pid(), iodata(), binary(), coap_message:optionset(), non_neg_integer() | infinity) -> response() | no_return().
+-spec patch(pid(), iodata(), binary(), ecoap_message:optionset(), non_neg_integer() | infinity) -> response() | no_return().
 patch(Pid, Uri, Content, Options, TimeOut) ->
 	request(Pid, 'PATCH', Uri, Content, Options, TimeOut).
 
--spec patch_async(pid(), iodata(), binary(), coap_message:optionset()) -> {ok, reference()}.
+-spec patch_async(pid(), iodata(), binary(), ecoap_message:optionset()) -> {ok, reference()}.
 patch_async(Pid, Uri, Content, Options) ->
 	request_async(Pid, 'PATCH', Uri, Content, Options).
 
--spec ipatch(pid(), iodata(), binary(), coap_message:optionset()) -> response().
+-spec ipatch(pid(), iodata(), binary(), ecoap_message:optionset()) -> response().
 ipatch(Pid, Uri, Content, Options) ->
 	request(Pid, 'iPATCH', Uri, Content, Options, infinity).
 
--spec ipatch(pid(), iodata(), binary(), coap_message:optionset(), non_neg_integer() | infinity) -> response().
+-spec ipatch(pid(), iodata(), binary(), ecoap_message:optionset(), non_neg_integer() | infinity) -> response().
 ipatch(Pid, Uri, Content, Options, TimeOut) ->
 	request(Pid, 'iPATCH', Uri, Content, Options, TimeOut).
 
--spec ipatch_async(pid(), iodata(), binary(), coap_message:optionset()) -> {ok, reference()}.
+-spec ipatch_async(pid(), iodata(), binary(), ecoap_message:optionset()) -> {ok, reference()}.
 ipatch_async(Pid, Uri, Content, Options) ->
 	request_async(Pid, 'iPATCH', Uri, Content, Options).
 
--spec request(pid(), coap_message:coap_method(), iodata(), binary(), coap_message:optionset(), non_neg_integer() | infinity) -> response() | no_return().
+-spec request(pid(), ecoap_message:coap_method(), iodata(), binary(), ecoap_message:optionset(), non_neg_integer() | infinity) -> response() | no_return().
 request(Pid, Method, Uri, Content, Options, TimeOut) ->
 	gen_server:call(Pid, {command, {request, sync, Method, Uri, Content, Options}}, TimeOut).
 
--spec request_async(pid(), coap_message:coap_method(), iodata(), binary(), coap_message:optionset()) -> {ok, reference()}.
+-spec request_async(pid(), ecoap_message:coap_method(), iodata(), binary(), ecoap_message:optionset()) -> {ok, reference()}.
 request_async(Pid, Method, Uri, Content, Options) ->
 	gen_server:call(Pid, {command, {request, async, Method, Uri, Content, Options}}).
 
@@ -318,7 +318,7 @@ cancel_request(Pid, Ref) ->
 observe(Pid, Uri) ->
 	observe(Pid, Uri, #{}).
 
--spec observe(pid(), iodata(), coap_message:optionset()) -> {ok, reference()}.
+-spec observe(pid(), iodata(), ecoap_message:optionset()) -> {ok, reference()}.
 observe(Pid, Uri, Options) ->
 	gen_server:call(Pid, {command, {observe, Uri, Options}}).
 
@@ -326,11 +326,11 @@ observe(Pid, Uri, Options) ->
 observe_and_wait_response(Pid, Uri) ->
 	observe_and_wait_response(Pid, Uri, #{}, infinity).
 
--spec observe_and_wait_response(pid(), iodata(), coap_message:optionset()) -> observe_response() | response().
+-spec observe_and_wait_response(pid(), iodata(), ecoap_message:optionset()) -> observe_response() | response().
 observe_and_wait_response(Pid, Uri, Options) ->
 	observe_and_wait_response(Pid, Uri, Options, infinity).
 
--spec observe_and_wait_response(pid(), iodata(), coap_message:optionset(), non_neg_integer() | infinity) -> observe_response() | response() | no_return().
+-spec observe_and_wait_response(pid(), iodata(), ecoap_message:optionset(), non_neg_integer() | infinity) -> observe_response() | response() | no_return().
 observe_and_wait_response(Pid, Uri, Options, TimeOut) ->
 	{ok, Ref} = observe(Pid, Uri, Options),
 	MonitorRef = erlang:monitor(process, Pid),
@@ -517,13 +517,13 @@ handle_command({request, Sync, Method, Uri, Content, Options}, {Pid, _}=From, St
 handle_command({observe, Uri, Options}, {Pid, _}, State=#state{endpoint_pid=EndpointPid, requests=Requests, observe_regs=ObsRegs, host=Host, ep_id=EpID}) ->
 	#{path:=Path} = ecoap_uri:get_uri_params(Uri),
 	Options2 = make_options(Host, EpID, Uri, Options),
-	ObsKey = {EpID, Path, coap_message:get_option('Accept', Options2)},
+	ObsKey = {EpID, Path, ecoap_message:get_option('Accept', Options2)},
 	Ref = case maps:find(ObsKey, ObsRegs) of 
 		{ok, OldRef} -> OldRef;
 		error -> erlang:monitor(process, Pid)
 	end,
 	{ok, Ref} = ecoap_endpoint:send_request(EndpointPid, Ref, 
-				ecoap_request:request('CON', 'GET', coap_message:add_option('Observe', 0, Options2))),
+				ecoap_request:request('CON', 'GET', ecoap_message:add_option('Observe', 0, Options2))),
 	Request = #request{method='GET', options=Options2, origin_ref=Ref, reply_to=Pid, observe_key=ObsKey},
 	Requests2 = maps:put(Ref, Request, Requests),
 	ObsRegs2 = maps:put(ObsKey, Ref, ObsRegs),
@@ -537,9 +537,9 @@ handle_command({unobserve, Ref, ETag}, {Pid, _},
 			{reply, {error, no_observe}, State};
 		{ok, #request{options=Options, observe_key=ObsKey} = Request} ->
 			Ref = maps:get(ObsKey, ObsRegs),
-			Options2 = coap_message:add_option('ETag', ETag, Options),
+			Options2 = ecoap_message:add_option('ETag', ETag, Options),
 			{ok, Ref} = ecoap_endpoint:send_request(EndpointPid, Ref,
-							ecoap_request:request('CON', 'GET', coap_message:add_option('Observe', 1, Options2))),
+							ecoap_request:request('CON', 'GET', ecoap_message:add_option('Observe', 1, Options2))),
 			Request2 = Request#request{options=Options2, origin_ref=Ref, reply_to=Pid}, 
 			State2 = check_and_cancel_request(maps:get(Ref, RequestMapping, undefined), State),
 			{reply, {ok, Ref},  State2#state{requests=maps:put(Ref, Request2, Requests)}}
@@ -562,7 +562,7 @@ handle_info({coap_response, EpID, EndpointPid, Ref, Message}, State=#state{reque
 				true -> {ok, _} = ecoap_endpoint:send(EndpointPid, ecoap_request:ack(Message)), ok;
 				false -> ok
 			end,
-			case coap_message:get_code(Message) of
+			case ecoap_message:get_code(Message) of
 				{ok, 'Continue'} ->
 					handle_upload(EpID, EndpointPid, Ref, Request, Message, State);
 				{ok, _Code} ->
@@ -616,10 +616,10 @@ code_change(_OldVsn, State, _Extra) ->
 handle_upload(EpID, EndpointPid, Ref, Request, Message, 
 	State=#state{requests=Requests, ongoing_blocks=OngoingBlocks, request_mapping=RequestMapping}) ->
 	#request{method=Method, options=RequestOptions, content=Content, origin_ref=OriginRef, reply_to=ReplyTo} = Request,
-	{Num, true, Size} = coap_message:get_option('Block1', Message),
+	{Num, true, Size} = ecoap_message:get_option('Block1', Message),
 	{ok, Ref2} = request_block1(EndpointPid, make_reference(ReplyTo), Method, RequestOptions, {Num+1, false, Size}, Content),
 	% store ongoing block1 transfer
-	BlockKey = {EpID, coap_message:get_option('Uri-Path', RequestOptions)},
+	BlockKey = {EpID, ecoap_message:get_option('Uri-Path', RequestOptions)},
 	{Requests2, RequestMapping2} = maybe_cancel_ongoing_blocks(EndpointPid, BlockKey, Ref, OngoingBlocks, Requests, RequestMapping),
 	OngoingBlocks2 = maps:put(BlockKey, Ref2, OngoingBlocks),
 	% update request mapping
@@ -631,14 +631,14 @@ handle_download(EpID, EndpointPid, Ref, Request, Message,
 	State=#state{requests=Requests, ongoing_blocks=OngoingBlocks, request_mapping=RequestMapping, observe_regs=ObsRegs}) ->
 	#request{method=Method, options=RequestOptions, origin_ref=OriginRef, 
 		fragment=Fragment, observe_seq=Seq, observe_key=ObsKey, reply_to=ReplyTo} = Request,
-	Data = coap_message:get_payload(Message),
+	Data = ecoap_message:get_payload(Message),
 	% block key is generated based on resource uri
-	BlockKey = {EpID, coap_message:get_option('Uri-Path', RequestOptions)},
+	BlockKey = {EpID, ecoap_message:get_option('Uri-Path', RequestOptions)},
 	% cancel ongoing blockwise transfer with same resource, if any
 	{Requests2, RequestMapping2} = maybe_cancel_ongoing_blocks(EndpointPid, BlockKey, Ref, OngoingBlocks, Requests, RequestMapping),
 	% observe sequence number only exists in single notification or first block of a notification
-	ObsSeq = coap_message:get_option('Observe', Message, Seq),
-	case coap_message:get_option('Block2', Message) of
+	ObsSeq = ecoap_message:get_option('Observe', Message, Seq),
+	case ecoap_message:get_option('Block2', Message) of
 		{Num, true, Size} ->
 			% more blocks follow, ask for more
             % no payload for requests with Block2 with NUM != 0
@@ -666,7 +666,7 @@ handle_download(EpID, EndpointPid, Ref, Request, Message,
             						request_mapping=RequestMapping3, observe_regs=ObsRegs2}};
         _Else ->
         	% not segmented or all blocks received
-			Response = format_response(coap_message:set_payload(<<Fragment/binary, Data/binary>>, Message)),
+			Response = format_response(ecoap_message:set_payload(<<Fragment/binary, Data/binary>>, Message)),
 			send_response(Request#request{observe_seq=ObsSeq}, Response),
 			% clean ongoing block2 transfer, if any
 			OngoingBlocks2 = maps:remove(BlockKey, OngoingBlocks),
@@ -704,8 +704,8 @@ handle_error(Ref, Request, Error,
 make_options(Host, EpID, Uri, Options) ->
 	PortNo = ecoap_endpoint:get_peer_info(port, EpID),
 	#{path:=Path, 'query':=Query} = ecoap_uri:get_uri_params(Uri),
-	coap_message:add_option('Uri-Host', Host, 
-		coap_message:add_option('Uri-Port', PortNo, Options#{'Uri-Path'=>Path, 'Uri-Query'=>Query})).
+	ecoap_message:add_option('Uri-Host', Host, 
+		ecoap_message:add_option('Uri-Port', PortNo, Options#{'Uri-Path'=>Path, 'Uri-Query'=>Query})).
 
 % When we acquire the endpoint pid, it is possible that this process is under supervsion on server mode
 % that means what we get may not be a fresh enough pid, or the endpoint process can be about to terminate
@@ -747,7 +747,7 @@ request_block1(EndpointPid, Ref, Method, RequestOptions, Block1, Content) ->
 request_block2(EndpointPid, Ref, Method, RequestOptions, Block2) ->
 	ecoap_endpoint:send_request(EndpointPid, Ref,
         ecoap_request:request('CON', Method, 
-        	coap_message:add_option('Block2', Block2, RequestOptions))).
+        	ecoap_message:add_option('Block2', Block2, RequestOptions))).
 
 maybe_cancel_ongoing_blocks(EndpointPid, BlockKey, CurrentRef, OngoingBlocks, Requests, RequestMapping) ->
 	case maps:find(BlockKey, OngoingBlocks) of
@@ -826,7 +826,7 @@ separate(Request=#request{}) ->
 
 % this can be {error, 'RST'} or {error, timeout}
 format_response(Error) when is_atom(Error) -> {error, Error};
-format_response(Message) -> {ok, coap_message:get_code(Message), coap_content:get_content(Message)}.
+format_response(Message) -> {ok, ecoap_message:get_code(Message), ecoap_content:get_content(Message)}.
 
 send_response(#request{reply_to=ReplyTo, origin_ref=Ref, observe_seq=ObsSeq, observe_key=ObsKey}, Response) when is_pid(ReplyTo) ->
 	_ = case is_observe(ObsSeq, ObsKey) of

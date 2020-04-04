@@ -32,18 +32,18 @@
 }).
 
 -record(req, {
-	method = undefined :: coap_message:coap_method(),
-	options = undefined :: coap_message:optionset(),
+	method = undefined :: ecoap_message:coap_method(),
+	options = undefined :: ecoap_message:optionset(),
 	content = undefined :: binary(),
 	fragment = <<>> :: binary()
 }).
 
 -type from() :: {pid(), term()}.
 -type req() :: #req{}.
--type response() :: {ok, coap_message:success_code(), coap_content:coap_content()} | 
+-type response() :: {ok, ecoap_message:success_code(), ecoap_content:ecoap_content()} | 
 					{error, timeout} |
-					{error, coap_message:error_code()} | 
-					{error, coap_message:error_code(), coap_content:coap_content()}.
+					{error, ecoap_message:error_code()} | 
+					{error, ecoap_message:error_code(), ecoap_content:ecoap_content()}.
 -opaque state() :: #state{}.
 -export_type([state/0]).
 
@@ -68,15 +68,15 @@ ping(Uri) ->
 	ok = close(Pid),
 	Res.
 
--spec request(coap_message:coap_method(), string()) -> response().
+-spec request(ecoap_message:coap_method(), string()) -> response().
 request(Method, Uri) ->
 	request(Method, Uri, <<>>, #{}).
 
--spec request(coap_message:coap_method(), string(), binary()) -> response().
+-spec request(ecoap_message:coap_method(), string(), binary()) -> response().
 request(Method, Uri, Content) ->
 	request(Method, Uri, Content, #{}).	
 
--spec request(coap_message:coap_method(), string(), binary(), coap_message:optionset()) -> response().
+-spec request(ecoap_message:coap_method(), string(), binary(), ecoap_message:optionset()) -> response().
 request(Method, Uri, Content, Options) ->
 	{ok, Pid} = start_link(),
 	{EpAddr, Req} = assemble_request(Method, Uri, Options, Content),
@@ -135,10 +135,10 @@ send_request(Pid, EpID, Req) ->
 
 assemble_request(Method, Uri, Options, Content) ->
 	#{host:=Host, ip:=IP, port:=Port, path:=Path, 'query':=Query} = ecoap_uri:decode_uri(Uri),
-	Options2 = coap_message:add_option('Uri-Path', Path, 
-					coap_message:add_option('Uri-Query', Query,
-						coap_message:add_option('Uri-Host', Host, 
-							coap_message:add_option('Uri-Port', Port, Options)))),
+	Options2 = ecoap_message:add_option('Uri-Path', Path, 
+					ecoap_message:add_option('Uri-Query', Query,
+						ecoap_message:add_option('Uri-Host', Host, 
+							ecoap_message:add_option('Uri-Port', Port, Options)))),
 	{{IP, Port}, {Method, Options2, Content}}.
 
 request_block(EndpointPid, Method, ROpt, Content) ->
@@ -150,19 +150,19 @@ request_block(EndpointPid, Method, ROpt, Block1, Content) ->
 
 % handle_response(EndpointPid, _Message=#{code:={ok, 'Continue'}, options:=Options1}, 
 % 	State=#state{req=#req{method=Method, options=Options2, content=Content}}) ->
-% 	{Num, true, Size} = coap_message:get_option('Block1', Options1),
+% 	{Num, true, Size} = ecoap_message:get_option('Block1', Options1),
 % 	{ok, Ref2} = request_block(EndpointPid, Method, Options2, {Num+1, false, Size}, Content),
 % 	{noreply, State#state{ref=Ref2}};
 
 % handle_response(EndpointPid, Message=#{code:={ok, Code}, options:=Options1, payload:=Data}, 
 % 	State=#state{endpoint_pid=EndpointPid, 
 % 		req=Req=#req{method=Method, options=Options2, fragment=Fragment}, from=From}) ->
-% 	case coap_message:get_option('Block2', Options1) of
+% 	case ecoap_message:get_option('Block2', Options1) of
 %         {Num, true, Size} ->
 %          	% more blocks follow, ask for more
 %             % no payload for requests with Block2 with NUM != 0
 %         	{ok, Ref2} = ecoap_endpoint:send(EndpointPid,
-%             	ecoap_request:request('CON', Method, coap_message:add_option('Block2', {Num+1, false, Size}, Options2))),
+%             	ecoap_request:request('CON', Method, ecoap_message:add_option('Block2', {Num+1, false, Size}, Options2))),
 % 				{noreply, State#state{ref=Ref2, req=Req#req{fragment= <<Fragment/binary, Data/binary>>}}};
 % 		 _Else ->
 % 		 	Res = return_response({ok, Code}, Message#{payload:= <<Fragment/binary, Data/binary>>}),
@@ -178,22 +178,22 @@ request_block(EndpointPid, Method, ROpt, Block1, Content) ->
 
 handle_response(EndpointPid, Message, 
 	State=#state{req=Req=#req{method=Method, options=Options2, content=Content, fragment=Fragment}, from=From}) ->
-	case coap_message:get_code(Message) of
+	case ecoap_message:get_code(Message) of
 		{ok, 'Continue'} ->
-			{Num, true, Size} = coap_message:get_option('Block1', Message),
+			{Num, true, Size} = ecoap_message:get_option('Block1', Message),
 			{ok, Ref2} = request_block(EndpointPid, Method, Options2, {Num+1, false, Size}, Content),
 			{noreply, State#state{ref=Ref2}};
 		{ok, Code} ->
-			Data = coap_message:get_payload(Message),
-			case coap_message:get_option('Block2', Message) of
+			Data = ecoap_message:get_payload(Message),
+			case ecoap_message:get_option('Block2', Message) of
 		        {Num, true, Size} ->
 		         	% more blocks follow, ask for more
 		            % no payload for requests with Block2 with NUM != 0
 		        	{ok, Ref2} = ecoap_endpoint:send(EndpointPid,
-		            	ecoap_request:request('CON', Method, coap_message:add_option('Block2', {Num+1, false, Size}, Options2))),
+		            	ecoap_request:request('CON', Method, ecoap_message:add_option('Block2', {Num+1, false, Size}, Options2))),
 						{noreply, State#state{ref=Ref2, req=Req#req{fragment= <<Fragment/binary, Data/binary>>}}};
 				 _Else ->
-				 	Res = return_response({ok, Code}, coap_message:set_payload(<<Fragment/binary, Data/binary>>, Message)),
+				 	Res = return_response({ok, Code}, ecoap_message:set_payload(<<Fragment/binary, Data/binary>>, Message)),
 				 	ok = send_response(From, Res),
 				 	{noreply, State#state{ref=undefined}}
 		    end;
@@ -208,9 +208,9 @@ send_response(From, Res) ->
 	ok.
 
 return_response({ok, Code}, Message) ->
-    {ok, Code, coap_content:get_content(Message)};
+    {ok, Code, ecoap_content:get_content(Message)};
 return_response({error, Code}, Message) ->
-	case coap_message:get_payload(Message) of
+	case ecoap_message:get_payload(Message) of
 		<<>> -> {error, Code};
-		_ -> {error, Code, coap_content:get_content(Message)}
+		_ -> {error, Code, ecoap_content:get_content(Message)}
 	end.

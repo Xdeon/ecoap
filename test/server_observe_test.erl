@@ -5,7 +5,7 @@
         coap_observe/4, coap_unobserve/1, handle_info/3, coap_ack/2]).
 
 -include_lib("eunit/include/eunit.hrl").
--include_lib("src/coap_content.hrl").
+-include_lib("src/ecoap_content.hrl").
 
 % resource operations
 coap_discover(Prefix) ->
@@ -21,7 +21,7 @@ coap_post(_EpId, _Prefix, _Suffix, _Request) ->
     {error, 'MethodNotAllowed'}.
 
 coap_put(_EpID, Prefix, Name, Request) ->
-    Content = coap_content:get_content(Request),
+    Content = ecoap_content:get_content(Request),
     mnesia:dirty_write(resources, {resources, Name, Content}),
     ecoap_handler:notify(Prefix++Name, Content),
     ok.
@@ -63,11 +63,11 @@ observe_test_() ->
 
 observe_test(Client) ->
     [
-    ?_assertEqual({ok, {error, 'NotFound'}, #coap_content{}},
+    ?_assertEqual({ok, {error, 'NotFound'}, #ecoap_content{}},
         ecoap_client:observe_and_wait_response(Client, "/text")),
-    ?_assertEqual({ok, {ok, 'Created'}, #coap_content{}},
+    ?_assertEqual({ok, {ok, 'Created'}, #ecoap_content{}},
     	begin 
-    		#coap_content{payload=Payload, options=Options} = test_utils:text_resource([<<"1">>], 2000),
+    		#ecoap_content{payload=Payload, options=Options} = test_utils:text_resource([<<"1">>], 2000),
         	ecoap_client:put(Client, "/text", Payload, Options)
         end),
     ?_assertEqual(
@@ -77,7 +77,7 @@ observe_test(Client) ->
 	    	{ok, {ok, 'Content'}, test_utils:text_resource([<<"2">>], 3000)}
     	}, 
     	begin 
-    		#coap_content{payload=Payload, options=Options} = test_utils:text_resource([<<"2">>], 3000),
+    		#ecoap_content{payload=Payload, options=Options} = test_utils:text_resource([<<"2">>], 3000),
     		observe_and_modify(Client, "/text", Payload, Options)
     	end)
     ].

@@ -5,7 +5,7 @@
         coap_observe/4, coap_unobserve/1, handle_info/3, coap_ack/2]).
 
 -include_lib("eunit/include/eunit.hrl").
--include_lib("src/coap_content.hrl").
+-include_lib("src/ecoap_content.hrl").
 
 coap_discover(_Prefix) -> [].
 
@@ -43,13 +43,13 @@ empty_server(Client) ->
     % provoked reset
     ?_assertEqual(ok, ecoap_client:ping(Client)),
     % discovery
-    ?_assertEqual({ok, {error, 'NotFound'}, #coap_content{}}, ecoap_client:get(Client, "/")),
-    ?_assertEqual({ok, {error, 'NotFound'}, #coap_content{}}, ecoap_client:get(Client, "/.well-known")),
-    ?_assertMatch({ok, {ok, 'Content'}, #coap_content{payload= <<"</.well-known/core>">>}}, ecoap_client:get(Client, "/.well-known/core")),
+    ?_assertEqual({ok, {error, 'NotFound'}, #ecoap_content{}}, ecoap_client:get(Client, "/")),
+    ?_assertEqual({ok, {error, 'NotFound'}, #ecoap_content{}}, ecoap_client:get(Client, "/.well-known")),
+    ?_assertMatch({ok, {ok, 'Content'}, #ecoap_content{payload= <<"</.well-known/core>">>}}, ecoap_client:get(Client, "/.well-known/core")),
     % other methods
-    ?_assertEqual({ok, {error, 'MethodNotAllowed'}, #coap_content{}}, ecoap_client:post(Client, "/.well-known/core", <<>>)),
-    ?_assertEqual({ok, {error, 'MethodNotAllowed'}, #coap_content{}}, ecoap_client:put(Client, "/.well-known/core", <<>>)),
-    ?_assertEqual({ok, {error, 'MethodNotAllowed'}, #coap_content{}}, ecoap_client:delete(Client, "/.well-known/core"))
+    ?_assertEqual({ok, {error, 'MethodNotAllowed'}, #ecoap_content{}}, ecoap_client:post(Client, "/.well-known/core", <<>>)),
+    ?_assertEqual({ok, {error, 'MethodNotAllowed'}, #ecoap_content{}}, ecoap_client:put(Client, "/.well-known/core", <<>>)),
+    ?_assertEqual({ok, {error, 'MethodNotAllowed'}, #ecoap_content{}}, ecoap_client:delete(Client, "/.well-known/core"))
     ].
 
 
@@ -69,8 +69,8 @@ unknown_handler_test_() ->
 
 unknown_handler(Client) ->
     [
-    ?_assertMatch({ok, {ok, 'Content'}, #coap_content{payload= <<"</.well-known/core>,</unknown>">>}}, ecoap_client:get(Client, "/.well-known/core")),
-    ?_assertEqual({ok, {error,'MethodNotAllowed'}, #coap_content{}}, ecoap_client:get(Client, "/unknown"))
+    ?_assertMatch({ok, {ok, 'Content'}, #ecoap_content{payload= <<"</.well-known/core>,</unknown>">>}}, ecoap_client:get(Client, "/.well-known/core")),
+    ?_assertEqual({ok, {error,'MethodNotAllowed'}, #ecoap_content{}}, ecoap_client:get(Client, "/unknown"))
     ].
 
 % end of file

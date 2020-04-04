@@ -1,4 +1,4 @@
--module(endpoint_sup).
+-module(ecoap_endpoint_sup).
 -behaviour(supervisor).
 
 -export([start_link/1]).

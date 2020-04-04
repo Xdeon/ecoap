@@ -20,12 +20,12 @@ init([{Module, Fun, Args}, Name, Type]) ->
 		supervisor -> 
 			SocketProc;
 		worker ->
-			[#{id => endpoint_sup_sup,
-		       start => {endpoint_sup_sup, start_link, []},
+			[#{id => ecoap_endpoint_sup_sup,
+		       start => {ecoap_endpoint_sup_sup, start_link, []},
 			   restart => permanent,
 			   shutdown => infinity,
 			   type => supervisor,
-   			   modules => [endpoint_sup_sup]}|SocketProc]
+   			   modules => [ecoap_endpoint_sup_sup]}|SocketProc]
 	end,
 	{ok, {#{strategy => one_for_all, intensity => 3, period => 10}, Procs}}.
 

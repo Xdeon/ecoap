@@ -1,4 +1,4 @@
--module(core_link).
+-module(ecoap_core_link).
 
 -export([decode/1, encode/1]).
 
@@ -13,9 +13,9 @@ decode(Binary) when is_binary(Binary) ->
     decode(binary_to_list(Binary));
 decode(String) ->
     % the parser is auto-generated using leex and yecc
-    try core_link_scanner:string(String) of
+    try ecoap_core_link_scanner:string(String) of
         {ok, TokenList, _Line} ->
-            try core_link_parser:parse(TokenList) of
+            try ecoap_core_link_parser:parse(TokenList) of
                 {ok, Res} -> Res;
                 Other -> Other
             catch C:R -> {error, {C, R}}
@@ -73,7 +73,7 @@ process_param_value(Values) when is_list(Values) ->
     mapjoin(fun process_param_value/1, " ", Values).
 
 process_content_type(Value) when is_binary(Value) ->
-    integer_to_binary(coap_iana:encode_content_format(Value));
+    integer_to_binary(ecoap_iana:encode_content_format(Value));
 process_content_type(Value) when is_integer(Value) ->
     integer_to_binary(Value);
 process_content_type(Values) when is_list(Values) ->

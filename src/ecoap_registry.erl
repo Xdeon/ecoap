@@ -171,7 +171,7 @@ call_coap_discover(Module, Prefix) ->
 
 %% gen_server.
 init([]) ->
-    spawn_link(fun() -> ecoap_registry:register_handler([{[<<".well-known">>, <<"core">>], resource_directory}]) end),
+    spawn_link(fun() -> ecoap_registry:register_handler([{[<<".well-known">>, <<"core">>], ecoap_resource_directory}]) end),
     ListenerMonitors = [{{erlang:monitor(process, Pid), Pid}, {listener, Ref}} ||
         [Ref, Pid] <- ets:match(?CONFIG_TAB, {{listener, '$1'}, '$2'})],
     {ok, #state{monitors=ListenerMonitors}}.

@@ -1,10 +1,10 @@
 %% Decoding/encoding based on gen_coap https://github.com/gotthardp/gen_coap
--module(coap_message).
+-module(ecoap_message).
 
 -export([decode/1, encode/1]).
-% getters of coap_message()
+% getters of ecoap_message()
 -export([get_type/1, get_code/1, get_id/1, get_token/1, get_options/1, get_payload/1]).
-% setters of coap_message()
+% setters of ecoap_message()
 -export([set_type/2, set_code/2, set_id/2, set_token/2, set_options/2, set_payload/2]).
 % utility functions for options
 -export([get_option/2, get_option/3, set_option/3, merge_options/2]).
@@ -55,9 +55,9 @@
 -define(DEFAULT_COAPS_PORT, 5684).
 -define(DEFAULT_MAX_AGE, 60).
 
--include("coap_message.hrl").
+-include("ecoap_message.hrl").
 
--type coap_message() :: #coap_message{}.
+-type ecoap_message() :: #ecoap_message{}.
 
 -type msg_id() :: 0..65535.
 
@@ -117,7 +117,7 @@
 
 -type optionset() :: #{coap_option() | non_neg_integer() => term()}.
 
--export_type([coap_message/0, 
+-export_type([ecoap_message/0, 
               msg_id/0, 
               token/0,
               coap_type/0, 
@@ -132,53 +132,53 @@
 
 % utility functions
 
--spec get_type(coap_message() | binary()) -> coap_type().
-get_type(#coap_message{type=Type}) -> Type;
-get_type(<<_:2, Type:2, _Tail/binary>>) -> coap_iana:decode_type(Type).
+-spec get_type(ecoap_message() | binary()) -> coap_type().
+get_type(#ecoap_message{type=Type}) -> Type;
+get_type(<<_:2, Type:2, _Tail/binary>>) -> ecoap_iana:decode_type(Type).
 
--spec set_type(coap_type(), coap_message()) -> coap_message().
-set_type(Type, Msg) -> Msg#coap_message{type=Type}.
+-spec set_type(coap_type(), ecoap_message()) -> ecoap_message().
+set_type(Type, Msg) -> Msg#ecoap_message{type=Type}.
 
--spec get_code(coap_message() | binary()) -> undefined | coap_code().
-get_code(#coap_message{code=Code}) -> Code;
-get_code(<<_:8, Class:3, DetailedCode:5, _Tail/binary>>) -> coap_iana:decode_code({Class, DetailedCode}).
+-spec get_code(ecoap_message() | binary()) -> undefined | coap_code().
+get_code(#ecoap_message{code=Code}) -> Code;
+get_code(<<_:8, Class:3, DetailedCode:5, _Tail/binary>>) -> ecoap_iana:decode_code({Class, DetailedCode}).
 
--spec set_code(coap_code(), coap_message()) -> coap_message().
-set_code(Code, Msg) -> Msg#coap_message{code=Code}.
+-spec set_code(coap_code(), ecoap_message()) -> ecoap_message().
+set_code(Code, Msg) -> Msg#ecoap_message{code=Code}.
 
 % shortcut function for reset generation
--spec get_id(coap_message() | binary()) -> msg_id().
-get_id(#coap_message{id=MsgId}) -> MsgId;
+-spec get_id(ecoap_message() | binary()) -> msg_id().
+get_id(#ecoap_message{id=MsgId}) -> MsgId;
 get_id(<<_:16, MsgId:16, _Tail/binary>>) -> MsgId.
 
--spec set_id(msg_id(), coap_message()) -> coap_message().
-set_id(MsgId, Msg) -> Msg#coap_message{id=MsgId}.
+-spec set_id(msg_id(), ecoap_message()) -> ecoap_message().
+set_id(MsgId, Msg) -> Msg#ecoap_message{id=MsgId}.
 
--spec get_token(coap_message() | binary()) -> binary().
-get_token(#coap_message{token=Token}) -> Token;
+-spec get_token(ecoap_message() | binary()) -> binary().
+get_token(#ecoap_message{token=Token}) -> Token;
 get_token(<<_:4, TKL:4, _:24, Token:TKL/binary, _Tail/binary>>) -> Token.
 
--spec set_token(binary(), coap_message()) -> coap_message().
-set_token(Token, Msg) -> Msg#coap_message{token=Token}.
+-spec set_token(binary(), ecoap_message()) -> ecoap_message().
+set_token(Token, Msg) -> Msg#ecoap_message{token=Token}.
 
--spec get_options(coap_message()) -> optionset().
-get_options(#coap_message{options=Options}) -> Options.
+-spec get_options(ecoap_message()) -> optionset().
+get_options(#ecoap_message{options=Options}) -> Options.
 
--spec set_options(optionset(), coap_message()) -> coap_message().
-set_options(Options, Msg) -> Msg#coap_message{options=Options}.
+-spec set_options(optionset(), ecoap_message()) -> ecoap_message().
+set_options(Options, Msg) -> Msg#ecoap_message{options=Options}.
 
--spec get_payload(coap_message()) -> binary().
-get_payload(#coap_message{payload=Payload}) -> Payload.
+-spec get_payload(ecoap_message()) -> binary().
+get_payload(#ecoap_message{payload=Payload}) -> Payload.
 
--spec set_payload(binary(), coap_message()) -> coap_message().
-set_payload(Payload, Msg) -> Msg#coap_message{payload=Payload}.
+-spec set_payload(binary(), ecoap_message()) -> ecoap_message().
+set_payload(Payload, Msg) -> Msg#ecoap_message{payload=Payload}.
 
--spec get_option(coap_option(), coap_message() | optionset()) -> term().
+-spec get_option(coap_option(), ecoap_message() | optionset()) -> term().
 get_option(Option, Source) ->
     get_option(Option, Source, undefined).
 
--spec get_option(coap_option(), coap_message() | optionset(), term()) -> term().
-get_option(Option, #coap_message{options=Options}, Default) ->
+-spec get_option(coap_option(), ecoap_message() | optionset(), term()) -> term().
+get_option(Option, #ecoap_message{options=Options}, Default) ->
     get_option_helper(Option, Options, Default);
 get_option(Option, Options, Default) ->
     get_option_helper(Option, Options, Default).
@@ -186,15 +186,15 @@ get_option(Option, Options, Default) ->
 get_option_helper(Option, Options, Default) ->
     maps:get(Option, Options, Default).
 
--spec set_option(coap_option(), term(), coap_message()) -> coap_message().
-set_option(Option, Value, Msg=#coap_message{options=Options}) ->
-    Msg#coap_message{options=add_option(Option, Value, Options)}.
+-spec set_option(coap_option(), term(), ecoap_message()) -> ecoap_message().
+set_option(Option, Value, Msg=#ecoap_message{options=Options}) ->
+    Msg#ecoap_message{options=add_option(Option, Value, Options)}.
 
--spec merge_options(optionset(), coap_message()) -> coap_message().
+-spec merge_options(optionset(), ecoap_message()) -> ecoap_message().
 merge_options(Options, Msg) when map_size(Options) =:= 0 -> 
     Msg;
-merge_options(Options2, Msg=#coap_message{options=Options1}) ->
-   Msg#coap_message{options=add_options(Options1, Options2)}.
+merge_options(Options2, Msg=#ecoap_message{options=Options1}) ->
+   Msg#ecoap_message{options=add_options(Options1, Options2)}.
 
 -spec add_option(coap_option(), term(), optionset()) -> optionset().
 % omit option for its default value
@@ -209,8 +209,8 @@ add_option(Option, Value, Options) -> Options#{Option => Value}.
 add_options(Options1, Options2) ->
     maps:merge(Options1, Options2).
 
--spec has_option(coap_option(), coap_message() | optionset()) -> boolean().
-has_option(Option, #coap_message{options=Options}) ->
+-spec has_option(coap_option(), ecoap_message() | optionset()) -> boolean().
+has_option(Option, #ecoap_message{options=Options}) ->
     has_option_helper(Option, Options);
 has_option(Option, Options) ->
     has_option_helper(Option, Options).
@@ -218,18 +218,18 @@ has_option(Option, Options) ->
 has_option_helper(Option, Options) ->
     maps:is_key(Option, Options).
 
--spec remove_option(coap_option(), Source) -> Source when Source :: coap_message() | optionset().
-remove_option(Option, Msg=#coap_message{options=Options}) ->
-    Msg#coap_message{options=remove_option_helper(Option, Options)};
+-spec remove_option(coap_option(), Source) -> Source when Source :: ecoap_message() | optionset().
+remove_option(Option, Msg=#ecoap_message{options=Options}) ->
+    Msg#ecoap_message{options=remove_option_helper(Option, Options)};
 remove_option(Option, Options) ->
     remove_option_helper(Option, Options).
 
 remove_option_helper(Option, Options) ->
     maps:remove(Option, Options).
 
--spec remove_options([coap_option()], Source) -> Source when Source :: coap_message() | optionset().
-remove_options(OptionList, Msg=#coap_message{options=Options}) ->
-    Msg#coap_message{options=remove_options_helper(OptionList, Options)};
+-spec remove_options([coap_option()], Source) -> Source when Source :: ecoap_message() | optionset().
+remove_options(OptionList, Msg=#ecoap_message{options=Options}) ->
+    Msg#ecoap_message{options=remove_options_helper(OptionList, Options)};
 remove_options(OptionList, Options) ->
     remove_options_helper(OptionList, Options).
 
@@ -305,15 +305,15 @@ remove_options_helper(OptionList, Options) ->
 %%--------------------------------------------------------------------
 
 % empty message only contains the 4-byte header
--spec decode(binary()) -> coap_message() | no_return().
+-spec decode(binary()) -> ecoap_message() | no_return().
 decode(<<?VERSION:2, Type:2, 0:4, 0:3, 0:5, MsgId:16>>) ->
-    #coap_message{type=coap_iana:decode_type(Type), id=MsgId};
+    #ecoap_message{type=ecoap_iana:decode_type(Type), id=MsgId};
 
 decode(<<?VERSION:2, Type:2, TKL:4, Class:3, DetailedCode:5, MsgId:16, Token:TKL/binary, Tail/binary>>) ->
     {Options, Payload} = decode_option_list(Tail, 0, []),
-    #coap_message{
-        type=coap_iana:decode_type(Type),
-        code=coap_iana:decode_code({Class, DetailedCode}),
+    #ecoap_message{
+        type=ecoap_iana:decode_type(Type),
+        code=ecoap_iana:decode_code({Class, DetailedCode}),
         id=MsgId,
         token=Token,
         options=maps:from_list(Options),
@@ -398,12 +398,12 @@ decode_option({?OPTION_LOCATION_PATH, OptVal}) -> {'Location-Path', OptVal};
 decode_option({?OPTION_URI_PATH, OptVal}) -> {'Uri-Path', OptVal};
 decode_option({?OPTION_CONTENT_FORMAT, OptVal}) ->
     Num = binary:decode_unsigned(OptVal),
-    {'Content-Format', coap_iana:decode_content_format(Num)};
+    {'Content-Format', ecoap_iana:decode_content_format(Num)};
 decode_option({?OPTION_MAX_AGE, OptVal}) -> {'Max-Age', binary:decode_unsigned(OptVal)};
 decode_option({?OPTION_URI_QUERY, OptVal}) -> {'Uri-Query', OptVal};
 decode_option({?OPTION_ACCEPT, OptVal}) -> 
     Num = binary:decode_unsigned(OptVal),
-    {'Accept', coap_iana:decode_content_format(Num)};
+    {'Accept', ecoap_iana:decode_content_format(Num)};
     % {'Accept', binary:decode_unsigned(OptVal)};
 decode_option({?OPTION_LOCATION_QUERY, OptVal}) -> {'Location-Query', OptVal};
 decode_option({?OPTION_PROXY_URI, OptVal}) -> {'Proxy-Uri', OptVal};
@@ -433,14 +433,14 @@ decode_block1(Num, M, SizEx) ->
 %%--------------------------------------------------------------------
 
 % empty message
--spec encode(coap_message()) -> binary() | no_return().
-encode(#coap_message{type=Type, code=undefined, id=MsgId}) ->
-    <<?VERSION:2, (coap_iana:encode_type(Type)):2, 0:4, 0:3, 0:5, MsgId:16>>;
-encode(#coap_message{type=Type, code=Code, id=MsgId, token=Token, options=Options, payload=Payload}) ->
+-spec encode(ecoap_message()) -> binary() | no_return().
+encode(#ecoap_message{type=Type, code=undefined, id=MsgId}) ->
+    <<?VERSION:2, (ecoap_iana:encode_type(Type)):2, 0:4, 0:3, 0:5, MsgId:16>>;
+encode(#ecoap_message{type=Type, code=Code, id=MsgId, token=Token, options=Options, payload=Payload}) ->
     TKL = byte_size(Token),
-    {Class, DetailedCode} = coap_iana:encode_code(Code),
+    {Class, DetailedCode} = ecoap_iana:encode_code(Code),
     Tail = encode_option_list(maps:to_list(Options), Payload),
-    <<?VERSION:2, (coap_iana:encode_type(Type)):2, TKL:4, Class:3, DetailedCode:5, MsgId:16, Token:TKL/binary, Tail/binary>>.
+    <<?VERSION:2, (ecoap_iana:encode_type(Type)):2, TKL:4, Class:3, DetailedCode:5, MsgId:16, Token:TKL/binary, Tail/binary>>.
 
 encode_option_list(Options, <<>>) ->
     encode_option_list1(Options);
@@ -510,14 +510,14 @@ encode_option({'Uri-Path', OptVal}) -> {?OPTION_URI_PATH, OptVal};
 encode_option({'Content-Format', OptVal}) when is_integer(OptVal) ->
     {?OPTION_CONTENT_FORMAT, binary:encode_unsigned(OptVal)};
 encode_option({'Content-Format', OptVal}) ->
-    Num = coap_iana:encode_content_format(OptVal),
+    Num = ecoap_iana:encode_content_format(OptVal),
     {?OPTION_CONTENT_FORMAT, binary:encode_unsigned(Num)};
 encode_option({'Max-Age', OptVal}) -> {?OPTION_MAX_AGE, binary:encode_unsigned(OptVal)};
 encode_option({'Uri-Query', OptVal}) -> {?OPTION_URI_QUERY, OptVal};
 encode_option({'Accept', OptVal}) when is_integer(OptVal) -> 
     {?OPTION_ACCEPT, binary:encode_unsigned(OptVal)};
 encode_option({'Accept', OptVal}) -> 
-    Num = coap_iana:encode_content_format(OptVal),
+    Num = ecoap_iana:encode_content_format(OptVal),
     {?OPTION_ACCEPT, binary:encode_unsigned(Num)};
 encode_option({'Location-Query', OptVal}) -> {?OPTION_LOCATION_QUERY, OptVal};
 encode_option({'Proxy-Uri', OptVal}) -> {?OPTION_PROXY_URI, OptVal};
@@ -579,103 +579,103 @@ is_critical_option(_Else) -> false.
 api_test_() ->
     OptionExample = #{'Size1' => 1024, 'Content-Format' => <<"text/plain">>, 'Uri-Path' => [<<"test">>], 'Block2' => {1, true, 64}},
     [
-        ?_assertEqual(OptionExample, coap_message:add_options(OptionExample, #{})),
-        ?_assertEqual(OptionExample, coap_message:add_options(#{}, OptionExample)),
-        ?_assertEqual(OptionExample#{'Size1' := 512}, coap_message:add_option('Size1', 512, OptionExample)),
+        ?_assertEqual(OptionExample, ecoap_message:add_options(OptionExample, #{})),
+        ?_assertEqual(OptionExample, ecoap_message:add_options(#{}, OptionExample)),
+        ?_assertEqual(OptionExample#{'Size1' := 512}, ecoap_message:add_option('Size1', 512, OptionExample)),
 
         % option in second map will supersed the same option in first map
         ?_assertEqual(OptionExample#{'ETag' => [<<"ETag">>], 'Size1' := 256}, 
-            coap_message:add_options(OptionExample, #{'ETag' => [<<"ETag">>], 'Size1' => 256})),
+            ecoap_message:add_options(OptionExample, #{'ETag' => [<<"ETag">>], 'Size1' => 256})),
         ?_assertEqual(OptionExample#{'ETag' => [<<"ETag">>]}, 
-            coap_message:add_options(#{'Size1' => 256, 'ETag' => [<<"ETag">>]}, OptionExample)),
+            ecoap_message:add_options(#{'Size1' => 256, 'ETag' => [<<"ETag">>]}, OptionExample)),
 
-        ?_assertEqual(true, coap_message:has_option('Size1', OptionExample)),
+        ?_assertEqual(true, ecoap_message:has_option('Size1', OptionExample)),
 
         ?_assertEqual(#{'Content-Format' => <<"text/plain">>, 'Uri-Path' => [<<"test">>], 'Block2' => {1, true, 64}},
-            coap_message:remove_option('Size1', OptionExample)),
+            ecoap_message:remove_option('Size1', OptionExample)),
         ?_assertEqual(#{'Size1' => 1024, 'Content-Format' => <<"text/plain">>},
-            coap_message:remove_options(['Uri-Path', 'Block2'], OptionExample))
+            ecoap_message:remove_options(['Uri-Path', 'Block2'], OptionExample))
     ].
 
 case0_test() ->
     Raw = <<64,1,0,0,177,97,1,98,1,99>>,
-    Msg = #coap_message{type = 'CON', code = 'GET', id = 0, token = <<>>, options = #{'Uri-Path' => [<<"a">>,<<"b">>,<<"c">>]}, payload = <<>>},
+    Msg = #ecoap_message{type = 'CON', code = 'GET', id = 0, token = <<>>, options = #{'Uri-Path' => [<<"a">>,<<"b">>,<<"c">>]}, payload = <<>>},
     test_codec(Raw, Msg).
 
 case1_test_() ->
     Raw = <<64,1,45,91,183,115,101,110,115,111,114,115,4,116,101,109,112,193,2>>, 
-    Msg = #coap_message{type='CON', code='GET', id=11611, options=#{'Block2' => {0,false,64}, 'Uri-Path' => [<<"sensors">>,<<"temp">>]}},
+    Msg = #ecoap_message{type='CON', code='GET', id=11611, options=#{'Block2' => {0,false,64}, 'Uri-Path' => [<<"sensors">>,<<"temp">>]}},
     test_codec(Raw, Msg).
 
 case2_test_() ->
     Raw = <<1:2, 0:2, 0:4, 0:8, 0:16>>, 
-    Msg = #coap_message{type='CON', id=0},
+    Msg = #ecoap_message{type='CON', id=0},
     test_codec(Raw, Msg).
 
 case3_test_() ->
     Raw = <<1:2, 1:2, 2:4, 2:3, 1:5, 5:16, 555:16, 3:4, 13:4, 2:8, "www.example.com", 4:4, 2:4, 3456:16>>, 
-    Msg = #coap_message{type='NON', code={ok, 'Created'}, id=5, token= <<555:16>>, options=#{'Uri-Port' => 3456, 'Uri-Host' => <<"www.example.com">>}},
+    Msg = #ecoap_message{type='NON', code={ok, 'Created'}, id=5, token= <<555:16>>, options=#{'Uri-Port' => 3456, 'Uri-Host' => <<"www.example.com">>}},
     test_codec(Raw, Msg).
 
 case4_test_() ->
     LongText = <<"abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz">>,
     Raw = <<1:2, 1:2, 2:4, 2:3, 1:5, 5:16, 555:16, 3:4, 14:4, 43:16, LongText/binary, 4:4, 2:4, 3456:16>>, 
-    Msg = #coap_message{type='NON', code={ok, 'Created'}, id=5, token= <<555:16>>, options=#{'Uri-Port' => 3456, 'Uri-Host' => LongText}},
+    Msg = #ecoap_message{type='NON', code={ok, 'Created'}, id=5, token= <<555:16>>, options=#{'Uri-Port' => 3456, 'Uri-Host' => LongText}},
     test_codec(Raw, Msg).
 
 case5_test_() ->
     Raw = <<1:2, 1:2, 2:4, 2:3, 1:5, 5:16, 555:16, 3:4, 13:4, 2:8, "www.example.com", 4:4, 2:4, 3456:16, 255:8, "1234567">>,
-    Msg = #coap_message{type='NON', code={ok, 'Created'}, id=5, token= <<555:16>>, options=#{'Uri-Port' => 3456, 'Uri-Host' => <<"www.example.com">>}, payload= <<"1234567">>},
+    Msg = #ecoap_message{type='NON', code={ok, 'Created'}, id=5, token= <<555:16>>, options=#{'Uri-Port' => 3456, 'Uri-Host' => <<"www.example.com">>}, payload= <<"1234567">>},
     test_codec(Raw, Msg).
 
 case6_test_() ->
     Raw = <<1:2, 1:2, 2:4, 2:3, 1:5, 5:16, 555:16, 3:4, 13:4, 2:8, "www.example.com", 4:4, 2:4, 3456:16, 14:4, 0:4, 1000:16, 255:8, "1234567">>,
-    Msg = #coap_message{type='NON', code={ok, 'Created'}, id=5, token= <<555:16>>, options=#{1276 => <<>>, 'Uri-Port' => 3456, 'Uri-Host' => <<"www.example.com">>}, payload= <<"1234567">>},
+    Msg = #ecoap_message{type='NON', code={ok, 'Created'}, id=5, token= <<555:16>>, options=#{1276 => <<>>, 'Uri-Port' => 3456, 'Uri-Host' => <<"www.example.com">>}, payload= <<"1234567">>},
     test_codec(Raw, Msg).
 
 case7_test_()-> 
     [
-    test_codec(#coap_message{type='RST', id=0}),
-    test_codec(#coap_message{type='CON', code='GET', id=100, options=#{'Block1' => {0,true,128}, 'Observe' => 1}}),
-    test_codec(#coap_message{type='NON', code='PUT', id=200, token= <<"token">>, options=#{'Uri-Path' => [<<".well-known">>, <<"core">>], 'No-Responses' => 26}}),
-    test_codec(#coap_message{type='NON', code={ok, 'Content'}, id=300, token= <<"token">>, 
+    test_codec(#ecoap_message{type='RST', id=0}),
+    test_codec(#ecoap_message{type='CON', code='GET', id=100, options=#{'Block1' => {0,true,128}, 'Observe' => 1}}),
+    test_codec(#ecoap_message{type='NON', code='PUT', id=200, token= <<"token">>, options=#{'Uri-Path' => [<<".well-known">>, <<"core">>], 'No-Responses' => 26}}),
+    test_codec(#ecoap_message{type='NON', code={ok, 'Content'}, id=300, token= <<"token">>, 
         options=#{'Content-Format' => <<"application/link-format">>, 'Uri-Path' => [<<".well-known">>, <<"core">>]}, payload= <<"<url>">>})
     ].
 
 case8_test_() ->
     Raw = <<1:2, 0:2, 2:4, 0:8, 5:16, 333:16, 3:4, 15:4, "www.example.com">>,
-    ?_assertMatch({'EXIT', _}, catch coap_message:decode(Raw)).
+    ?_assertMatch({'EXIT', _}, catch ecoap_message:decode(Raw)).
 
 case9_test_() ->
     Raw = <<1:2, 0:2, 2:4, 0:8, 5:16, 333:16, 3:4, 13:4, 15:8, "www.example.com">>,
-    ?_assertMatch({'EXIT', _}, catch coap_message:decode(Raw)).
+    ?_assertMatch({'EXIT', _}, catch ecoap_message:decode(Raw)).
 
 case10_test() ->
     Raw = <<64,1,0,0,55,97,98,99,46,99,111,109,7,100,101,102,46,99,111,109>>,
     [
-    test_encode_error(#coap_message{type='CON', code='GET', id=0, options=#{'Max-Age' => [60, 90, 120]}}, {non_repeatbale_option, {'Max-Age', [60, 90, 120]}}),
+    test_encode_error(#ecoap_message{type='CON', code='GET', id=0, options=#{'Max-Age' => [60, 90, 120]}}, {non_repeatbale_option, {'Max-Age', [60, 90, 120]}}),
     test_decode_error(Raw, {non_repeatbale_option, {'Uri-Host', <<"def.com">>}})
     ].
 
 test_codec(Message) ->
-    Bin = coap_message:encode(Message),
-    Message1 = coap_message:decode(Bin),
+    Bin = ecoap_message:encode(Message),
+    Message1 = ecoap_message:decode(Bin),
     ?_assertEqual(Message, Message1).
 
 test_codec(Raw, Msg) ->
-    Message = coap_message:decode(Raw),
-    MsgBin = coap_message:encode(Message),
+    Message = ecoap_message:decode(Raw),
+    MsgBin = ecoap_message:encode(Message),
     [
         ?_assertEqual(Msg, Message),
         ?_assertEqual(Raw, MsgBin)
     ].
 
 test_encode_error(Message, Error) ->
-    Result = try coap_message:encode(Message) catch throw:{error, Reason} -> Reason end,
+    Result = try ecoap_message:encode(Message) catch throw:{error, Reason} -> Reason end,
     ?_assertEqual(Error, Result).
 
 test_decode_error(Raw, Error) ->
-    Result = try coap_message:decode(Raw) catch throw:{error, Reason} -> Reason end,
+    Result = try ecoap_message:decode(Raw) catch throw:{error, Reason} -> Reason end,
     ?_assertEqual(Error, Result).
 
 -endif.

@@ -4,7 +4,7 @@
 -export([coap_discover/1, coap_get/4, coap_post/4, coap_put/4, coap_delete/4]).
 
 -include_lib("eunit/include/eunit.hrl").
--include_lib("src/coap_content.hrl").
+-include_lib("src/ecoap_content.hrl").
 
 -define(NOT_IMPLEMENTED, <<"Not implemented">>).
 
@@ -22,7 +22,7 @@ coap_post(_EpId, _Prefix, _Suffix, _Request) ->
     {error, 'MethodNotAllowed', ?NOT_IMPLEMENTED}.
 
 coap_put(_EpID, _Prefix, Name, Request) ->
-    Content = coap_content:get_content(Request),
+    Content = ecoap_content:get_content(Request),
     mnesia:dirty_write(resources, {resources, Name, Content}).
 
 coap_delete(_EpID, _Prefix, Name, _Request) ->
@@ -48,57 +48,57 @@ server_simple_storage_test_() ->
 
 simple_storage_test(Client) ->
     [
-    ?_assertEqual({ok, {ok, 'Deleted'}, #coap_content{}},
+    ?_assertEqual({ok, {ok, 'Deleted'}, #ecoap_content{}},
         ecoap_client:delete(Client, "/storage/one")),
 
-    ?_assertEqual({ok, {error, 'NotFound'}, #coap_content{}},
+    ?_assertEqual({ok, {error, 'NotFound'}, #ecoap_content{}},
         ecoap_client:get(Client, "/storage/one")),
     
-    ?_assertEqual({ok, {error, 'MethodNotAllowed'}, #coap_content{payload=?NOT_IMPLEMENTED}},
+    ?_assertEqual({ok, {error, 'MethodNotAllowed'}, #ecoap_content{payload=?NOT_IMPLEMENTED}},
         ecoap_client:post(Client, "/storage/one", <<>>)),
 
-    ?_assertEqual({ok, {ok, 'Created'}, #coap_content{}},
+    ?_assertEqual({ok, {ok, 'Created'}, #ecoap_content{}},
         ecoap_client:put(Client, "/storage/one",
         	<<"1">>, #{'ETag'=>[<<"1">>], 'If-None-Match'=>true})),
 
-    ?_assertEqual({ok, {error, 'PreconditionFailed'}, #coap_content{}},
+    ?_assertEqual({ok, {error, 'PreconditionFailed'}, #ecoap_content{}},
         ecoap_client:put(Client, "/storage/one",
             <<"1">>, #{'ETag'=>[<<"1">>], 'If-None-Match'=>true})),
 
-    ?_assertEqual({ok, {ok, 'Content'}, #coap_content{payload= <<"1">>, options=#{'ETag'=>[<<"1">>]}}},
+    ?_assertEqual({ok, {ok, 'Content'}, #ecoap_content{payload= <<"1">>, options=#{'ETag'=>[<<"1">>]}}},
         ecoap_client:get(Client, "/storage/one")),
 
-    ?_assertEqual({ok, {ok, 'Valid'}, #coap_content{options=#{'ETag'=>[<<"1">>]}}},
+    ?_assertEqual({ok, {ok, 'Valid'}, #ecoap_content{options=#{'ETag'=>[<<"1">>]}}},
         ecoap_client:get(Client, "/storage/one",
             #{'ETag'=>[<<"1">>]})),
 
-    ?_assertEqual({ok, {ok, 'Changed'}, #coap_content{}},
+    ?_assertEqual({ok, {ok, 'Changed'}, #ecoap_content{}},
         ecoap_client:put(Client, "/storage/one", 
             <<"2">>, #{'ETag'=>[<<"2">>]})),
 
-    ?_assertEqual({ok, {ok, 'Content'}, #coap_content{payload= <<"2">>, options=#{'ETag'=>[<<"2">>]}}},
+    ?_assertEqual({ok, {ok, 'Content'}, #ecoap_content{payload= <<"2">>, options=#{'ETag'=>[<<"2">>]}}},
         ecoap_client:get(Client, "/storage/one")),
 
-    ?_assertEqual({ok, {ok, 'Content'}, #coap_content{payload= <<"2">>, options=#{'ETag'=>[<<"2">>]}}},
+    ?_assertEqual({ok, {ok, 'Content'}, #ecoap_content{payload= <<"2">>, options=#{'ETag'=>[<<"2">>]}}},
         ecoap_client:get(Client, "/storage/one",
             #{'ETag'=>[<<"1">>]})),
 
     % observe existing resource when coap_observe is not implemented
-    ?_assertEqual({ok, {ok, 'Content'}, #coap_content{payload= <<"2">>, options=#{'ETag'=>[<<"2">>]}}},
+    ?_assertEqual({ok, {ok, 'Content'}, #ecoap_content{payload= <<"2">>, options=#{'ETag'=>[<<"2">>]}}},
         ecoap_client:observe_and_wait_response(Client, "/storage/one")),
 
-    ?_assertEqual({ok, {ok, 'Valid'}, #coap_content{options=#{'ETag'=>[<<"2">>]}}},
+    ?_assertEqual({ok, {ok, 'Valid'}, #ecoap_content{options=#{'ETag'=>[<<"2">>]}}},
         ecoap_client:get(Client, "/storage/one",
             #{'ETag'=>[<<"1">>, <<"2">>]})),
 
-    ?_assertEqual({ok, {ok, 'Deleted'}, #coap_content{}},
+    ?_assertEqual({ok, {ok, 'Deleted'}, #ecoap_content{}},
         ecoap_client:delete(Client, "/storage/one")),
 
-    ?_assertEqual({ok, {error, 'NotFound'}, #coap_content{}},
+    ?_assertEqual({ok, {error, 'NotFound'}, #ecoap_content{}},
         ecoap_client:get(Client, "/storage/one")),
 
     % observe non-existing resource when coap_observe is not implemented
-    ?_assertEqual({ok, {error, 'NotFound'}, #coap_content{}},
+    ?_assertEqual({ok, {error, 'NotFound'}, #ecoap_content{}},
         ecoap_client:observe_and_wait_response(Client, "/storage/one"))
     ].
 

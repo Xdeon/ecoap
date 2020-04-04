@@ -22,12 +22,12 @@
 
 -record(state, {
     protocol_config = undefined :: ecoap_config:protocol_config(),
-	tokens = #{} :: #{coap_message:token() => receiver()},
+	tokens = #{} :: #{ecoap_message:token() => receiver()},
 	trans = #{} :: #{trid() => ecoap_exchange:exchange()},
-    receivers = #{} :: #{receiver() => {coap_message:token(), trid(), observe_seq()}},
-	nextmid = undefined :: coap_message:msg_id(),
+    receivers = #{} :: #{receiver() => {ecoap_message:token(), trid(), observe_seq()}},
+	nextmid = undefined :: ecoap_message:msg_id(),
 	rescnt = 0 :: non_neg_integer(),
-    timer = undefined :: endpoint_timer:timer_state(),
+    timer = undefined :: ecoap_timer:timer_state(),
     sock = undefined :: inet:socket(),
     transport = undefined :: module(),
     ep_id = undefined :: ecoap_endpoint_id(),
@@ -39,7 +39,7 @@
 
 -type endpoint_addr() :: {inet:ip_address(), inet:port_number()}.
 -type ecoap_endpoint_id() :: {ecoap_socket:socket_id(), endpoint_addr()}.
--type trid() :: {in | out, coap_message:msg_id()}.
+-type trid() :: {in | out, ecoap_message:msg_id()}.
 -type receiver() :: {pid(), reference()}.
 -type observe_seq() :: non_neg_integer().
 
@@ -73,26 +73,26 @@ ping(EndpointPid) ->
 ping(EndpointPid, Ref) ->
     send_message(EndpointPid, Ref, ecoap_request:ping_msg()).
 
--spec send(pid(), coap_message:coap_message()) -> {ok, reference()}.
+-spec send(pid(), ecoap_message:ecoap_message()) -> {ok, reference()}.
 send(EndpointPid, Message) ->
-    send(EndpointPid, coap_message:get_type(Message), coap_message:get_code(Message), Message).
+    send(EndpointPid, ecoap_message:get_type(Message), ecoap_message:get_code(Message), Message).
 
 send(EndpointPid, Type, Code, Message) when is_tuple(Code); Type=='ACK'; Type=='RST' ->
     send_response(EndpointPid, make_ref(), Message);
 send(EndpointPid, _Type, _Code, Message) ->
     send_request(EndpointPid, make_ref(), Message).
 
--spec send_request(pid(), Ref, coap_message:coap_message()) -> {ok, Ref}.
+-spec send_request(pid(), Ref, ecoap_message:ecoap_message()) -> {ok, Ref}.
 send_request(EndpointPid, Ref, Message) ->
     gen_server:cast(EndpointPid, {send_request, Message, {self(), Ref}}),
     {ok, Ref}.
 
--spec send_message(pid(), Ref, coap_message:coap_message()) -> {ok, Ref}.
+-spec send_message(pid(), Ref, ecoap_message:ecoap_message()) -> {ok, Ref}.
 send_message(EndpointPid, Ref, Message) ->
     gen_server:cast(EndpointPid, {send_message, Message, {self(), Ref}}),
     {ok, Ref}.
 
--spec send_response(pid(), Ref, coap_message:coap_message()) -> {ok, Ref}.
+-spec send_response(pid(), Ref, ecoap_message:ecoap_message()) -> {ok, Ref}.
 send_response(EndpointPid, Ref, Message) ->
     gen_server:cast(EndpointPid, {send_response, Message, {self(), Ref}}),
     {ok, Ref}.
@@ -111,7 +111,7 @@ maybe_send_rst(_, _, _, _) ->
  
 send_rst(Transport, Socket, EpID={_, EpAddr}, MsgId) ->
     logger:log(debug, "sending RST to ~p~n", [EpAddr]),
-    BinRST = coap_message:encode(ecoap_request:rst(MsgId)),
+    BinRST = ecoap_message:encode(ecoap_request:rst(MsgId)),
     Transport:send(Socket, EpID, BinRST).
 
 -spec register_handler(pid(), ecoap_handler:handler_id(), pid()) -> ok.
@@ -142,12 +142,12 @@ do_init(Transport, Socket, EpID, ProtoConfig0) ->
     % while in server mode, we would like to avoid the endpoint process exiting together with any ecoap_client that links to it
     process_flag(trap_exit, true),
     ProtoConfig = ecoap_config:merge_protocol_config(ProtoConfig0),
-    Timer = endpoint_timer:start_kick(?SCAN_INTERVAL, start_scan),
+    Timer = ecoap_timer:start_kick(?SCAN_INTERVAL, start_scan),
     logger:log(info, "endpoint process ~p started for EpID: ~p~n", [self(), EpID]),
-    #state{transport=Transport, sock=Socket, ep_id=EpID, nextmid=coap_message_id:first_mid(), timer=Timer, protocol_config=ProtoConfig#{endpoint_pid=>self()}}.
+    #state{transport=Transport, sock=Socket, ep_id=EpID, nextmid=ecoap_message_id:first_mid(), timer=Timer, protocol_config=ProtoConfig#{endpoint_pid=>self()}}.
 
 handle_continue({init, SupPid}, State) ->
-    {ok, HdlSupPid} = endpoint_sup:start_handler_sup(SupPid),
+    {ok, HdlSupPid} = ecoap_endpoint_sup:start_handler_sup(SupPid),
     {noreply, State#state{handler_sup=HdlSupPid}}.
 
 handle_call(activate, {Pid, _}, State=#state{client_set=CSet}) ->
@@ -344,15 +344,15 @@ code_change(_OldVsn, State, _Extra) ->
 make_new_request(Message, Receiver, State=#state{nextmid=MsgId, tokens=Tokens, receivers=Receivers, protocol_config=#{token_length:=TKL}}) ->
     Token = case maps:find(Receiver, Receivers) of
         {ok, {OldToken, _, _}} -> OldToken;
-        error -> coap_message_token:generate_token(TKL)
+        error -> ecoap_message_token:generate_token(TKL)
     end,
     Tokens2 = maps:put(Token, Receiver, Tokens),
-    Receivers2 = maps:put(Receiver, {Token, {out, MsgId}, coap_message:get_option('Observe', Message)}, Receivers),
-    make_new_message(coap_message:set_token(Token, Message), Receiver, State#state{tokens=Tokens2, receivers=Receivers2}).
+    Receivers2 = maps:put(Receiver, {Token, {out, MsgId}, ecoap_message:get_option('Observe', Message)}, Receivers),
+    make_new_message(ecoap_message:set_token(Token, Message), Receiver, State#state{tokens=Tokens2, receivers=Receivers2}).
    
 make_new_message(Message, Receiver={ClientPid, _}, State=#state{nextmid=MsgId, client_set=CSet}) ->
     CSet2 = update_client_set(ClientPid, CSet),
-    make_message({out, MsgId}, coap_message:set_id(MsgId, Message), Receiver, State#state{client_set=CSet2, nextmid=coap_message_id:next_mid(MsgId)}).
+    make_message({out, MsgId}, ecoap_message:set_id(MsgId, Message), Receiver, State#state{client_set=CSet2, nextmid=ecoap_message_id:next_mid(MsgId)}).
 
 make_message(TrId, Message, Receiver, State=#state{protocol_config=ProtoConfig}) ->
     update_state(State, TrId,
@@ -361,7 +361,7 @@ make_message(TrId, Message, Receiver, State=#state{protocol_config=ProtoConfig})
 %% TODO: decide whether to send a CON notification considering other notifications may be in transit
 %%       and how to keep the retransimit counter for a newer notification when the former one timed out
 make_new_response(Message, Receiver, State=#state{trans=Trans, protocol_config=ProtoConfig}) ->
-    TrId = {in, coap_message:get_id(Message)},
+    TrId = {in, ecoap_message:get_id(Message)},
     case maps:find(TrId, Trans) of
         {ok, TrState} ->
             % coap_transport:awaits_response is used to 
@@ -434,7 +434,7 @@ purge_handler_regs(ID, Regs) ->
 
 update_state(State=#state{trans=Trans, timer=Timer}, TrId, {Actions, Exchange}) ->
     {Exchange2, State2} = execute(Actions, Exchange, State),
-    {noreply, State2#state{trans=update_trans(TrId, Exchange2, Trans), timer=endpoint_timer:kick(Timer)}}.
+    {noreply, State2#state{trans=update_trans(TrId, Exchange2, Trans), timer=ecoap_timer:kick(Timer)}}.
 
 update_trans(TrId, undefined, Trans) ->
     maps:remove(TrId, Trans);
@@ -510,7 +510,7 @@ handle_ack(_Message, Exchange, #state{ep_id=EpID}) ->
 request_complete(Message, Receiver, State=#state{receivers=Receivers}) ->
     case maps:find(Receiver, Receivers) of
         {ok, {Token, _, ReqObserve}} ->
-            maybe_complete_request(ReqObserve, coap_message:get_option('Observe', Message), Receiver, Token, State);
+            maybe_complete_request(ReqObserve, ecoap_message:get_option('Observe', Message), Receiver, Token, State);
         error ->
             State
     end.
@@ -546,10 +546,10 @@ do_cancel_msg(TrId, State=#state{trans=Trans}) ->
     end.
 
 purge_state(State=#state{tokens=Tokens, trans=Trans, rescnt=Count, client_set=CSet, timer=Timer}) ->
-    case {maps:size(Tokens) + maps:size(Trans) + Count + client_set_size(CSet), endpoint_timer:is_kicked(Timer)} of
+    case {maps:size(Tokens) + maps:size(Trans) + Count + client_set_size(CSet), ecoap_timer:is_kicked(Timer)} of
         {0, false} -> 
             {stop, normal, State};
         _ -> 
-            Timer2 = endpoint_timer:restart_kick(Timer),
+            Timer2 = ecoap_timer:restart_kick(Timer),
             {noreply, State#state{timer=Timer2}}
     end.

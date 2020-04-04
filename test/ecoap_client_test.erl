@@ -1,8 +1,8 @@
 -module(ecoap_client_test).
 
 -include_lib("eunit/include/eunit.hrl").
--include_lib("src/coap_message.hrl").
--include_lib("src/coap_content.hrl").
+-include_lib("src/ecoap_message.hrl").
+-include_lib("src/ecoap_content.hrl").
 
 basic_test_() ->
     [{setup,
@@ -46,29 +46,29 @@ unresponsive_endpoint(Pid) ->
 basic_sync(Pid) ->
 	[
         ?_assertEqual(ok, ecoap_client:ping(Pid)),
-		?_assertEqual({ok, {ok, 'Content'}, #coap_content{payload= <<"world">>, options=#{'Content-Format' => <<"text/plain">>}}}, 
+		?_assertEqual({ok, {ok, 'Content'}, #ecoap_content{payload= <<"world">>, options=#{'Content-Format' => <<"text/plain">>}}}, 
 			ecoap_client:get(Pid, "/hello")),
-		?_assertEqual({ok, {error, 'InternalServerError'}, #coap_content{payload= <<"Oops: broken">>, options=#{'Content-Format' => <<"text/plain">>}}}, 
+		?_assertEqual({ok, {error, 'InternalServerError'}, #ecoap_content{payload= <<"Oops: broken">>, options=#{'Content-Format' => <<"text/plain">>}}}, 
 			ecoap_client:get(Pid, "/broken")),
-        ?_assertEqual({ok, {ok, 'Created'}, #coap_content{options=#{'Location-Path' => [<<"large-create">>]}}},
+        ?_assertEqual({ok, {ok, 'Created'}, #ecoap_content{options=#{'Location-Path' => [<<"large-create">>]}}},
             ecoap_client:post(Pid, "/large-create", <<"Test">>)),
-        ?_assertEqual({ok, {ok, 'Changed'}, #coap_content{}}, 
+        ?_assertEqual({ok, {ok, 'Changed'}, #ecoap_content{}}, 
             ecoap_client:put(Pid, "/large-update", <<"Test">>)),
-        ?_assertEqual({ok, {ok, 'Deleted'}, #coap_content{payload= <<"DELETE OK">>, options=#{'Content-Format' => <<"text/plain">>}}}, 
+        ?_assertEqual({ok, {ok, 'Deleted'}, #ecoap_content{payload= <<"DELETE OK">>, options=#{'Content-Format' => <<"text/plain">>}}}, 
             ecoap_client:delete(Pid, "/sink"))
 	].
 
 basic_async(Pid) ->
     [
-        ?_assertEqual({ok, {ok, 'Content'}, #coap_content{payload= <<"world">>, options=#{'Content-Format' => <<"text/plain">>}}},
+        ?_assertEqual({ok, {ok, 'Content'}, #ecoap_content{payload= <<"world">>, options=#{'Content-Format' => <<"text/plain">>}}},
             await_response(Pid, ecoap_client:get_async(Pid, "/hello"))),
-        ?_assertEqual({ok, {error, 'InternalServerError'}, #coap_content{payload= <<"Oops: broken">>, options=#{'Content-Format' => <<"text/plain">>}}}, 
+        ?_assertEqual({ok, {error, 'InternalServerError'}, #ecoap_content{payload= <<"Oops: broken">>, options=#{'Content-Format' => <<"text/plain">>}}}, 
             await_response(Pid, ecoap_client:get_async(Pid, "/broken"))),
-        ?_assertEqual({ok, {ok, 'Created'}, #coap_content{options=#{'Location-Path' => [<<"large-create">>]}}},
+        ?_assertEqual({ok, {ok, 'Created'}, #ecoap_content{options=#{'Location-Path' => [<<"large-create">>]}}},
             await_response(Pid, ecoap_client:post_async(Pid, "/large-create", <<"Test">>))),
-        ?_assertEqual({ok, {ok, 'Changed'}, #coap_content{}}, 
+        ?_assertEqual({ok, {ok, 'Changed'}, #ecoap_content{}}, 
             await_response(Pid, ecoap_client:put_async(Pid, "/large-update", <<"Test">>))),
-        ?_assertEqual({ok, {ok, 'Deleted'}, #coap_content{payload= <<"DELETE OK">>, options=#{'Content-Format' => <<"text/plain">>}}}, 
+        ?_assertEqual({ok, {ok, 'Deleted'}, #ecoap_content{payload= <<"DELETE OK">>, options=#{'Content-Format' => <<"text/plain">>}}}, 
             await_response(Pid, ecoap_client:delete_async(Pid, "/sink")))
     ].
 
@@ -105,7 +105,7 @@ blockwise(Pid) ->
     Response = ecoap_client:get(Pid, "/large"),
     [
         ?_assertMatch({ok, {ok, 'Content'}, _}, Response), 
-        ?_assertEqual(1280, begin {_, _, #coap_content{payload=Payload}} = Response, byte_size(Payload) end)
+        ?_assertEqual(1280, begin {_, _, #ecoap_content{payload=Payload}} = Response, byte_size(Payload) end)
     ].
 
 % verify that ecoap_client clean up its state in this case
@@ -115,17 +115,17 @@ error_while_observe_block({Server, Client}) ->
     timer:sleep(50),
     {match, BlockReqMsgId, BlockReqToken} = server_stub:expect_request(Server, ExpectReq),
     server_stub:send_response(Server, 
-        #coap_message{type='ACK', code={ok, 'Content'}, id=BlockReqMsgId, token=BlockReqToken, options=#{'Observe' => 1, 'Block2' => {0, true, 64}}, payload=binary:copy(<<"A">>, 64)}),
+        #ecoap_message{type='ACK', code={ok, 'Content'}, id=BlockReqMsgId, token=BlockReqToken, options=#{'Observe' => 1, 'Block2' => {0, true, 64}}, payload=binary:copy(<<"A">>, 64)}),
     timer:sleep(50),
-    {match, BlockReqMsgId2, BlockReqToken2} = server_stub:expect_request(Server, coap_message:set_options(#{'Block2' => {1, false, 64}, 'Uri-Path' => [<<"test">>]}, ExpectReq)),
+    {match, BlockReqMsgId2, BlockReqToken2} = server_stub:expect_request(Server, ecoap_message:set_options(#{'Block2' => {1, false, 64}, 'Uri-Path' => [<<"test">>]}, ExpectReq)),
     server_stub:send_response(Server, 
-        #coap_message{type='ACK', code={ok, 'Content'}, id=BlockReqMsgId2, token=BlockReqToken2, options=#{'Block2' => {1, true, 64}}, payload=binary:copy(<<"B">>, 64)}),
+        #ecoap_message{type='ACK', code={ok, 'Content'}, id=BlockReqMsgId2, token=BlockReqToken2, options=#{'Block2' => {1, true, 64}}, payload=binary:copy(<<"B">>, 64)}),
     timer:sleep(50),
-    {match, BlockReqMsgId3, BlockReqToken3} = server_stub:expect_request(Server, coap_message:set_options(#{'Block2' => {2, false, 64}, 'Uri-Path' => [<<"test">>]}, ExpectReq)),
+    {match, BlockReqMsgId3, BlockReqToken3} = server_stub:expect_request(Server, ecoap_message:set_options(#{'Block2' => {2, false, 64}, 'Uri-Path' => [<<"test">>]}, ExpectReq)),
     server_stub:send_response(Server, 
-        #coap_message{type='ACK', code={ok, 'Content'}, id=BlockReqMsgId3, token=BlockReqToken3, options=#{'Block2' => {2, true, 64}}, payload=binary:copy(<<"C">>, 64)}),
+        #ecoap_message{type='ACK', code={ok, 'Content'}, id=BlockReqMsgId3, token=BlockReqToken3, options=#{'Block2' => {2, true, 64}}, payload=binary:copy(<<"C">>, 64)}),
     timer:sleep(50),
-    {match, BlockReqMsgId4, _} = server_stub:expect_request(Server, coap_message:set_options(#{'Block2' => {3, false, 64}, 'Uri-Path' => [<<"test">>]}, ExpectReq)),
+    {match, BlockReqMsgId4, _} = server_stub:expect_request(Server, ecoap_message:set_options(#{'Block2' => {3, false, 64}, 'Uri-Path' => [<<"test">>]}, ExpectReq)),
     server_stub:send_response(Server, ecoap_request:rst(BlockReqMsgId4)),
     timer:sleep(50),
     ReqRefs = ecoap_client:get_reqrefs(Client),

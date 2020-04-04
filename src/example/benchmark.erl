@@ -117,25 +117,25 @@ coap_discover(Prefix) ->
     [{absolute, Prefix, []}].
 
 coap_get(_EpID, [<<"benchmark">>], _Suffix, _Request) ->
-    {ok, coap_content:new(<<"hello world">>)};
+    {ok, ecoap_content:new(<<"hello world">>)};
 
 coap_get(_EpID, [<<"fibonacci">>], _Suffix, Request) ->
     Num = get_fib_arg(ecoap_request:query(Request), 20),
     Payload = <<"fibonacci(", (integer_to_binary(Num))/binary, ") = ", (integer_to_binary(fib((Num))))/binary>>,
-    {ok, coap_content:new(Payload, #{'Content-Format' => <<"text/plain">>})};
+    {ok, ecoap_content:new(Payload, #{'Content-Format' => <<"text/plain">>})};
 
 coap_get(_EpID, [<<"helloWorld">>], _Suffix, _Request) ->
-    {ok, coap_content:new(<<"Hello World">>, #{'Content-Format' => <<"text/plain">>})};
+    {ok, ecoap_content:new(<<"Hello World">>, #{'Content-Format' => <<"text/plain">>})};
 
 coap_get(_EpID, [<<"shutdown">>], _Suffix, _Request) ->
-    {ok, coap_content:new(<<"Send a POST request to this resource to shutdown the server">>)};
+    {ok, ecoap_content:new(<<"Send a POST request to this resource to shutdown the server">>)};
 
 coap_get(_EpID, _Prefix, _Suffix, _Request) ->
     {error, 'NotFound'}.
 
 coap_post(_EpID, [<<"shutdown">>], _Suffix, _Request) ->
     _ = spawn(fun() -> io:format("Shutting down everything in 1 second~n"), timer:sleep(1000), benchmark:stop() end),
-    {ok, 'Changed', coap_content:new(<<"Shutting down">>)};
+    {ok, 'Changed', ecoap_content:new(<<"Shutting down">>)};
 
 coap_post(_EpID, _Prefix, _Suffix, _Request) ->
     {error, 'MethodNotAllowed'}.

@@ -1,4 +1,4 @@
--module(resource_directory).
+-module(ecoap_resource_directory).
 -behaviour(ecoap_handler).
 
 -export([coap_discover/1, coap_get/4]).
@@ -9,9 +9,9 @@ coap_discover(Prefix) ->
 
 coap_get(_EpID, _Prefix, [], Request) ->
     Query = ecoap_request:query(Request),
-    Links = core_link:encode(filter(ecoap_registry:get_links(), Query)),
+    Links = ecoap_core_link:encode(filter(ecoap_registry:get_links(), Query)),
     Options = #{'ETag' => [binary:part(crypto:hash(sha, Links), {0,4})], 'Content-Format' => <<"application/link-format">>},
-    {ok, coap_content:new(Links, Options)};
+    {ok, ecoap_content:new(Links, Options)};
 coap_get(_EpID, _Prefix, _Suffix, _Request) ->
     {error, 'NotFound'}.
 
@@ -98,20 +98,20 @@ attribute_query_test_() ->
            {absolute, [<<"sensors">>, <<"light">>], [{rt, [<<"light-lux">>, <<"core.sen-light">>]}, {'if', <<"sensor">>}, {foo, true}]}],
     TempSensor = <<"</sensors/temp>;rt=\"temperature-c\";if=\"sensor\";foo;bar=\"one two\";sz=1280">>,
     Sensors = <<"</sensors/temp>;rt=\"temperature-c\";if=\"sensor\";foo;bar=\"one two\";sz=1280,</sensors/light>;rt=\"light-lux core.sen-light\";if=\"sensor\";foo">>,
-    [?_assertEqual(TempSensor, core_link:encode(filter(Link, make_query("bar=one&if=sensor")))),
-    ?_assertEqual(TempSensor, core_link:encode(filter(Link, make_query("bar=one&foo")))),
+    [?_assertEqual(TempSensor, ecoap_core_link:encode(filter(Link, make_query("bar=one&if=sensor")))),
+    ?_assertEqual(TempSensor, ecoap_core_link:encode(filter(Link, make_query("bar=one&foo")))),
     % test for query with key + no value
-    ?_assertEqual(Sensors, core_link:encode(filter(Link, make_query("foo")))),
-    ?_assertEqual(TempSensor, core_link:encode(filter(Link, make_query("if=sensor&bar=one")))),
-    ?_assertEqual(TempSensor, core_link:encode(filter(Link, make_query("foo&bar=one")))),
-    ?_assertEqual(TempSensor, core_link:encode(filter(Link, make_query("bar=one&bar=two")))),
-    ?_assertEqual(TempSensor, core_link:encode(filter(Link, make_query("bar=one*")))),
-    ?_assertEqual(TempSensor, core_link:encode(filter(Link, make_query("bar=one&sz=1280")))),
-    ?_assertEqual(<<>>, core_link:encode(filter(Link, make_query("bar=one&bar=three")))),
+    ?_assertEqual(Sensors, ecoap_core_link:encode(filter(Link, make_query("foo")))),
+    ?_assertEqual(TempSensor, ecoap_core_link:encode(filter(Link, make_query("if=sensor&bar=one")))),
+    ?_assertEqual(TempSensor, ecoap_core_link:encode(filter(Link, make_query("foo&bar=one")))),
+    ?_assertEqual(TempSensor, ecoap_core_link:encode(filter(Link, make_query("bar=one&bar=two")))),
+    ?_assertEqual(TempSensor, ecoap_core_link:encode(filter(Link, make_query("bar=one*")))),
+    ?_assertEqual(TempSensor, ecoap_core_link:encode(filter(Link, make_query("bar=one&sz=1280")))),
+    ?_assertEqual(<<>>, ecoap_core_link:encode(filter(Link, make_query("bar=one&bar=three")))),
     % test for not qualified query
-    ?_assertEqual(core_link:encode(Link), core_link:encode(filter(Link, [<<"&=bar">>]))),
+    ?_assertEqual(ecoap_core_link:encode(Link), ecoap_core_link:encode(filter(Link, [<<"&=bar">>]))),
     % test unknown atoms for safety
-    ?_assertEqual(<<>>, core_link:encode(filter(Link, make_query("what=one&thefuck=three"))))
+    ?_assertEqual(<<>>, ecoap_core_link:encode(filter(Link, make_query("what=one&thefuck=three"))))
     ]. 
 
 make_query(Query) ->

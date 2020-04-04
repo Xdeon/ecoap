@@ -1,9 +1,9 @@
--module(coap_message_id).
+-module(ecoap_message_id).
 -export([first_mid/0, next_mid/1]).
 
 -define(MAX_MESSAGE_ID, 65535). % 16-bit number
 
--spec first_mid() -> coap_message:msg_id().
+-spec first_mid() -> ecoap_message:msg_id().
 first_mid() ->
     _ = rand:seed(exs1024),
     rand:uniform(?MAX_MESSAGE_ID).
@@ -22,7 +22,7 @@ first_mid() ->
 % https://github.com/eclipse/californium/pull/271
 % https://github.com/eclipse/californium/pull/328
 
--spec next_mid(coap_message:msg_id()) -> coap_message:msg_id().
+-spec next_mid(ecoap_message:msg_id()) -> ecoap_message:msg_id().
 next_mid(MsgId) ->
     if
         MsgId < ?MAX_MESSAGE_ID -> MsgId + 1;

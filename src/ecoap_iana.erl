@@ -1,4 +1,4 @@
--module(coap_iana).
+-module(ecoap_iana).
 
 -export([decode_type/1, encode_type/1, 
 	decode_code/1, encode_code/1, 
@@ -9,13 +9,13 @@
 -type coap_code_raw() :: {non_neg_integer(), non_neg_integer()}.
 -type content_formats_code() :: non_neg_integer().
 
--spec decode_type(coap_type_raw()) -> coap_message:coap_type().
+-spec decode_type(coap_type_raw()) -> ecoap_message:coap_type().
 decode_type(0) -> 'CON';
 decode_type(1) -> 'NON';
 decode_type(2) -> 'ACK';
 decode_type(3) -> 'RST'.
 
--spec encode_type(coap_message:coap_type()) -> coap_type_raw().
+-spec encode_type(ecoap_message:coap_type()) -> coap_type_raw().
 encode_type('CON') -> 0;
 encode_type('NON') -> 1;
 encode_type('ACK') -> 2;
@@ -60,7 +60,7 @@ encode_type('RST') -> 3.
 % | 5.05 | Proxying Not Supported       | [RFC7252] |
 % +------+------------------------------+-----------+
 
--spec decode_code(coap_code_raw()) -> coap_message:coap_code().
+-spec decode_code(coap_code_raw()) -> ecoap_message:coap_code().
 decode_code({0, 01}) -> 'GET';
 decode_code({0, 02}) -> 'POST';
 decode_code({0, 03}) -> 'PUT';
@@ -98,7 +98,7 @@ decode_code({5, 04}) -> {error, 'GatewayTimeout'};
 decode_code({5, 05}) -> {error, 'ProxyingNotSupported'}.
 
 
--spec encode_code(coap_message:coap_code()) -> coap_code_raw().
+-spec encode_code(ecoap_message:coap_code()) -> coap_code_raw().
 encode_code('GET') -> {0, 01};
 encode_code('POST') -> {0, 02};
 encode_code('PUT') -> {0, 03};

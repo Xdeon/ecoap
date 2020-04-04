@@ -28,7 +28,7 @@
 
 -export_type([exchange/0]).
 
--include("coap_message.hrl").
+-include("ecoap_message.hrl").
 
 not_expired(CurrentTime, #exchange{timestamp=Timestamp, expire_time=ExpireTime}) ->
     CurrentTime - Timestamp < ExpireTime.
@@ -77,19 +77,19 @@ idle(Msg={in, <<1:2, 1:2, _:12, _Tail/bytes>>}, ProtoConfig, Exchange) ->
 idle(Msg={in, <<1:2, 0:2, _:12, _Tail/bytes>>}, ProtoConfig, Exchange) ->
     in_con(Msg, ProtoConfig, Exchange#exchange{expire_time=?EXCHANGE_LIFETIME(ProtoConfig)});
 % NON-> 
-idle(Msg={out, #coap_message{type='NON'}}, ProtoConfig, Exchange) ->
+idle(Msg={out, #ecoap_message{type='NON'}}, ProtoConfig, Exchange) ->
     out_non(Msg, ProtoConfig, Exchange#exchange{expire_time=?NON_LIFETIME(ProtoConfig)});
 % CON->
-idle(Msg={out, #coap_message{type='CON'}}, ProtoConfig, Exchange) ->
+idle(Msg={out, #ecoap_message{type='CON'}}, ProtoConfig, Exchange) ->
     out_con(Msg, ProtoConfig, Exchange#exchange{expire_time=?EXCHANGE_LIFETIME(ProtoConfig)}).
 
 % --- incoming NON
 in_non({in, BinMessage}, _, Exchange) ->
-    try coap_message:decode(BinMessage) of
-        #coap_message{code=Method}=Message when is_atom(Method) ->
+    try ecoap_message:decode(BinMessage) of
+        #ecoap_message{code=Method}=Message when is_atom(Method) ->
             logger:log(debug, "~p received NON request ~p~n", [self(), Message]),
             {[{handle_request, Message}], Exchange#exchange{stage=got_non}};
-        #coap_message{}=Message ->
+        #ecoap_message{}=Message ->
             logger:log(debug, "~p received NON response ~p~n", [self(), Message]),
             {[{handle_respone, Message}], Exchange#exchange{stage=got_non}}
     catch _C:_R ->
@@ -100,22 +100,22 @@ in_non({in, BinMessage}, _, Exchange) ->
 
 got_non({in, BinMessage}, _, Exchange) ->
     % ignore retransmission
-    logger:log(debug, "~p received repeated NON msg MID=~p~n", [self(), coap_message:get_id(BinMessage)]),
+    logger:log(debug, "~p received repeated NON msg MID=~p~n", [self(), ecoap_message:get_id(BinMessage)]),
     {[], Exchange#exchange{stage=got_non}}.
 
 % --- outgoing NON
 out_non({out, Message}, _, Exchange) ->
     logger:log(debug, "~p send outgoing NON msg ~p~n", [self(), Message]),
-    BinMessage = coap_message:encode(Message),
+    BinMessage = ecoap_message:encode(Message),
     {[{send, BinMessage}], Exchange#exchange{stage=sent_non}}.
 
 % we may get reset
 sent_non({in, BinMessage}, _, Exchange) ->
-    try coap_message:decode(BinMessage) of
-        #coap_message{type='RST'}=Message ->
+    try ecoap_message:decode(BinMessage) of
+        #ecoap_message{type='RST'}=Message ->
             logger:log(debug, "~p received RST msg ~p~n", [self(), Message]),
             {[{handle_error, Message, 'RST'}], Exchange#exchange{stage=got_rst}};
-        #coap_message{}=Message->
+        #ecoap_message{}=Message->
             logger:log(debug, "~p received irrelevant msg ~p~n", [self(), Message]),
             {[], Exchange#exchange{stage=sent_non}}
     catch _C:_R ->
@@ -124,38 +124,38 @@ sent_non({in, BinMessage}, _, Exchange) ->
     end.
             
 got_rst({in, BinMessage}, _, Exchange)->
-    logger:log(debug, "~p received repeated RST msg MID=~p~n", [self(), coap_message:get_id(BinMessage)]),
+    logger:log(debug, "~p received repeated RST msg MID=~p~n", [self(), ecoap_message:get_id(BinMessage)]),
     {[], Exchange#exchange{stage=got_rst}}.
 
 % --- incoming CON->ACK|RST
 in_con({in, BinMessage}, ProtoConfig, Exchange) ->
-    try coap_message:decode(BinMessage) of
-        #coap_message{code=undefined}=Message ->
+    try ecoap_message:decode(BinMessage) of
+        #ecoap_message{code=undefined}=Message ->
             % provoked reset
             logger:log(debug, "~p received ping msg ~p~n", [self(), Message]),
             go_pack_sent(ecoap_request:rst(Message), Exchange);
-        #coap_message{code=Method}=Message when is_atom(Method) ->
+        #ecoap_message{code=Method}=Message when is_atom(Method) ->
             logger:log(debug, "~p received CON request ~p~n", [self(), Message]),
             {Actions, NewExchange} = go_await_aack(Message, ProtoConfig, Exchange),
             {[{handle_request, Message} | Actions], NewExchange};
-        #coap_message{}=Message ->
+        #ecoap_message{}=Message ->
             logger:log(debug, "~p received CON response ~p~n", [self(), Message]),
             {Actions, NewExchange} = go_await_aack(Message, ProtoConfig, Exchange),
             {[{handle_response, Message} | Actions], NewExchange}
     catch 
         _C:_R ->
             logger:log(debug, "~p received corrupted msg ~p in stage ~p~n", [self(), BinMessage, ?FUNCTION_NAME]),
-            go_pack_sent(ecoap_request:rst(coap_message:get_id(BinMessage)), Exchange)
+            go_pack_sent(ecoap_request:rst(ecoap_message:get_id(BinMessage)), Exchange)
     end.
 
 go_await_aack(Message, ProtoConfig, Exchange) ->
     % we may need to ack the message
-    BinAck = coap_message:encode(ecoap_request:ack(Message)),
+    BinAck = ecoap_message:encode(ecoap_request:ack(Message)),
     {[{start_timer, ?PROCESSING_DELAY(ProtoConfig)}], Exchange#exchange{stage=await_aack, msgbin=BinAck}}.
 
 await_aack({in, BinMessage}, _, Exchange) ->
     % ignore retransmission
-    logger:log(debug, "~p received repeated CON msg MID=~p~n", [self(), coap_message:get_id(BinMessage)]),
+    logger:log(debug, "~p received repeated CON msg MID=~p~n", [self(), ecoap_message:get_id(BinMessage)]),
     {[], Exchange#exchange{stage=await_aack}};
 
 await_aack({timeout, await_aack}, _, Exchange=#exchange{msgbin=BinAck}) ->
@@ -165,7 +165,7 @@ await_aack({timeout, await_aack}, _, Exchange=#exchange{msgbin=BinAck}) ->
 await_aack({out, Ack}, _, Exchange) ->
     % set correct type for a piggybacked response
     Ack2 = case Ack of
-        #coap_message{type='CON'} -> Ack#coap_message{type='ACK'};
+        #ecoap_message{type='CON'} -> Ack#ecoap_message{type='ACK'};
         _ -> Ack
     end,
     {Actions, NewExchange} = go_pack_sent(Ack2, Exchange),
@@ -173,12 +173,12 @@ await_aack({out, Ack}, _, Exchange) ->
 
 go_pack_sent(Ack, Exchange) ->
     logger:log(debug, "~p send ACK/RST msg ~p~n", [self(), Ack]),
-    BinAck = coap_message:encode(Ack),
+    BinAck = ecoap_message:encode(Ack),
     {[{send, BinAck}], Exchange#exchange{stage=pack_sent, msgbin=BinAck}}.
 
 pack_sent({in, BinMessage}, _, Exchange=#exchange{msgbin=BinAck}) ->
     % retransmit the ack
-    logger:log(debug, "~p re-send ACK/RST msg MID=~p~n", [self(), coap_message:get_id(BinMessage)]),
+    logger:log(debug, "~p re-send ACK/RST msg MID=~p~n", [self(), ecoap_message:get_id(BinMessage)]),
     {[{send, BinAck}], Exchange#exchange{stage=pack_sent}};
 pack_sent({timeout, await_aack}, _, Exchange) ->
 	% in case the timeout msg was sent before we cancel the timer
@@ -204,24 +204,24 @@ pack_sent({timeout, await_aack}, _, Exchange) ->
 % --- outgoing CON->ACK|RST
 out_con({out, Message}, ProtoConfig, Exchange) ->
     logger:log(debug, "~p send outgoing CON msg ~p~n", [self(), Message]),
-    BinMessage = coap_message:encode(Message),
+    BinMessage = ecoap_message:encode(Message),
     TimeOut = ?ACK_TIMEOUT(ProtoConfig)+rand:uniform(?ACK_RANDOM_FACTOR(ProtoConfig)),
     {[{send, BinMessage}, {start_timer, TimeOut}], Exchange#exchange{msgbin=BinMessage, retry_count=0, retry_time=TimeOut, stage=await_pack}}.
 
 % peer ack
 await_pack({in, BinAck}, _, Exchange) ->
-    try coap_message:decode(BinAck) of
-        #coap_message{type='ACK', code=undefined}=Message ->
+    try ecoap_message:decode(BinAck) of
+        #ecoap_message{type='ACK', code=undefined}=Message ->
             % this is an empty ack for separate response or observe notification
             % since we can confirm when an outgoing confirmable message
             % has been acknowledged or reset, we can safely clean the msgbin 
             % which won't be used again from this moment
             logger:log(debug, "~p received empty ACK msg ~p~n", [self(), Message]),
             {[cancel_timer, {handle_ack, Message}], Exchange#exchange{msgbin= <<>>, stage=aack_sent}};
-        #coap_message{type='RST', code=undefined}=Message ->
+        #ecoap_message{type='RST', code=undefined}=Message ->
             logger:log(debug, "~p received RST msg ~p~n", [self(), Message]),
             {[cancel_timer, {handle_error, Message, 'RST'}], Exchange#exchange{msgbin= <<>>, stage=aack_sent}};
-        #coap_message{type='ACK'}=Message ->
+        #ecoap_message{type='ACK'}=Message ->
             logger:log(debug, "~p received ACK response ~p~n", [self(), Message]),
             {[cancel_timer, {handle_response, Message}], Exchange#exchange{msgbin= <<>>, stage=aack_sent}}
     catch _C:_R ->
@@ -231,7 +231,7 @@ await_pack({in, BinAck}, _, Exchange) ->
     end;
 
 await_pack({timeout, await_pack}, ProtoConfig, Exchange=#exchange{msgbin=BinMessage, retry_time=TimeOut, retry_count=Count}) when Count < ?MAX_RETRANSMIT(ProtoConfig) ->
-    % BinMessage = coap_message:encode(Message),
+    % BinMessage = ecoap_message:encode(Message),
     logger:log(debug, "~p resend CON msg for ~p time after ~pms have passed~n", [self(), Count, TimeOut]),
     TimeOut2 = TimeOut*2,
     {[{send, BinMessage}, {start_timer, TimeOut2}], Exchange#exchange{retry_time=TimeOut2, retry_count=Count+1, stage=await_pack}};
@@ -256,7 +256,7 @@ check_next_state(#exchange{expire_time=0, stage=Stage}) when Stage =/= await_aac
 check_next_state(Exchange) -> Exchange.
 
 timeout_after(Time, EndpointPid, #exchange{trid=TrId, stage=Stage}) ->
-    endpoint_timer:start_simple(Time, EndpointPid, {timeout, TrId, Stage}).
+    ecoap_timer:start_simple(Time, EndpointPid, {timeout, TrId, Stage}).
 
 cancel_timer(#exchange{timer=Timer}) ->
-    endpoint_timer:cancel_timer(Timer).
+    ecoap_timer:cancel_timer(Timer).
