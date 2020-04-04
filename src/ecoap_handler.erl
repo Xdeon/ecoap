@@ -51,9 +51,9 @@
 %% CON -> Empty ACK -> NON
 
 % called when a client asks for .well-known/core resources
--callback coap_discover(Prefix) -> [Uri] when
+-callback coap_discover(Prefix) -> [LinkFormat] when
     Prefix :: ecoap_uri:path(),
-    Uri :: ecoap_core_link:coap_uri().
+    LinkFormat :: ecoap_core_link:link_format().
 -optional_callbacks([coap_discover/1]). 
 
 % GET handler

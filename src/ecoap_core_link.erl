@@ -2,13 +2,13 @@
 
 -export([decode/1, encode/1]).
 
--type coap_uri() :: {'absolute' | 'rootless', [binary()], [coap_uri_param()]}.
--type coap_uri_param() :: {atom(), binary() | [binary()]}.
+-type link_format() :: {'absolute' | 'rootless', [binary()], [link_param()]}.
+-type link_param() :: {atom(), binary() | [binary()]}.
 
--export_type([coap_uri/0]).
--export_type([coap_uri_param/0]).
+-export_type([link_format/0]).
+-export_type([link_param/0]).
 
--spec decode(binary() | list()) -> coap_uri() | {error, term()}.
+-spec decode(binary() | list()) -> link_format() | {error, term()}.
 decode(Binary) when is_binary(Binary) ->
     decode(binary_to_list(Binary));
 decode(String) ->
@@ -26,7 +26,7 @@ decode(String) ->
         {error, {C, R}}
     end.
 
--spec encode([coap_uri_param()]) -> binary().
+-spec encode([link_param()]) -> binary().
 encode(LinkList) ->
     list_to_binary(lists:foldl(
         fun (Link, []) -> encode_link_value(Link);
