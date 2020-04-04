@@ -1,4 +1,4 @@
 -record(ecoap_content, {
-    payload = <<>> :: binary(),
+    payload = <<>> :: ecoap_message:payload(),
     options = #{} :: ecoap_message:optionset()
 }).

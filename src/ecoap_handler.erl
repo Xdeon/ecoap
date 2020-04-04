@@ -24,7 +24,7 @@
     module = undefined :: module(), 
     insegs = undefined :: {orddict:orddict(), undefined | binary() | non_neg_integer()}, 
     last_response = undefined :: last_response(),
-    observer = undefined :: undefined | ecoap_message:ecoap_message(), 
+    observer = undefined :: undefined | ecoap_message:coap_message(), 
     obseq = undefined :: non_neg_integer(), 
     obstate = undefined :: term(), 
     timer = undefined :: undefined | reference(),
@@ -63,7 +63,7 @@
     Prefix :: ecoap_uri:path(),
     Suffix :: ecoap_uri:path(),
     % Query :: 'query'(),
-    Request :: ecoap_message:ecoap_message(),
+    Request :: ecoap_message:coap_message(),
     Content :: ecoap_content:ecoap_content(),
     Error :: ecoap_message:error_code(),
     Reason :: reason().
@@ -75,7 +75,7 @@
     EpID :: ecoap_endpoint:ecoap_endpoint_id(),
     Prefix :: ecoap_uri:path(),
     Suffix :: ecoap_uri:path(),
-    Request :: ecoap_message:ecoap_message(),
+    Request :: ecoap_message:coap_message(),
     Content :: ecoap_content:ecoap_content(),
     Error :: ecoap_message:error_code(),
     Reason :: reason().
@@ -87,7 +87,7 @@
     EpID :: ecoap_endpoint:ecoap_endpoint_id(),
     Prefix :: ecoap_uri:path(),
     Suffix :: ecoap_uri:path(),
-    Request :: ecoap_message:ecoap_message(),
+    Request :: ecoap_message:coap_message(),
     Code :: ecoap_message:success_code(),
     Content :: ecoap_content:ecoap_content(),
     Error :: ecoap_message:error_code(),
@@ -100,7 +100,7 @@
     EpID :: ecoap_endpoint:ecoap_endpoint_id(),
     Prefix :: ecoap_uri:path(),
     Suffix :: ecoap_uri:path(),
-    Request :: ecoap_message:ecoap_message(),
+    Request :: ecoap_message:coap_message(),
     Content :: ecoap_content:ecoap_content(),
     Error :: ecoap_message:error_code(),
     Reason :: reason().
@@ -112,7 +112,7 @@
     EpID :: ecoap_endpoint:ecoap_endpoint_id(),
     Prefix :: ecoap_uri:path(),
     Suffix :: ecoap_uri:path(),
-    Request :: ecoap_message:ecoap_message(),
+    Request :: ecoap_message:coap_message(),
     Content :: ecoap_content:ecoap_content(),
     Error :: ecoap_message:error_code(),
     Reason :: reason().
@@ -124,7 +124,7 @@
     EpID :: ecoap_endpoint:ecoap_endpoint_id(),
     Prefix :: ecoap_uri:path(),
     Suffix :: ecoap_uri:path(),
-    Request :: ecoap_message:ecoap_message(),
+    Request :: ecoap_message:coap_message(),
     Content :: ecoap_content:ecoap_content(),
     Error :: ecoap_message:error_code(),
     Reason :: reason().
@@ -136,7 +136,7 @@
     EpID :: ecoap_endpoint:ecoap_endpoint_id(),
     Prefix :: ecoap_uri:path(),
     Suffix :: ecoap_uri:path(),
-    Request :: ecoap_message:ecoap_message(),
+    Request :: ecoap_message:coap_message(),
     Content :: ecoap_content:ecoap_content(),
     Error :: ecoap_message:error_code(),
     Reason :: reason().
@@ -148,7 +148,7 @@
     EpID :: ecoap_endpoint:ecoap_endpoint_id(),
     Prefix :: ecoap_uri:path(),
     Suffix :: ecoap_uri:path(),
-    Request :: ecoap_message:ecoap_message(),
+    Request :: ecoap_message:coap_message(),
     ObState :: observe_state(),
     Error :: ecoap_message:error_code(),
     Reason :: reason().
@@ -173,7 +173,7 @@
     {noreply, NewObState} | 
     {stop, NewObState} when
     Info :: {coap_notify, term()} | term(),
-    ObsReq :: ecoap_message:ecoap_message(),
+    ObsReq :: ecoap_message:coap_message(),
     ObState :: observe_state(),
     Ref :: observe_ref(),
     Content :: ecoap_content:ecoap_content(),
@@ -206,8 +206,8 @@ notify(Uri, Info) ->
     % Maybe the following is better
     % List -> lists:foreach(fun(Pid) -> erlang:send(Pid, {coap_notify, Info}, [noconnect]) end, List)
 
--spec handler_id(ecoap_message:ecoap_message()) -> handler_id().
-handler_id(Message=#ecoap_message{code=Method}) ->
+-spec handler_id(ecoap_message:coap_message()) -> handler_id().
+handler_id(Message=#coap_message{code=Method}) ->
     Uri = ecoap_request:path(Message),
     Query = ecoap_request:query(Message),
     % According to RFC7641, a client should always use the same token in observe re-register requests
@@ -370,14 +370,14 @@ handle(EpID, Request, State=#state{id=ID, cache_timeout=TimeOut, endpoint_pid=En
                     ecoap_request:response({ok, 'Continue'}, Request))),
             set_timeout(TimeOut, State2);
         {ok, Payload, State2} ->
-            process_request(EpID, Request#ecoap_message{payload=Payload}, State2);
+            process_request(EpID, Request#coap_message{payload=Payload}, State2);
         {error, Code} ->
             return_response(Request, {error, Code}, State)
     catch throw:{error, Code} ->
         return_response(Request, {error, Code}, State)
     end.
 
-assemble_payload(#ecoap_message{payload=Payload}, undefined, State) ->
+assemble_payload(#coap_message{payload=Payload}, undefined, State) ->
     {ok, Payload, State};
 assemble_payload(Request, Block1={Num, _, _}, State=#state{insegs={Segs, CurrentFormat}}) ->
     Format = ecoap_message:get_option('Content-Format', Request),
@@ -401,13 +401,13 @@ assemble_payload(Request, Block1={Num, _, _}, State=#state{insegs={Segs, Current
             end
     end.
 
-process_blocks(#ecoap_message{payload=Segment}, {Num, true, Size}, State=#state{insegs={Segs, Format}, max_body_size=MaxBodySize}) ->
+process_blocks(#coap_message{payload=Segment}, {Num, true, Size}, State=#state{insegs={Segs, Format}, max_body_size=MaxBodySize}) ->
     case byte_size(Segment) of
         Size when Num*Size < MaxBodySize -> {'Continue', State#state{insegs={orddict:store(Num, Segment, Segs), Format}}};
         Size -> {error, 'RequestEntityTooLarge'};
         _ -> {error, 'BadRequest'}
     end;
-process_blocks(#ecoap_message{payload=Segment}, {_Num, false, _Size}, State=#state{insegs={Segs, _}}) ->
+process_blocks(#coap_message{payload=Segment}, {_Num, false, _Size}, State=#state{insegs={Segs, _}}) ->
     Payload = orddict:fold(
         fun (Num1, Segment1, Acc) when Num1*byte_size(Segment1) == byte_size(Acc) ->
                 <<Acc/binary, Segment1/binary>>;
@@ -467,23 +467,23 @@ if_none_match(_Request, {error, _, _}) ->
 if_none_match(Request, _Content) ->
     not ecoap_message:has_option('If-None-Match', Request).
 
-handle_method(_EpID, Request=#ecoap_message{code=Code}, {error, Error}, State) when Code =:= 'GET'; Code =:= 'FETCH' ->
+handle_method(_EpID, Request=#coap_message{code=Code}, {error, Error}, State) when Code =:= 'GET'; Code =:= 'FETCH' ->
     return_response(Request, {error, Error}, State);
-handle_method(_EpID, Request=#ecoap_message{code=Code}, {error, Error, Reason}, State) when Code =:= 'GET'; Code =:= 'FETCH' ->
+handle_method(_EpID, Request=#coap_message{code=Code}, {error, Error, Reason}, State) when Code =:= 'GET'; Code =:= 'FETCH' ->
     return_response(undefined, Request, {error, Error}, Reason, State);
-handle_method(EpID,  Request=#ecoap_message{code='GET'}, Content, State) ->
+handle_method(EpID,  Request=#coap_message{code='GET'}, Content, State) ->
     check_observe(EpID, Request, Content, State);
-handle_method(EpID, Request=#ecoap_message{code='FETCH'}, _Content, State) ->    
+handle_method(EpID, Request=#coap_message{code='FETCH'}, _Content, State) ->    
     handle_fetch(EpID, Request, State);
-handle_method(EpID, Request=#ecoap_message{code='POST'}, _Content, State) ->
+handle_method(EpID, Request=#coap_message{code='POST'}, _Content, State) ->
     handle_post(EpID, Request, State);
-handle_method(EpID, Request=#ecoap_message{code='PUT'}, Content, State) ->
+handle_method(EpID, Request=#coap_message{code='PUT'}, Content, State) ->
     handle_put(EpID, Request, Content, State);
-handle_method(EpID, Request=#ecoap_message{code='DELETE'}, _Content, State) ->
+handle_method(EpID, Request=#coap_message{code='DELETE'}, _Content, State) ->
     handle_delete(EpID, Request, State);
-handle_method(EpID, Request=#ecoap_message{code='PATCH'}, Content, State) ->
+handle_method(EpID, Request=#coap_message{code='PATCH'}, Content, State) ->
     handle_patch(EpID, Request, Content, State);
-handle_method(EpID, Request=#ecoap_message{code='iPATCH'}, Content, State) ->
+handle_method(EpID, Request=#coap_message{code='iPATCH'}, Content, State) ->
     handle_ipatch(EpID, Request, Content, State);
 handle_method(_EpID, Request, _Content, State) ->
     return_response(Request, {error, 'MethodNotAllowed'}, State).
@@ -539,7 +539,7 @@ handle_observe(_EpID, Request, Content, State) ->
     % subsequent observe request from the same user
     return_resource(Request, Content, State#state{observer=Request}).
 
-handle_unobserve(_EpID, Request=#ecoap_message{token=Token}, Content, State=#state{observer=#ecoap_message{token=Token}}) ->
+handle_unobserve(_EpID, Request=#coap_message{token=Token}, Content, State=#state{observer=#coap_message{token=Token}}) ->
     cancel_observe_and_send_response(Request, Content, State);
 handle_unobserve(_EpID, Request, Content, State) ->
     return_resource(Request, Content, State).
@@ -641,10 +641,10 @@ return_resource(Ref, Request, {ok, Code}, Content=#ecoap_content{payload=Payload
 
 send_observable(Ref, _Request, Response, State=#state{observer=undefined}) ->
     send_response(Ref, Response, State);
-send_observable(Ref, Request=#ecoap_message{token=Token}, Response, State=#state{observer=Observer, obseq=Seq}) ->
+send_observable(Ref, Request=#coap_message{token=Token}, Response, State=#state{observer=Observer, obseq=Seq}) ->
     case {ecoap_message:get_option('Observe', Request), Observer} of
         % when requested observe and is observing, return the sequence number
-        {0, #ecoap_message{token=Token}} ->
+        {0, #coap_message{token=Token}} ->
             send_response(Ref, ecoap_message:set_option('Observe', Seq, Response), State#state{obseq=next_seq(Seq)});
         _Else ->
             send_response(Ref, Response, State)
@@ -668,7 +668,7 @@ send_response(Ref, Response, State=#state{endpoint_pid=EndpointPid, cache_timeou
                 undefined ->
                     % no further communication concerning this request
                     {stop, normal, State};
-                #ecoap_message{} ->
+                #coap_message{} ->
                     % notifications will follow
                     {noreply, State}
             end

@@ -77,19 +77,19 @@ idle(Msg={in, <<1:2, 1:2, _:12, _Tail/bytes>>}, ProtoConfig, Exchange) ->
 idle(Msg={in, <<1:2, 0:2, _:12, _Tail/bytes>>}, ProtoConfig, Exchange) ->
     in_con(Msg, ProtoConfig, Exchange#exchange{expire_time=?EXCHANGE_LIFETIME(ProtoConfig)});
 % NON-> 
-idle(Msg={out, #ecoap_message{type='NON'}}, ProtoConfig, Exchange) ->
+idle(Msg={out, #coap_message{type='NON'}}, ProtoConfig, Exchange) ->
     out_non(Msg, ProtoConfig, Exchange#exchange{expire_time=?NON_LIFETIME(ProtoConfig)});
 % CON->
-idle(Msg={out, #ecoap_message{type='CON'}}, ProtoConfig, Exchange) ->
+idle(Msg={out, #coap_message{type='CON'}}, ProtoConfig, Exchange) ->
     out_con(Msg, ProtoConfig, Exchange#exchange{expire_time=?EXCHANGE_LIFETIME(ProtoConfig)}).
 
 % --- incoming NON
 in_non({in, BinMessage}, _, Exchange) ->
     try ecoap_message:decode(BinMessage) of
-        #ecoap_message{code=Method}=Message when is_atom(Method) ->
+        #coap_message{code=Method}=Message when is_atom(Method) ->
             logger:log(debug, "~p received NON request ~p~n", [self(), Message]),
             {[{handle_request, Message}], Exchange#exchange{stage=got_non}};
-        #ecoap_message{}=Message ->
+        #coap_message{}=Message ->
             logger:log(debug, "~p received NON response ~p~n", [self(), Message]),
             {[{handle_respone, Message}], Exchange#exchange{stage=got_non}}
     catch _C:_R ->
@@ -112,10 +112,10 @@ out_non({out, Message}, _, Exchange) ->
 % we may get reset
 sent_non({in, BinMessage}, _, Exchange) ->
     try ecoap_message:decode(BinMessage) of
-        #ecoap_message{type='RST'}=Message ->
+        #coap_message{type='RST'}=Message ->
             logger:log(debug, "~p received RST msg ~p~n", [self(), Message]),
             {[{handle_error, Message, 'RST'}], Exchange#exchange{stage=got_rst}};
-        #ecoap_message{}=Message->
+        #coap_message{}=Message->
             logger:log(debug, "~p received irrelevant msg ~p~n", [self(), Message]),
             {[], Exchange#exchange{stage=sent_non}}
     catch _C:_R ->
@@ -130,15 +130,15 @@ got_rst({in, BinMessage}, _, Exchange)->
 % --- incoming CON->ACK|RST
 in_con({in, BinMessage}, ProtoConfig, Exchange) ->
     try ecoap_message:decode(BinMessage) of
-        #ecoap_message{code=undefined}=Message ->
+        #coap_message{code=undefined}=Message ->
             % provoked reset
             logger:log(debug, "~p received ping msg ~p~n", [self(), Message]),
             go_pack_sent(ecoap_request:rst(Message), Exchange);
-        #ecoap_message{code=Method}=Message when is_atom(Method) ->
+        #coap_message{code=Method}=Message when is_atom(Method) ->
             logger:log(debug, "~p received CON request ~p~n", [self(), Message]),
             {Actions, NewExchange} = go_await_aack(Message, ProtoConfig, Exchange),
             {[{handle_request, Message} | Actions], NewExchange};
-        #ecoap_message{}=Message ->
+        #coap_message{}=Message ->
             logger:log(debug, "~p received CON response ~p~n", [self(), Message]),
             {Actions, NewExchange} = go_await_aack(Message, ProtoConfig, Exchange),
             {[{handle_response, Message} | Actions], NewExchange}
@@ -165,7 +165,7 @@ await_aack({timeout, await_aack}, _, Exchange=#exchange{msgbin=BinAck}) ->
 await_aack({out, Ack}, _, Exchange) ->
     % set correct type for a piggybacked response
     Ack2 = case Ack of
-        #ecoap_message{type='CON'} -> Ack#ecoap_message{type='ACK'};
+        #coap_message{type='CON'} -> Ack#coap_message{type='ACK'};
         _ -> Ack
     end,
     {Actions, NewExchange} = go_pack_sent(Ack2, Exchange),
@@ -211,17 +211,17 @@ out_con({out, Message}, ProtoConfig, Exchange) ->
 % peer ack
 await_pack({in, BinAck}, _, Exchange) ->
     try ecoap_message:decode(BinAck) of
-        #ecoap_message{type='ACK', code=undefined}=Message ->
+        #coap_message{type='ACK', code=undefined}=Message ->
             % this is an empty ack for separate response or observe notification
             % since we can confirm when an outgoing confirmable message
             % has been acknowledged or reset, we can safely clean the msgbin 
             % which won't be used again from this moment
             logger:log(debug, "~p received empty ACK msg ~p~n", [self(), Message]),
             {[cancel_timer, {handle_ack, Message}], Exchange#exchange{msgbin= <<>>, stage=aack_sent}};
-        #ecoap_message{type='RST', code=undefined}=Message ->
+        #coap_message{type='RST', code=undefined}=Message ->
             logger:log(debug, "~p received RST msg ~p~n", [self(), Message]),
             {[cancel_timer, {handle_error, Message, 'RST'}], Exchange#exchange{msgbin= <<>>, stage=aack_sent}};
-        #ecoap_message{type='ACK'}=Message ->
+        #coap_message{type='ACK'}=Message ->
             logger:log(debug, "~p received ACK response ~p~n", [self(), Message]),
             {[cancel_timer, {handle_response, Message}], Exchange#exchange{msgbin= <<>>, stage=aack_sent}}
     catch _C:_R ->

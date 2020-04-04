@@ -38,7 +38,7 @@ get_option(Option, Content) -> get_option(Option, Content, undefined).
 -spec get_option(ecoap_message:coap_option(), ecoap_content(), term()) -> term().
 get_option(Option, #ecoap_content{options=Options}, Default) -> maps:get(Option, Options, Default).
 
--spec get_content(ecoap_message:ecoap_message()) -> ecoap_content().
+-spec get_content(ecoap_message:coap_message()) -> ecoap_content().
 get_content(Request) ->
     #ecoap_content{payload=ecoap_message:get_payload(Request), options=filter_options(ecoap_message:get_options(Request))}.
 

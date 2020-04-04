@@ -73,7 +73,7 @@ ping(EndpointPid) ->
 ping(EndpointPid, Ref) ->
     send_message(EndpointPid, Ref, ecoap_request:ping_msg()).
 
--spec send(pid(), ecoap_message:ecoap_message()) -> {ok, reference()}.
+-spec send(pid(), ecoap_message:coap_message()) -> {ok, reference()}.
 send(EndpointPid, Message) ->
     send(EndpointPid, ecoap_message:get_type(Message), ecoap_message:get_code(Message), Message).
 
@@ -82,17 +82,17 @@ send(EndpointPid, Type, Code, Message) when is_tuple(Code); Type=='ACK'; Type=='
 send(EndpointPid, _Type, _Code, Message) ->
     send_request(EndpointPid, make_ref(), Message).
 
--spec send_request(pid(), Ref, ecoap_message:ecoap_message()) -> {ok, Ref}.
+-spec send_request(pid(), Ref, ecoap_message:coap_message()) -> {ok, Ref}.
 send_request(EndpointPid, Ref, Message) ->
     gen_server:cast(EndpointPid, {send_request, Message, {self(), Ref}}),
     {ok, Ref}.
 
--spec send_message(pid(), Ref, ecoap_message:ecoap_message()) -> {ok, Ref}.
+-spec send_message(pid(), Ref, ecoap_message:coap_message()) -> {ok, Ref}.
 send_message(EndpointPid, Ref, Message) ->
     gen_server:cast(EndpointPid, {send_message, Message, {self(), Ref}}),
     {ok, Ref}.
 
--spec send_response(pid(), Ref, ecoap_message:ecoap_message()) -> {ok, Ref}.
+-spec send_response(pid(), Ref, ecoap_message:coap_message()) -> {ok, Ref}.
 send_response(EndpointPid, Ref, Message) ->
     gen_server:cast(EndpointPid, {send_response, Message, {self(), Ref}}),
     {ok, Ref}.

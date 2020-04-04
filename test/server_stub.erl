@@ -15,7 +15,7 @@
 
 -record(state, {
 	socket = undefined :: inet:socket(),
-	inbound = undefined :: undefined | ecoap_message:ecoap_message(),
+	inbound = undefined :: undefined | ecoap_message:coap_message(),
 	peer_addr = undefined :: undefined | {inet:ip_address(), inet:port_number()}
 }).
 
@@ -25,7 +25,7 @@
 start_link(Port) ->
 	gen_server:start_link(?MODULE, [Port], []).
 
--spec expect_request(pid(), ecoap_message:ecoap_message()) -> {match, non_neg_integer(), binary()} | nomatch.
+-spec expect_request(pid(), ecoap_message:coap_message()) -> {match, non_neg_integer(), binary()} | nomatch.
 expect_request(Pid, ExpectReq) -> 
 	gen_server:call(Pid, {expect_request, ExpectReq}).
 
@@ -33,7 +33,7 @@ expect_request(Pid, ExpectReq) ->
 expect_empty(Pid, Type, MsgId) ->
 	gen_server:call(Pid, {expect_empty, Type, MsgId}).
 
--spec send_response(pid(), ecoap_message:ecoap_message()) -> ok.
+-spec send_response(pid(), ecoap_message:coap_message()) -> ok.
 send_response(Pid, Response) ->
 	gen_server:cast(Pid, {send_response, Response}).
 
