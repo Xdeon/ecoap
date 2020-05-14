@@ -16,6 +16,6 @@ include erlang.mk
 
 ERLC_OPTS += +report +verbose +warn_deprecated_function +warn_deprecated_type +warn_untyped_record +warn_unused_import +inline_list_funcs
 
-SHELL_OPTS = +spp true
+SHELL_OPTS = +spp true -kernel start_pg true
 
 app:: rebar.config
