@@ -34,9 +34,9 @@ decode_uri(Uri) ->
 
 -spec parse_uri(ecoap_uri:uri()) -> uri_string:uri_map() | uri_string:error().
 parse_uri(Uri) ->
-    case uri_string:parse(Uri) of
+    case uri_string:normalize(Uri) of
         {error, _, _}=Error -> Error;
-        UriMap -> uri_string:normalize(UriMap, [return_map])
+        NormUri -> uri_string:parse(NormUri)
     end.
 
 -spec format_urimap(uri_string:uri_map()) -> ecoap_uri:uri_map() | {error, inet:posix() | invalid_uri}.
@@ -107,30 +107,15 @@ default_transport(?DEFAULT_COAPS_PORT) -> dtls;
 default_transport(_) -> udp.
 
 split_query(<<>>) -> [];
-split_query(Path) -> split_segments(Path, <<"&">>).
+split_query(Query) -> split_and_decode_segments(Query, <<"&">>, fun cow_qs:urldecode/1).
 
 split_path(<<>>) -> [];
 split_path(<<"/">>) -> [];
-split_path(<<"/", Path/binary>>) -> split_segments(Path, <<"/">>);
-split_path(Path) -> split_segments(Path, <<"/">>).
+split_path(<<"/", Path/binary>>) -> split_and_decode_segments(Path, <<"/">>, fun cow_uri:urldecode/1);
+split_path(Path) -> split_and_decode_segments(Path, <<"/">>, fun cow_uri:urldecode/1).
 
-% split_query([]) -> [];
-% split_query([$? | Path]) -> split_segments(Path, "&", []).
-
-% split_segments(Path, Char, Acc) ->
-%     case string:rchr(Path, Char) of
-%         0 ->
-%             [make_segment(Path) | Acc];
-%         N when N > 0 ->
-%             split_segments(string:substr(Path, 1, N-1), Char,
-%                 [make_segment(string:substr(Path, N+1)) | Acc])
-%     end.
-
-split_segments(Path, Char) ->
-    lists:map(fun make_segment/1, string:split(Path, Char, all)).
- 
-make_segment(Seg) ->
-    http_uri:decode(Seg).
+split_and_decode_segments(Segments, SplitChar, DecodeFun) ->
+    lists:map(DecodeFun, string:split(Segments, SplitChar, all)).
 
 -spec encode_uri(ecoap_uri:uri_map()) -> ecoap_uri:uri().
 encode_uri(#{scheme:=Scheme, host:=Host, port:=_, ip:=IP, path:=Path, 'query':=Query}=UriMap0) ->
@@ -150,7 +135,7 @@ build_host(Host, _) ->
     binary_to_list(Host).
 
 build_path(Path) -> 
-    ["/", assemble_segments(Path, fun http_uri:encode/1, "/")].
+    ["/", assemble_segments(Path, fun cow_uri:urlencode/1, "/")].
 
 build_query(Query) ->
     lists:join("&", Query).

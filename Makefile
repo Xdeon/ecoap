@@ -3,8 +3,9 @@ PROJECT_DESCRIPTION = An Erlang CoAP client/server
 PROJECT_VERSION = 0.1.0
 PROJECT_REGISTERED = ecoap_udp_socket ecoap_dtls_listener_sup ecoap_registry
 
-DEPS = spg
+DEPS = spg cowlib
 dep_spg = git https://github.com/max-au/spg.git
+dep_cowlib = git https://github.com/ninenines/cowlib 2.9.1
 LOCAL_DEPS = crypto ssl
 
 # EUNIT_OPTS = verbose
