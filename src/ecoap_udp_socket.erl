@@ -212,4 +212,4 @@ stop_endpoint(_, _) ->
  	ok.
 
 fetch_endpoint_pids(#state{endpoints=Endpoints}) ->
-	maps:keys(maps:filter(fun(K, _) when is_tuple(K) -> true; (_, _) -> false end, Endpoints)).
+	maps:values(maps:filter(fun(K, _) when is_tuple(K) -> true; (_, _) -> false end, Endpoints)).
