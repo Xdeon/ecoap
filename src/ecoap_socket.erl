@@ -4,9 +4,6 @@
 
 -define(READ_PACKETS, 1000).
 
--type socket_id() :: {atom(), pid() | atom() | tuple()}.
--export_type([socket_id/0]).
-
 -callback send(Socket, EpID, Bin) -> ok | {error, term()} when
 	Socket :: gen_udp:socket() | ssl:sslsocket() | term(),
 	EpID :: ecoap_endpoint:ecoap_endpoint_id(),

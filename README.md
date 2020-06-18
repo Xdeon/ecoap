@@ -17,11 +17,8 @@ For the same reason, it may not strictly comply with all license requirements (i
 	protocol => coap | coaps,
 	transport => udp | dtls,
 	transport_opts => [gen_udp:option()] | [ssl:connect_option()],
-	external_socket => ecoap_socket:socket_id()
+	external_socket => {udp | dtls, SocketID :: pid() | atom() | {atom(), node()}}
 }.
-
-%% in ecoap_socket.erl
--type socket_id() -> {udp | dtls, pid()}.
 
 %% for server
 -type config() :: #{

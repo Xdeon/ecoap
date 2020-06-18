@@ -38,7 +38,7 @@
 }).
 
 -type endpoint_addr() :: {inet:ip_address(), inet:port_number()}.
--type ecoap_endpoint_id() :: {ecoap_socket:socket_id(), endpoint_addr()}.
+-type ecoap_endpoint_id() :: {{udp | dtls, pid()}, endpoint_addr()}.
 -type trid() :: {in | out, ecoap_message:msg_id()}.
 -type receiver() :: {pid(), reference()}.
 -type observe_seq() :: non_neg_integer().

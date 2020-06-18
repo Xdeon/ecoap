@@ -103,6 +103,10 @@
 -type observe_response() :: 
 	{ok, reference(), pid(), non_neg_integer(), response()}.
 
+% SocketID can be:
+% - Pid of the socket process
+% - Name of the socket process
+% - {Name, Node} if socket process is located on another node
 -type client_opts() :: #{
 	owner => pid(),
 	protocol_config => map(),
@@ -110,7 +114,7 @@
 	protocol => coap | coaps,
 	transport => udp | dtls,
 	transport_opts => [gen_udp:option()] | [ssl:connect_option()],
-	external_socket => ecoap_socket:socket_id()
+	external_socket => {udp | dtls, SocketID :: pid() | atom() | {atom(), node()}}
 }.
 
 -type host() :: inet:hostname() | inet:ip_address() | binary().
