@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 %% API.
--export([start_link/5, start_link/4, activate/1, maybe_send_rst/4]).
+-export([start_link/5, start_link/4, activate/1]).
 -export([ping/1, ping/2, send/2, send_message/3, send_request/3, send_response/3, cancel_request/2]).
 -export([register_handler/3]).
 -export([get_peer_info/2]).
@@ -100,19 +100,6 @@ send_response(EndpointPid, Ref, Message) ->
 -spec cancel_request(pid(), reference()) -> ok.
 cancel_request(EndpointPid, Ref) ->
     gen_server:cast(EndpointPid, {cancel_request, {self(), Ref}}).
-
--spec maybe_send_rst(module(), inet:socket(), ecoap_endpoint_id(), binary()) -> ok | {error, term()}.
-maybe_send_rst(Transport, Socket, EpID, <<?VERSION:2, 0:1, _:1, _TKL:4, _Code:8, MsgId:16, _/bytes>>) ->
-    % spawn another process to not clog the socket process
-    spawn_link(fun() -> send_rst(Transport, Socket, EpID, MsgId) end),
-    ok;
-maybe_send_rst(_, _, _, _) -> 
-    ok.
- 
-send_rst(Transport, Socket, EpID={_, EpAddr}, MsgId) ->
-    logger:log(debug, "sending RST to ~p~n", [EpAddr]),
-    BinRST = ecoap_message:encode(ecoap_request:rst(MsgId)),
-    Transport:send(Socket, EpID, BinRST).
 
 -spec register_handler(pid(), ecoap_handler:handler_id(), pid()) -> ok.
 register_handler(EndpointPid, ID, Pid) ->
@@ -225,8 +212,9 @@ handle_info({datagram, BinMessage = <<?VERSION:2, 0:1, _:1, TKL:4, _Code:8, MsgI
                     % 1. for separate client process, it may fetch reply_to_pid from the store, but it is problemtic to check whether the info is still valid 
                     % 2. for combined client process, it can directly invoke callback code.
                     % token was not recognized
-                    logger:log(debug, "~p received separate response with unrecognized token from ~p in ~p~n", [self(), EpID, ?MODULE]),
-                    send_rst(Transport, Socket, EpID, MsgId),
+                    logger:log(debug, "~p received separate response with unrecognized token from ~p in ~p, reply RST~n", [self(), EpID, ?MODULE]),
+                    BinRST = ecoap_message:encode(ecoap_request:rst(MsgId)),
+                    Transport:send(Socket, EpID, BinRST),
                     {noreply, State}
             end
     end;

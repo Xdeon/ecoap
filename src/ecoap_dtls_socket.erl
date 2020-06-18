@@ -130,7 +130,6 @@ connected(info, {ssl, Socket, Bin}, StateData=#data{socket=Socket, server_name=N
 		'$client' -> 
 			% ignore unexpected message received by a client
 			logger:log(debug, "~p received unexpected packet ~p from ~p as a client in ~p~n", [self(), Bin, EpAddr, ?MODULE]),
-			_ = ecoap_endpoint:maybe_send_rst(?MODULE, Socket, EpID, Bin),
 			keep_state_and_data;
 		_ ->
 			{ok, EpSupPid, EpPid} = ecoap_endpoint_sup:start_link([?MODULE, Socket, EpID, Name]),

@@ -13,7 +13,7 @@
 
 %% API.
 -export([connect/4, start_link/4, close/1]).
--export([get_endpoint/2, wait/1, get_all_endpoints/1, get_endpoint_count/1]).
+-export([get_endpoint/2, wait/1, get_all_endpoints/1]).
 -export([send/3]).
 
 %% gen_server.
@@ -31,7 +31,7 @@
 	socket = undefined :: inet:socket(),
 	server_name = undefined :: atom(),
 	endpoint_pool = undefined :: undefined | pid(),
-	endpoint_count = 0 :: non_neg_integer(),
+	endpoints = #{} :: #{ecoap_endpoint:endpoint_addr() => pid()} | #{pid() => {ecoap_endpoint:endpoint_addr(), pid()}},
 	protocol_config = undefined :: ecoap_config:protocol_config()
 }).
 
@@ -68,17 +68,12 @@ wait(_) -> ok.
 get_all_endpoints(Pid) ->
 	gen_server:call(Pid, get_all_endpoints).
 
--spec get_endpoint_count(pid()) -> non_neg_integer().
-get_endpoint_count(Pid) ->
-	gen_server:call(Pid, get_endpoint_count).
-
 %% module specific send function 
 -spec send(inet:socket(), ecoap_endpoint:ecoap_endpoint_id(), binary()) -> ok | {error, term()}.
 send(Socket, {_, {PeerIP, PeerPortNo}}, Datagram) ->
     gen_udp:send(Socket, PeerIP, PeerPortNo, Datagram).
 
 %% gen_server.
-
 init([TransOpts, ProtoConfig]) ->
 	case gen_udp:open(0, ecoap_socket:socket_opts(udp, TransOpts)) of
 		{ok, Socket} ->
@@ -104,50 +99,46 @@ handle_continue(init, State=#state{socket=Socket}) ->
 	_ = inet:setopts(Socket, [{active, ?ACTIVE_PACKETS}]),
 	{noreply, State};
 handle_continue({init, SupPid}, State=#state{socket=Socket}) ->
-	PoolPid = ecoap_server_sup:find_child(SupPid, ecoap_endpoint_sup_sup),
+	EpPool = ecoap_server_sup:find_child(SupPid, ecoap_endpoint_sup_sup),
 	ok = inet:setopts(Socket, [{active, ?ACTIVE_PACKETS}]),
-	{noreply, State#state{endpoint_pool=PoolPid}}.
+	{noreply, State#state{endpoint_pool=EpPool}}.
 
 % get an endpoint when being as a client
 handle_call({get_endpoint, EpAddr}, _From, 
-	State=#state{socket=Socket, endpoint_pool=undefined, endpoint_count=Count, protocol_config=ProtoConfig}) ->
-    case find_endpoint(EpAddr) of
+	State=#state{socket=Socket, endpoint_pool=undefined, protocol_config=ProtoConfig}) ->
+    case find_endpoint(EpAddr, State) of
     	{ok, EpPid} ->
     		{reply, {ok, EpPid}, State};
     	error ->
 			EpID = {{udp, self()}, EpAddr},
     		case ecoap_endpoint:start_link(?MODULE, Socket, EpID, ProtoConfig) of
     			{ok, EpPid} ->
-					store_endpoint(EpAddr, EpPid),
-		    		store_endpoint(erlang:monitor(process, EpPid), {EpAddr, undefined}),
-		    		{reply, {ok, EpPid}, State#state{endpoint_count=Count+1}};
+					_ = erlang:monitor(process, EpPid),
+		    		{reply, {ok, EpPid}, store_endpoint(EpAddr, EpPid, undefined, State)};
 		    	Error ->
 		    		{reply, Error, State}
 		    end
     end;
 % get an endpoint when being as a server
 handle_call({get_endpoint, EpAddr}, _From, 
-	State=#state{socket=Socket, endpoint_pool=PoolPid, endpoint_count=Count, server_name=Name}) ->
-	case find_endpoint(EpAddr) of
+	State=#state{socket=Socket, endpoint_pool=EpPool, server_name=Name}) ->
+	case find_endpoint(EpAddr, State) of
 		{ok, EpPid} ->
 			{reply, {ok, EpPid}, State};
 		error ->
 			EpID = {{udp, self()}, EpAddr},
-			case ecoap_endpoint_sup_sup:start_endpoint(PoolPid, [?MODULE, Socket, EpID, Name]) of
+			case ecoap_endpoint_sup_sup:start_endpoint(EpPool, [?MODULE, Socket, EpID, Name]) of
 		        {ok, EpSupPid, EpPid} ->
-					store_endpoint(EpAddr, EpPid),
-					store_endpoint(erlang:monitor(process, EpPid), {EpAddr, EpSupPid}),
-		            {reply, {ok, EpPid}, State#state{endpoint_count=Count+1}};
+					_ = erlang:monitor(process, EpPid),
+		            {reply, {ok, EpPid}, store_endpoint(EpAddr, EpPid, EpSupPid, State)};
 		        Error ->
 		            {reply, Error, State}
 		    end
 	end;
 % only for debug use
 handle_call(get_all_endpoints, _From, State) ->
-	EpPids = fetch_endpoint_pids(),
+	EpPids = fetch_endpoint_pids(State),
 	{reply, EpPids, State};
-handle_call(get_endpoint_count, _From, State=#state{endpoint_count=Count}) ->
-	{reply, Count, State};
 handle_call(_Request, _From, State) ->
     logger:log(error, "~p recvd unexpected call ~p in ~p~n", [self(), _Request, ?MODULE]),
 	{noreply, State}.
@@ -157,21 +148,20 @@ handle_cast(_Msg, State) ->
 	{noreply, State}.
 
 handle_info({udp, Socket, PeerIP, PeerPortNo, Bin}, 
-	State=#state{socket=Socket, endpoint_pool=PoolPid, endpoint_count=Count, server_name=Name}) ->
+	State=#state{socket=Socket, endpoint_pool=EpPool, server_name=Name}) ->
 	EpAddr = {PeerIP, PeerPortNo},
-	case find_endpoint(EpAddr) of
+	case find_endpoint(EpAddr, State) of
 		{ok, EpPid} ->
 			EpPid ! {datagram, Bin},
 			{noreply, State};
-		error when is_pid(PoolPid) ->
+		error when is_pid(EpPool) ->
 			EpID = {{udp, self()}, EpAddr},
-			case ecoap_endpoint_sup_sup:start_endpoint(PoolPid, [?MODULE, Socket, EpID, Name]) of
+			case ecoap_endpoint_sup_sup:start_endpoint(EpPool, [?MODULE, Socket, EpID, Name]) of
 				{ok, EpSupPid, EpPid} -> 
 					% logger:log(debug, "~p start endpoint as a server in ~p~n", [self(), ?MODULE]),
 					EpPid ! {datagram, Bin},
-					store_endpoint(EpAddr, EpPid),
-					store_endpoint(erlang:monitor(process, EpPid), {EpAddr, EpSupPid}),
-					{noreply, State#state{endpoint_count=Count+1}};
+					_ = erlang:monitor(process, EpPid),
+					{noreply, store_endpoint(EpAddr, EpPid, EpSupPid, State)};
 				{error, _Reason} -> 
 					% logger:log(debug, "~p start endpoint failed as a server in ~p with reason ~p~n", [self(), ?MODULE, Reason]),
 					{noreply, State}
@@ -179,17 +169,13 @@ handle_info({udp, Socket, PeerIP, PeerPortNo, Bin},
 		error ->
 			% ignore unexpected message received by a client
 			logger:log(debug, "~p received unexpected packet ~p from ~p as a client in ~p~n", [self(), Bin, EpAddr, ?MODULE]),
-		    EpID = {{udp, self()}, EpAddr},
-			_ = ecoap_endpoint:maybe_send_rst(?MODULE, Socket, EpID, Bin),
 			{noreply, State}
 	end;
-handle_info({'DOWN', Ref, process, _Pid, _Reason}, State=#state{endpoint_count=Count, endpoint_pool=PoolPid}) ->
- 	case find_endpoint(Ref) of
+handle_info({'DOWN', _Ref, process, EpPid, _Reason}, State=#state{endpoint_pool=EpPool}) ->
+ 	case find_endpoint(EpPid, State) of
  		{ok, {EpAddr, EpSupPid}} -> 
- 			erase_endpoint(Ref),
- 			erase_endpoint(EpAddr),
- 			ok = delete_endpoint(PoolPid, EpSupPid),
- 			{noreply, State#state{endpoint_count=Count-1}};
+ 			ok = stop_endpoint(EpPool, EpSupPid),
+ 			{noreply, erase_endpoint(EpAddr, EpPid, State)};
  		error -> 
  			{noreply, State}
  	end;
@@ -210,22 +196,19 @@ code_change(_OldVsn, State, _Extra) ->
 
 %% Internal  
 
-find_endpoint(Key) ->
-	case get(Key) of
-		undefined -> error;
-		Val -> {ok, Val}
-	end.
+find_endpoint(Key, #state{endpoints=Endpoints}) ->
+	maps:find(Key, Endpoints).
 
-store_endpoint(Key, Val) ->
-	put(Key, Val).
+store_endpoint(EpAddr, EpPid, EpSupPid, State=#state{endpoints=Endpoints}) ->
+	State#state{endpoints=maps:put(EpPid, {EpAddr, EpSupPid}, maps:put(EpAddr, EpPid, Endpoints))}.
 
-erase_endpoint(Key) ->
-	erase(Key).
+erase_endpoint(EpAddr, EpPid, State=#state{endpoints=Endpoints}) ->
+	State#state{endpoints=maps:remove(EpPid, maps:remove(EpAddr, Endpoints))}.
 
-delete_endpoint(PoolPid, EpSupPid) when is_pid(EpSupPid) ->
-	ecoap_endpoint_sup_sup:delete_endpoint(PoolPid, EpSupPid);
-delete_endpoint(_, _) -> 
+stop_endpoint(EpPool, EpSupPid) when is_pid(EpSupPid) ->
+	ecoap_endpoint_sup_sup:stop_endpoint(EpPool, EpSupPid);
+stop_endpoint(_, _) -> 
  	ok.
 
-fetch_endpoint_pids() ->
-	[Val || {{_, _}, Val} <- get(), is_pid(Val)].
+fetch_endpoint_pids(#state{endpoints=Endpoints}) ->
+	maps:keys(maps:filter(fun(K, _) when is_tuple(K) -> true; (_, _) -> false end, Endpoints)).

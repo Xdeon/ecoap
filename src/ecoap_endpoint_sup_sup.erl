@@ -4,7 +4,7 @@
 -export([start_link/0]).
 -export([init/1]).
 
--export([start_endpoint/2, delete_endpoint/2]).
+-export([start_endpoint/2, stop_endpoint/2]).
 
 start_link() ->
 	supervisor:start_link(?MODULE, []).
@@ -18,5 +18,5 @@ init([]) ->
 start_endpoint(SupPid, Args) ->
     supervisor:start_child(SupPid, [Args]).
 
-delete_endpoint(SupPid, EpSupPid) ->
+stop_endpoint(SupPid, EpSupPid) ->
     supervisor:terminate_child(SupPid, EpSupPid).
