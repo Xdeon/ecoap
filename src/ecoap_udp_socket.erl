@@ -53,6 +53,7 @@ close(Pid) ->
 %% server
 -spec start_link(pid(), atom(), [gen_udp:option()], map()) -> {ok, pid()} | {error, term()}.
 start_link(SupPid, Name, TransOpts, ProtoConfig) when is_pid(SupPid) ->
+	ok = ecoap_registry:set_new_listener_config(Name, TransOpts, ProtoConfig),
 	gen_server:start_link({local, Name}, ?MODULE, [SupPid, Name, TransOpts, ProtoConfig], []).
 
 %% start endpoint manually

@@ -48,7 +48,6 @@ stop_dtls(Name) ->
 start_listener(Name, Transport, TransOpts, Type, Config, Args) ->
 	{Routes, ProtoConfig} = init_common_config(Config),
 	ok = ecoap_registry:register_handler(Routes),
-	ok = ecoap_registry:set_new_listener_config(Name, TransOpts, ProtoConfig),
 	maybe_started(ecoap_sup:start_server({ecoap_socket:listener_module(Transport), start_link, 
 		[Name, TransOpts, ProtoConfig|Args]}, Name, Type)).
 

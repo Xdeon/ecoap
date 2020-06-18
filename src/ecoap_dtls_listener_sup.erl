@@ -20,6 +20,7 @@
 %% 2. corresponding process still observable in ssl application 
 
 start_link(_ServerSupPid, Name, TransOpts, ProtoConfig, TimeOut, NumAcceptors) ->
+	ok = ecoap_registry:set_new_listener_config(Name, TransOpts, ProtoConfig),
 	supervisor:start_link({local, Name}, ?MODULE, [Name, TransOpts, ProtoConfig, TimeOut, NumAcceptors]).
 
 init([Name, TransOpts, ProtoConfig, TimeOut, NumAcceptors]) ->
