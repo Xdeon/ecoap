@@ -32,13 +32,14 @@
     transport = undefined :: module(),
     ep_id = undefined :: ecoap_endpoint_id(),
     handler_sup = undefined :: undefined | pid(),
-    handler_regs = #{} :: #{ecoap_handler:handler_id() => pid()},
-    handler_refs = #{} :: #{reference() => ecoap_handler:handler_id()},
+    handler_regs = #{} :: #{handler_id() => pid()},
+    handler_refs = #{} :: #{reference() => handler_id()},
     client_set = ordsets:new() :: ordsets:set(pid())
 }).
 
 -type endpoint_addr() :: {inet:ip_address(), inet:port_number()}.
 -type ecoap_endpoint_id() :: {{udp | dtls, pid()}, endpoint_addr()}.
+-type handler_id() :: {ecoap_message:coap_method(), ecoap_uri:path(), ecoap_uri:query()}.
 -type trid() :: {in | out, ecoap_message:msg_id()}.
 -type receiver() :: {pid(), reference()}.
 -type observe_seq() :: non_neg_integer().
@@ -50,6 +51,7 @@
 -export_type([receiver/0]).
 -export_type([endpoint_addr/0]).
 -export_type([ecoap_endpoint_id/0]).
+-export_type([handler_id/0]).
 
 %% API.
 
@@ -101,7 +103,7 @@ send_response(EndpointPid, Ref, Message) ->
 cancel_request(EndpointPid, Ref) ->
     gen_server:cast(EndpointPid, {cancel_request, {self(), Ref}}).
 
--spec register_handler(pid(), ecoap_handler:handler_id(), pid()) -> ok.
+-spec register_handler(pid(), handler_id(), pid()) -> ok.
 register_handler(EndpointPid, ID, Pid) ->
     EndpointPid ! {register_handler, ID, Pid}, ok.
 
@@ -258,10 +260,10 @@ handle_info({register_handler, ID, Pid}, State=#state{handler_regs=Regs}) ->
         {ok, Pid} -> 
             % handler already registered
             {noreply, State};
-        {ok, Pid2} ->  
-            % only one handler for each operation allowed, so we terminate the one started earlier
-            ok = ecoap_handler:close(Pid2),
-            % and don't forget to update the registry
+        {ok, _} ->  
+            % only one handler for each operation allowed, so we stop sending messages to the one started earlier
+            % as a result, it will eventually terminate because of timeout
+            % don't forget to update the registry
             Regs2 = update_handler_regs(ID, Pid, Regs),
             {noreply, State#state{handler_regs=Regs2}};
         error ->
@@ -466,7 +468,7 @@ handle_request(Message, State=#state{handler_sup=undefined}) ->
     State;
 handle_request(Message, State=#state{ep_id=EpID, protocol_config=ProtoConfig, handler_sup=HdlSupPid}) ->
     % logger:log(debug, "handle_request called from ~p with ~p~n", [self(), Message]),
-    HandlerID = ecoap_handler:handler_id(Message),
+    HandlerID = handler_id(Message),
     HandlerConfig = ecoap_config:handler_config(ProtoConfig),
     case get_handler(HdlSupPid, HandlerID, HandlerConfig, State) of
         {ok, Pid, State2} ->
@@ -541,3 +543,19 @@ purge_state(State=#state{tokens=Tokens, trans=Trans, rescnt=Count, client_set=CS
             Timer2 = ecoap_timer:restart_kick(Timer),
             {noreply, State#state{timer=Timer2}}
     end.
+
+-spec handler_id(ecoap_message:coap_message()) -> handler_id().
+handler_id(Message) ->
+    Method = ecoap_request:method(Message),
+    Uri = ecoap_request:path(Message),
+    Query = ecoap_request:query(Message),
+    % According to RFC7641, a client should always use the same token in observe re-register requests
+    % But this can not be met when the client crashed after starting observing 
+    % and has no clue of what the former token is
+    % Question: Do we need to handler the case where a client issues multiple observe GET requests 
+    % with same URI and QUERY but different tokens? This may be intentional or the client just crashed before
+    % case ecoap_message:get_option('Observe', Message) of
+    %     undefined -> {{Method, Uri, Query}, undefined};
+    %     _ -> {{Method, Uri, Query}, Token}
+    % end.
+    {Method, Uri, Query}.

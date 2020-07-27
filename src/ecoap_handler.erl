@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 %% API.
--export([start_link/2, close/1, notify/2, handler_id/1]).
+-export([start_link/2, close/1, notify/2]).
 
 %% gen_server.
 -export([init/1]).
@@ -20,7 +20,7 @@
     cache_timeout = undefined :: timeout(),
     max_body_size = undefined :: non_neg_integer(),
     max_block_size = undefined :: non_neg_integer(),
-    id = undefined :: handler_id(),
+    id = undefined :: ecoap_endpoint:handler_id(),
     module = undefined :: module(), 
     insegs = undefined :: {orddict:orddict(), undefined | binary() | non_neg_integer()}, 
     last_response = undefined :: last_response(),
@@ -35,7 +35,6 @@
 -type reason() :: binary().
 -type observe_ref() :: term().
 -type observe_state() :: any().
--type handler_id() :: {ecoap_message:coap_method(), ecoap_uri:path(), ecoap_uri:query()}.
 
 -type last_response() ::
     undefined |
@@ -43,7 +42,7 @@
     ecoap_message:coap_success() | 
     ecoap_message:coap_error().
 
--export_type([reason/0, handler_id/0]).
+-export_type([reason/0]).
 
 %% TODO: 
 %% consider method to specify type of sperate response
@@ -191,7 +190,7 @@
 
 %% API.
 
--spec start_link(handler_id(), ecoap_config:handler_config()) -> {ok, pid()} | {error, term()}.
+-spec start_link(ecoap_endpoint:handler_id(), ecoap_config:handler_config()) -> {ok, pid()} | {error, term()}.
 start_link(ID, HandlerConfig) ->
     gen_server:start_link(?MODULE, [ID, HandlerConfig], []).
 
@@ -205,21 +204,6 @@ notify(Uri, Info) ->
     lists:foreach(fun(Pid) -> Pid ! {coap_notify, Info} end, List).
     % Maybe the following is better
     % List -> lists:foreach(fun(Pid) -> erlang:send(Pid, {coap_notify, Info}, [noconnect]) end, List)
-
--spec handler_id(ecoap_message:coap_message()) -> handler_id().
-handler_id(Message=#coap_message{code=Method}) ->
-    Uri = ecoap_request:path(Message),
-    Query = ecoap_request:query(Message),
-    % According to RFC7641, a client should always use the same token in observe re-register requests
-    % But this can not be met when the client crashed after starting observing 
-    % and has no clue of what the former token is
-    % Question: Do we need to handler the case where a client issues multiple observe GET requests 
-    % with same URI and QUERY but different tokens? This may be intentional or the client just crashed before
-    % case ecoap_message:get_option('Observe', Message) of
-    %     undefined -> {{Method, Uri, Query}, undefined};
-    %     _ -> {{Method, Uri, Query}, Token}
-    % end.
-    {Method, Uri, Query}.
 
 %% gen_server.
 
