@@ -5,5 +5,5 @@
 	{registered, [simple_server_sup]},
 	{applications, [kernel,stdlib,mnesia,ecoap]},
 	{mod, {simple_server_app, []}},
-	{env, []}
+	{env, [{port, 5683}]}
 ]}.

@@ -13,10 +13,9 @@ _build/
 _rel
 *.d
 deps
-ebin/*.beam
+*.beam
 ebin/test
 relx
-test/*.beam
 
 # Project specific
 src/ecoap_core_link_parser.erl

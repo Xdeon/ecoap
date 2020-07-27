@@ -6,7 +6,7 @@
 
 start(_Type, _Args) ->
 	ensure_db(resources),
-	ecoap:start_udp(simple_server, [{port, application:get_env(simple_server, port, 5683)}],
+	{ok, _} = ecoap:start_udp(simple_server, [{port, application:get_env(simple_server, port, 5683)}],
         #{routes => [{[<<"*">>], simple}], protocol_config => #{max_block_size => 64}}),
 	simple_server_sup:start_link().
 
@@ -14,7 +14,7 @@ stop(_State) ->
 	ok = ecoap:stop_udp(simple_server).
 
 ensure_db(Name) ->
-	case table_exist(Name) of
+	_ = case table_exist(Name) of
 		true -> 
 			{atomic, ok} = mnesia:delete_table(Name),
 			{atomic, ok} = mnesia:create_table(Name, []);

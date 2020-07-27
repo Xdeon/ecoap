@@ -19,7 +19,7 @@ start(_Type, _Args) ->
             {sndbuf, 1048576}
         ],
         #{routes => routes(), protocol_config => #{exchange_lifetime => 1500}}),
-	benchmark_sup:start_link().
+	benchmark_udp_sup:start_link().
 
 stop(_State) ->
 	ok = ecoap:stop_udp(benchmark_udp).
