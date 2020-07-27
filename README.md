@@ -97,4 +97,4 @@ Routes = [
     ], #{routes => Routes}).
 ```
 
-See /src/example for more details.
+See /examples for more details.
