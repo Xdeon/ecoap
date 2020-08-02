@@ -1,7 +1,5 @@
 -module(ecoap).
--behaviour(application).
 
--export([start/2, stop/1]).
 -export([start_udp/3, stop_udp/1, start_dtls/3, stop_dtls/1]).
 
 -type config() :: #{
@@ -12,12 +10,6 @@
 }.
 
 -export_type([config/0]).
-
-start(_Type, _Args) ->
-	ecoap_sup:start_link().
-
-stop(_State) ->
-	ok.
 
 -spec start_udp(atom(), [gen_udp:option()], config()) -> supervisor:startchild_ret().
 start_udp(Name, TransOpts, Config) ->
