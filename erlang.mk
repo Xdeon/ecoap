@@ -17,7 +17,7 @@
 ERLANG_MK_FILENAME := $(realpath $(lastword $(MAKEFILE_LIST)))
 export ERLANG_MK_FILENAME
 
-ERLANG_MK_VERSION = 764f9a2
+ERLANG_MK_VERSION = 472c405
 ERLANG_MK_WITHOUT = 
 
 # Make 3.81 and 3.82 are deprecated.
@@ -2335,7 +2335,7 @@ pkg_jsx_description = An Erlang application for consuming, producing and manipul
 pkg_jsx_homepage = https://github.com/talentdeficit/jsx
 pkg_jsx_fetch = git
 pkg_jsx_repo = https://github.com/talentdeficit/jsx
-pkg_jsx_commit = master
+pkg_jsx_commit = main
 
 PACKAGES += kafka
 pkg_kafka_name = kafka
@@ -7731,6 +7731,7 @@ $(ERLANG_MK_RECURSIVE_SHELL_DEPS_LIST): | $(ERLANG_MK_TMP)
 ifeq ($(IS_APP)$(IS_DEP),)
 	$(verbose) rm -f $(ERLANG_MK_RECURSIVE_TMP_LIST)
 endif
+	$(verbose) touch $(ERLANG_MK_RECURSIVE_TMP_LIST)
 	$(verbose) set -e; for dep in $^ ; do \
 		if ! grep -qs ^$$dep$$ $(ERLANG_MK_RECURSIVE_TMP_LIST); then \
 			echo $$dep >> $(ERLANG_MK_RECURSIVE_TMP_LIST); \
