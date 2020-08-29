@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 %% API.
--export([start_link/0, get_links/0, register_handler/1, unregister_handler/1, match_handler/1]).
+-export([start_link/0, get_links/0, register_handler/1, unregister_handler/1, cleanup_handlers/0, match_handler/1]).
 
 -export([set_listener/2, set_new_listener_config/3, set_protocol_config/2, set_transport_opts/2]).
 -export([get_listener/1, get_listeners/0, get_protocol_config/1, get_transport_opts/1]).
@@ -39,6 +39,10 @@ register_handler(Regs) when is_list(Regs) ->
 -spec unregister_handler([binary()]) -> ok.
 unregister_handler(Prefix) ->
     gen_server:call(?MODULE, {unregister, Prefix}).
+
+-spec cleanup_handlers() -> ok.
+cleanup_handlers() ->
+    gen_server:call(?MODULE, cleanup_handlers).
 
 -spec get_links() -> list().
 get_links() ->
@@ -171,7 +175,7 @@ call_coap_discover(Module, Prefix) ->
 
 %% gen_server.
 init([]) ->
-    spawn_link(fun() -> ecoap_registry:register_handler([{[<<".well-known">>, <<"core">>], ecoap_resource_directory}]) end),
+    ok = register_well_known(),
     ListenerMonitors = [{{erlang:monitor(process, Pid), Pid}, {listener, Ref}} ||
         [Ref, Pid] <- ets:match(?CONFIG_TAB, {{listener, '$1'}, '$2'})],
     {ok, #state{monitors=ListenerMonitors}}.
@@ -183,6 +187,10 @@ handle_call({register, Regs}, _From, State) ->
     {reply, ok, State};    
 handle_call({unregister, Prefix}, _From, State) ->
     ets:delete(?HANDLER_TAB, Prefix),
+    {reply, ok, State};
+handle_call(cleanup_handlers, _From, State) ->
+    ets:delete_all_objects(?HANDLER_TAB),
+    ok = register_well_known(),
     {reply, ok, State};
 % protocol and transport
 handle_call({set_listener, Name, Pid}, _From, State0) ->
@@ -275,6 +283,10 @@ process_dup([], Acc) ->
 
 make_list(Val) when is_list(Val) -> Val;
 make_list(Val) -> [Val].
+
+register_well_known() ->
+    true = ets:insert(?HANDLER_TAB, process_regs([{[<<".well-known">>, <<"core">>], ecoap_resource_directory}])),
+    ok.
 
 -ifdef(TEST).
 
