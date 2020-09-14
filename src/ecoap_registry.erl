@@ -255,8 +255,8 @@ set_monitored_process(Key, Pid, State=#state{monitors=Monitors0}) ->
     State#state{monitors=[{{MonitorRef, Pid}, Key}|Monitors]}.
 
 % in case the system is not run as release, we should manually load all module files
-load_handlers(Reg) ->
-    case code:ensure_modules_loaded([Module || {_, {_, Module}} <- Reg]) of
+load_handlers(Regs) ->
+    case code:ensure_modules_loaded([Module || {_, {_, Module}} <- Regs]) of
         ok -> ok;
         {error, [{Module, What}]} -> logger:log(error, "Fail to load handler module: ~p~n", [{Module, What}])
     end.
@@ -285,8 +285,9 @@ make_list(Val) when is_list(Val) -> Val;
 make_list(Val) -> [Val].
 
 register_well_known() ->
-    true = ets:insert(?HANDLER_TAB, process_regs([{[<<".well-known">>, <<"core">>], ecoap_resource_directory}])),
-    ok.
+    Reg = process_regs([{[<<".well-known">>, <<"core">>], ecoap_resource_directory}]),
+    true = ets:insert(?HANDLER_TAB, Reg),
+    ok = load_handlers(Reg).
 
 -ifdef(TEST).
 
