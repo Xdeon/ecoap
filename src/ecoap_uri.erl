@@ -106,13 +106,13 @@ default_port(coaps) -> ?DEFAULT_COAPS_PORT.
 default_transport(?DEFAULT_COAPS_PORT) -> dtls;
 default_transport(_) -> udp.
 
-split_query(<<>>) -> [];
-split_query(Query) -> split_and_decode_segments(Query, <<"&">>, fun cow_qs:urldecode/1).
-
 split_path(<<>>) -> [];
 split_path(<<"/">>) -> [];
 split_path(<<"/", Path/binary>>) -> split_and_decode_segments(Path, <<"/">>, fun cow_uri:urldecode/1);
 split_path(Path) -> split_and_decode_segments(Path, <<"/">>, fun cow_uri:urldecode/1).
+
+split_query(<<>>) -> [];
+split_query(Query) -> split_and_decode_segments(Query, <<"&">>, fun cow_qs:urldecode/1).
 
 split_and_decode_segments(Segments, SplitChar, DecodeFun) ->
     lists:map(DecodeFun, string:split(Segments, SplitChar, all)).
@@ -135,14 +135,10 @@ build_host(Host, _) ->
     binary_to_list(Host).
 
 build_path(Path) -> 
-    ["/", assemble_segments(Path, fun cow_uri:urlencode/1, "/")].
+    [<<"/">>, lists:join(<<"/">>, Path)].
 
 build_query(Query) ->
-    lists:join("&", Query).
-
-assemble_segments(Segments, TransFun, Char) ->
-    % apply TransFun on each Segment and then join the list with Char
-    lists:join(Char, lists:map(TransFun, Segments)).
+    lists:join(<<"&">>, Query).
 
 -ifdef(TEST).
 
