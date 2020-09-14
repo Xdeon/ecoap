@@ -709,7 +709,9 @@ make_options(Host, EpID, Uri, Options) ->
 	PortNo = ecoap_endpoint:get_peer_info(port, EpID),
 	#{path:=Path, 'query':=Query} = ecoap_uri:get_uri_params(Uri),
 	ecoap_message:add_option('Uri-Host', Host, 
-		ecoap_message:add_option('Uri-Port', PortNo, Options#{'Uri-Path'=>Path, 'Uri-Query'=>Query})).
+		ecoap_message:add_option('Uri-Port', PortNo, 
+			ecoap_message:add_option('Uri-Path', Path,
+				ecoap_message:add_option('Uri-Query', Query, Options)))).
 
 % When we acquire the endpoint pid, it is possible that this process is under supervsion on server mode
 % that means what we get may not be a fresh enough pid, or the endpoint process can be about to terminate
