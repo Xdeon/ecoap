@@ -5,7 +5,7 @@ PROJECT_REGISTERED = ecoap_udp_socket ecoap_dtls_listener_sup ecoap_registry
 
 DEPS = spg cowlib
 dep_spg = git https://github.com/max-au/spg.git
-dep_cowlib = git https://github.com/ninenines/cowlib 2.9.1
+dep_cowlib = git https://github.com/ninenines/cowlib.git
 LOCAL_DEPS = crypto ssl
 
 # EUNIT_OPTS = verbose
