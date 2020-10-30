@@ -2,7 +2,7 @@
 
 ecoap is a variation of [gen_coap](https://github.com/gotthardp/gen_coap.git) with many modifications.
 
-ecoap is a result of pure interests in researching and learning how concurrency-oriented programming language helps building IoT infrastructures.
+ecoap is a result of pure interests in researching and learning how concurrency-oriented programming language helps building IoT infrastructures during my graduate study.
 
 Therefore it is **only for research and experimental use** and this repository is merely a record of what have been done.
 
