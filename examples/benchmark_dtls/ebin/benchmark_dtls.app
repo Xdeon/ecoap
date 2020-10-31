@@ -5,5 +5,5 @@
 	{registered, [benchmark_dtls_sup]},
 	{applications, [kernel,stdlib,ecoap]},
 	{mod, {benchmark_dtls_app, []}},
-	{env, [{security, cert}]}
+	{env, []}
 ]}.
