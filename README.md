@@ -6,7 +6,7 @@ ecoap is a result of pure interests in researching and learning how concurrency-
 
 Therefore it is **only for research and experimental use** and this repository is merely a record of what have been done.
 
-For the same reason, there are a number of issues still left to be solved/improved. Such as general refactoring for some modules, cleanning up comments, TODOs and messed up git commits, and (maybe) updating files in order to strictly comply with the all the requirements of the open source license (e.g. clearify all modifications that were ever made and credit the original author of the unchanged parts).
+For the same reason, there are a number of issues still left to be solved/improved. Such as general refactoring for some modules, cleaning up comments, TODOs and messed up git commits, and (maybe) updating files in order to strictly comply with the all the requirements of the open source license (e.g. clearify all modifications that were ever made and credit the original author of the unchanged parts).
 
 Feel free to post an issue if this repository raised some of your concerns and I might change it back to private.
 
