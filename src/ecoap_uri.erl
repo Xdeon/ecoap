@@ -123,8 +123,8 @@ encode_uri(#{scheme:=Scheme, host:=Host, port:=_, ip:=IP, path:=Path, 'query':=Q
         host=>build_host(Host, IP),
         path=>build_path(Path)},
     UriMap2 = case build_query(Query) of
-        [] -> maps:remove('query', UriMap1);
-        QueryList -> UriMap1#{'query'=>QueryList}
+        <<>> -> maps:remove('query', UriMap1);
+        Querys -> UriMap1#{'query'=>Querys}
     end,
     UriMap = maps:remove(ip, UriMap2),
     uri_string:recompose(UriMap).
@@ -134,11 +134,15 @@ build_host(undefined, PeerIP) ->
 build_host(Host, _) -> 
     binary_to_list(Host).
 
+% since OTP23.1: for backword compatibility, produce <<>> for empty path and <<"/...">> for non-empty path
 build_path(Path) -> 
-    [<<"/">>, lists:join(<<"/">>, Path)].
+    case lists:join(<<"/">>, Path) of
+        [] -> <<>>;
+        SubPath -> <<"/", (list_to_binary(SubPath))/binary>>
+    end.
 
 build_query(Query) ->
-    lists:join(<<"&">>, Query).
+    list_to_binary(lists:join(<<"&">>, Query)).
 
 -ifdef(TEST).
 
