@@ -81,7 +81,7 @@ blockwise_test_() ->
     [
     {setup, 
         fun() -> 
-            {ok, Pid} = ecoap_client:open("californium.eclipse.org", 5683),
+            {ok, Pid} = ecoap_client:open("californium.eclipseprojects.io", 5683),
             Pid
         end,
         fun(Pid) ->
