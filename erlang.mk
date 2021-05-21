@@ -17,7 +17,7 @@
 ERLANG_MK_FILENAME := $(realpath $(lastword $(MAKEFILE_LIST)))
 export ERLANG_MK_FILENAME
 
-ERLANG_MK_VERSION = 579e9f3
+ERLANG_MK_VERSION = d80984c
 ERLANG_MK_WITHOUT = 
 
 # Make 3.81 and 3.82 are deprecated.
@@ -4692,8 +4692,19 @@ define dep_autopatch_rebar.erl
 		case file:consult("$(call core_native_path,$(DEPS_DIR)/$1/rebar.lock)") of
 			{ok, Lock} ->
 				io:format("~p~n", [Lock]),
-				case lists:keyfind("1.1.0", 1, Lock) of
-					{_, LockPkgs} ->
+				LockPkgs = case lists:keyfind("1.2.0", 1, Lock) of
+					{_, LP} ->
+						LP;
+					_ ->
+						case lists:keyfind("1.1.0", 1, Lock) of
+							{_, LP} ->
+								LP;
+							_ ->
+								false
+						end
+				end,
+				if
+					is_list(LockPkgs) ->
 						io:format("~p~n", [LockPkgs]),
 						case lists:keyfind(atom_to_binary(N, latin1), 1, LockPkgs) of
 							{_, {pkg, _, Vsn}, _} ->
@@ -4702,7 +4713,7 @@ define dep_autopatch_rebar.erl
 							_ ->
 								false
 						end;
-					_ ->
+					true ->
 						false
 				end;
 			_ ->
